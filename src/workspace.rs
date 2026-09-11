@@ -24,6 +24,8 @@ pub struct Workspace {
     pub palette: Entity<CommandState>,
     pub rename: Entity<InputState>,
     pub renaming: Option<usize>,
+    pub chat_search: Entity<InputState>,
+    pub chat_search_open: bool,
 }
 
 impl Workspace {
@@ -52,6 +54,13 @@ impl Workspace {
 
         let palette = cx.new(|cx| CommandState::new(window, cx));
         let rename = cx.new(|cx| InputState::new(window, cx).placeholder("Chat title"));
+        let chat_search = cx.new(|cx| InputState::new(window, cx).placeholder("Search in chat"));
+        cx.subscribe_in(&chat_search, window, |_this, _s, event: &InputEvent, _window, cx| {
+            if matches!(event, InputEvent::Change) {
+                cx.notify();
+            }
+        })
+        .detach();
         let mut this = Self {
             chats: Vec::new(),
             active: 0,
@@ -66,6 +75,8 @@ impl Workspace {
             palette,
             rename,
             renaming: None,
+            chat_search,
+            chat_search_open: false,
         };
         this.new_chat(cx);
         this.start_ticker(cx);
@@ -120,6 +131,17 @@ impl Workspace {
 
     pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         window.open_sheet(cx, |sheet, _window, _cx| sheet.title("Settings").child(crate::views::settings_body()));
+    }
+
+    pub fn open_chat_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.chat_search_open = !self.chat_search_open;
+        if self.chat_search_open {
+            let input = self.chat_search.clone();
+            window.defer(cx, move |window, cx| {
+                input.update(cx, |s, cx| s.focus(window, cx));
+            });
+        }
+        cx.notify();
     }
 
     pub fn toggle_pin(&mut self, index: usize, cx: &mut Context<Self>) {

@@ -2,10 +2,13 @@ use std::rc::Rc;
 
 use crate::model::{ChatMessage, MessageKind, Role};
 use crate::views::cards::{MsgCtx, message_footer, render_diff, render_tool_call};
+use crate::views::render_empty_state;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::message::{Message, MessageAlignment, MessageContent, MessageFooter, MessageHeader};
+
 use gpui_kit::component::message_scroller::MessageScroller;
 use gpui_kit::component::text::TextView;
 use gpui_kit::component::theme::ActiveTheme;
@@ -97,6 +100,28 @@ impl Workspace {
             .flex_1()
             .h_full()
             .child(header)
+            .when(self.chat_search_open, |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .px_4()
+                        .py_1()
+                        .border_b_1()
+                        .border_color(cx.theme().border)
+                        .child(IconName::Search)
+                        .child(div().flex_1().child(Input::new(&self.chat_search).appearance(true)))
+                        .child(
+                            div()
+                                .id("close-search")
+                                .cursor_pointer()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(IconName::X)
+                                .on_click(cx.listener(|this, _, window, cx| this.open_chat_search(window, cx))),
+                        ),
+                )
+            })
             .child(div().flex_1().min_h_0().child(if empty {
                 render_empty_state(ws_empty.clone(), cx).into_any_element()
             } else {
@@ -146,48 +171,6 @@ fn render_message(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mu
         MessageKind::Tool(tool) => render_tool_call(ix, tool, ws.clone(), cx).into_any_element(),
         MessageKind::Diff(diff) => render_diff(ix, diff, ws.clone(), cx).into_any_element(),
     }
-}
-fn render_empty_state(ws: Entity<Workspace>, cx: &mut App) -> impl IntoElement {
-    let suggestions = [
-        "Explain this codebase",
-        "Fix the failing tests",
-        "Refactor the parser module",
-        "Write docs for the public API",
-    ];
-    div()
-        .flex()
-        .flex_col()
-        .size_full()
-        .items_center()
-        .justify_center()
-        .gap_4()
-        .child(div().text_lg().text_color(cx.theme().muted_foreground).child("What should we work on?"))
-        .child(
-            div()
-                .id("empty-new-chat")
-                .cursor_pointer()
-                .px_4()
-                .py_2()
-                .rounded_lg()
-                .bg(cx.theme().accent)
-                .text_color(cx.theme().accent_foreground)
-                .text_sm()
-                .child("New chat")
-                .on_click(move |_, _, cx| {
-                    ws.update(cx, |this, cx| this.new_chat(cx));
-                }),
-        )
-        .child(div().flex().flex_col().gap_2().items_center().children(suggestions.iter().map(|s| {
-            div()
-                .px_4()
-                .py_2()
-                .rounded_lg()
-                .border_1()
-                .border_color(cx.theme().border)
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(*s)
-        })))
 }
 
 fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {

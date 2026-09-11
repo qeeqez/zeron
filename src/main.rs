@@ -18,7 +18,7 @@ actions!(
     workspace,
     [
         NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6,
-        Chat7, Chat8, Chat9, CloseWindow, OpenSettings
+        Chat7, Chat8, Chat9, CloseWindow, OpenSettings, SearchChat
     ]
 );
 
@@ -71,6 +71,12 @@ impl Render for Workspace {
                     ws.update(cx, |this, cx| this.open_settings(window, cx));
                 }
             })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &SearchChat, window, cx| {
+                    ws.update(cx, |this, cx| this.open_chat_search(window, cx));
+                }
+            })
             .flex()
             .flex_col()
             .size_full()
@@ -121,7 +127,7 @@ fn main() {
             KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
             KeyBinding::new("cmd-w", CloseWindow, Some("workspace")),
             KeyBinding::new("cmd-,", OpenSettings, Some("workspace")),
-            KeyBinding::new("cmd-k", OpenPalette, Some("workspace")),
+            KeyBinding::new("cmd-f", SearchChat, Some("workspace")),
             KeyBinding::new("cmd-1", Chat1, Some("workspace")),
             KeyBinding::new("cmd-2", Chat2, Some("workspace")),
             KeyBinding::new("cmd-3", Chat3, Some("workspace")),
