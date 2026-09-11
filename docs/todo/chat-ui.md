@@ -4,18 +4,20 @@ Main conversation surface.
 
 ## Done
 
-- [ ] (pending)
+- [x] Virtualized message list (MessageScroller) with follow-tail + jump button
+- [x] User messages: right-aligned accent bubble
+- [x] Assistant messages: left-aligned bubble + "Rixl" bot header
+- [x] Tool-call cards: icon + name + status icon (running/done/failed)
+- [x] "Working…" strip while running
 
 ## Todo
 
-- [ ] Virtualized message list (MessageScroller), follow-tail + "jump to latest"
-- [ ] User messages: right-aligned bubble
-- [ ] Assistant messages: left-aligned, bot avatar, markdown body
-- [ ] Tool-call cards: icon + name + status (running spinner / done check / failed x), collapsible detail (command, args, output)
+- [ ] Markdown rendering in assistant text
+- [ ] Tool-call card: collapsible detail (command, args, output)
 - [ ] Diff cards: file path, +/- counts, inline diff view
 - [ ] Streaming text: token-by-token append with caret
-- [ ] "Working…" elapsed-time indicator while running; Stop button
+- [ ] Elapsed-time in Working strip; Stop button there too
 - [ ] Message footer actions: copy, retry, thumbs up/down
 - [ ] Empty state: centered prompt suggestions
 - [ ] Error banner on failed run with retry
-- [ ] Code blocks with syntax highlight + copy button (highlighter component)
+- [ ] Code blocks with syntax highlight + copy button

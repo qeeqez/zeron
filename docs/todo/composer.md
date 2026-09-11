@@ -4,12 +4,12 @@ Bottom input area.
 
 ## Done
 
-- [ ] (pending)
+- [x] Multi-line auto-growing textarea (1–8 rows), Enter sends / Shift+Enter newline
+- [x] Send button; swaps to Stop while running
 
 ## Todo
 
-- [ ] Multi-line auto-growing textarea, Enter sends / Shift+Enter newline
-- [ ] Send button (disabled when empty or running → becomes Stop)
+- [ ] Send disabled when input empty
 - [ ] Model picker dropdown (e.g. GPT-5, GPT-5-codex variants)
 - [ ] Reasoning-effort / mode picker (e.g. Agent / Plan / Ask)
 - [ ] Slash-command menu on `/` (filtered list)
