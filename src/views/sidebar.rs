@@ -6,8 +6,7 @@ use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarMenuItem, SidebarToggleButton};
 
-use gpui_kit::component::button::Button;
-use gpui_kit::component::theme::{ActiveTheme, Theme, ThemeMode};
+use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
@@ -193,68 +192,4 @@ fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, pinned: bool, menu: PopupMen
             ws.update(cx, |this, cx| this.toggle_archive(ix, cx));
         }
     }))
-}
-
-pub fn settings_body(notify: bool, ws: Entity<Workspace>, _cx: &mut App) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap_3()
-        .p_4()
-        .child(div().text_sm().child("Theme"))
-        .child(
-            div()
-                .flex()
-                .gap_2()
-                .child(theme_button("Light", ThemeMode::Light))
-                .child(theme_button("Dark", ThemeMode::Dark)),
-        )
-        .child(div().text_sm().pt_2().child("Notifications"))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .text_xs()
-                .child("Notify on reply complete")
-                .child(div().flex_1())
-                .child(
-                    div()
-                        .id("toggle-notify")
-                        .cursor_pointer()
-                        .child(if notify { IconName::Check } else { IconName::X })
-                        .on_click(move |_, _, cx| {
-                            ws.update(cx, |this, _cx| {
-                                this.notify_on_done = !this.notify_on_done;
-                                this.save_settings();
-                            });
-                        }),
-                ),
-        )
-        .child(div().text_sm().pt_2().child("Shortcuts"))
-        .child(div().flex().flex_col().gap_1().text_xs().children(SHORTCUTS.iter().map(|(key, desc)| {
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .child(div().w(px(140.)).child(*key))
-                .child(div().text_color(hsla(0.0, 0.0, 0.55, 1.0)).child(*desc))
-        })))
-}
-
-const SHORTCUTS: [(&str, &str); 8] = [
-    ("Cmd+N", "New chat"),
-    ("Cmd+B", "Toggle sidebar"),
-    ("Cmd+J", "Toggle agents panel"),
-    ("Cmd+K", "Command palette"),
-    ("Cmd+W", "Close window"),
-    ("Cmd+,", "Settings"),
-    ("Cmd+Shift+Backspace", "Delete chat"),
-    ("Cmd+1..9", "Switch to chat N"),
-];
-
-fn theme_button(label: &'static str, mode: ThemeMode) -> impl IntoElement {
-    Button::new(SharedString::from(label)).outline().label(label).on_click(move |_, _, cx| {
-        Theme::change(mode, None, cx);
-    })
 }

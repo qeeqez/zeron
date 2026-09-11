@@ -28,6 +28,7 @@ pub struct Workspace {
     pub chat_search_open: bool,
     pub notify_on_done: bool,
     pub word_wrap: bool,
+    pub font_size: u8,
 }
 
 impl Workspace {
@@ -79,9 +80,10 @@ impl Workspace {
             rename,
             renaming: None,
             chat_search,
-            notify_on_done: settings.notify_on_done,
             chat_search_open: false,
+            notify_on_done: settings.notify_on_done,
             word_wrap: settings.word_wrap,
+            font_size: settings.font_size,
         };
         let loaded = crate::persist::load_chats();
         if loaded.is_empty() {
@@ -102,8 +104,9 @@ impl Workspace {
         crate::persist::save_settings(&crate::persist::Settings {
             model: self.model.to_string(),
             mode: self.mode.to_string(),
-            notify_on_done: self.notify_on_done,
             word_wrap: self.word_wrap,
+            font_size: self.font_size,
+            notify_on_done: self.notify_on_done,
         });
     }
 
@@ -158,8 +161,11 @@ impl Workspace {
     pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let ws = cx.entity();
         window.open_sheet(cx, move |sheet, _window, cx| {
-            let notify = ws.read(cx).notify_on_done;
-            sheet.title("Settings").child(crate::views::settings_body(notify, ws.clone(), cx))
+            let (notify, font_size) = {
+                let s = ws.read(cx);
+                (s.notify_on_done, s.font_size)
+            };
+            sheet.title("Settings").child(crate::views::settings_body(notify, font_size, ws.clone(), cx))
         });
     }
 
