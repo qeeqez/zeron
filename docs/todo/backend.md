@@ -8,8 +8,8 @@ Replace the in-process simulation with a real agent backend.
 
 ## Todo
 
-- [ ] Define `AgentBackend` trait: send_message, events stream, cancel, list_models
-- [ ] Event model: TextDelta / ToolCallStart / ToolCallDelta / ToolCallEnd / Diff / Done / Error
+- [x] Define `AgentBackend` trait: send_message, events stream, cancel, list_models
+- [x] Event model: TextDelta / ToolCallStart / ToolCallDelta / ToolCallEnd / Diff / Done / Error
 - [ ] Wire streaming events into chat state (replace timer simulation)
 - [ ] Pluggable transports: local CLI process, MCP, HTTP
 - [ ] Auth/config for provider keys

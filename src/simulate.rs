@@ -81,7 +81,13 @@ impl Workspace {
         agent.steps_done = step;
         agent.elapsed_secs += 1;
         agent.step = format!("step {step}").into();
-        agent.log.push(format!("[{}s] step {step}", agent.elapsed_secs).into());
+        let tool = match step % 4 {
+            1 => "read_file",
+            2 => "grep",
+            3 => "edit",
+            _ => "bash",
+        };
+        agent.log.push(format!("[{}s] {tool} step {step}", agent.elapsed_secs).into());
         if step == agent.steps_total {
             agent.status = if Self::reply_failed() { AgentStatus::Failed } else { AgentStatus::Done };
             agent.step = "finished".into();
