@@ -18,7 +18,12 @@ impl Workspace {
         let empty = chat.messages.is_empty();
         let messages: Rc<Vec<ChatMessage>> = Rc::new(chat.messages.clone());
         let running = chat.running;
+        let title = chat.title.clone();
         let ws = cx.entity();
+        let ws_toggle = cx.entity();
+
+        let running_agents = self.running_agents();
+        let panel_open = self.agents_panel_open;
 
         let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, _window, cx| {
             messages
@@ -26,12 +31,43 @@ impl Workspace {
                 .map(|msg| render_message(ix, msg, &ws, cx))
                 .unwrap_or_else(|| div().into_any_element())
         });
+        let header = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_4()
+            .py_2()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .text_sm()
+            .child(title)
+            .child(div().flex_1())
+            .child(
+                div()
+                    .id("agents-toggle")
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .px_2()
+                    .py_1()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .text_xs()
+                    .when(panel_open, |d| d.bg(cx.theme().accent).text_color(cx.theme().accent_foreground))
+                    .when(!panel_open, |d| d.text_color(cx.theme().muted_foreground))
+                    .child(IconName::Bot)
+                    .when(running_agents > 0, |d| d.child(format!("{running_agents}")))
+                    .on_click(move |_, _, cx| {
+                        ws_toggle.update(cx, |this, cx| this.toggle_agents_panel(cx));
+                    }),
+            );
 
         div()
             .flex()
             .flex_col()
             .flex_1()
             .h_full()
+            .child(header)
             .child(
                 div()
                     .flex_1()

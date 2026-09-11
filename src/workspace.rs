@@ -2,13 +2,15 @@ use gpui_kit::component::input::{InputEvent, TextareaState};
 use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::*;
 
-use crate::model::{Chat, ChatMessage, MessageKind, Role};
+use crate::model::{Agent, Chat, ChatMessage, MessageKind, Role};
 use crate::simulate::simulate_reply;
 
 pub struct Workspace {
     pub chats: Vec<Chat>,
     pub active: usize,
     pub sidebar_collapsed: bool,
+    pub agents: Vec<Agent>,
+    pub agents_panel_open: bool,
     pub composer: Entity<TextareaState>,
     pub scroller: Entity<MessageScrollerState>,
 }
@@ -34,6 +36,8 @@ impl Workspace {
             chats: Vec::new(),
             active: 0,
             sidebar_collapsed: false,
+            agents: Vec::new(),
+            agents_panel_open: false,
             composer,
             scroller,
         };
@@ -65,6 +69,15 @@ impl Workspace {
     pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
         self.sidebar_collapsed = !self.sidebar_collapsed;
         cx.notify();
+    }
+
+    pub fn toggle_agents_panel(&mut self, cx: &mut Context<Self>) {
+        self.agents_panel_open = !self.agents_panel_open;
+        cx.notify();
+    }
+
+    pub fn running_agents(&self) -> usize {
+        self.agents.iter().filter(|a| a.status == crate::model::AgentStatus::Running).count()
     }
 
     pub fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {

@@ -2,7 +2,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gpui_kit::*;
 
-use crate::model::{ChatMessage, DiffCard, MessageKind, Role, ToolCall, ToolStatus};
+use crate::model::{Agent, AgentStatus, ChatMessage, DiffCard, MessageKind, Role, ToolCall, ToolStatus};
 use crate::workspace::Workspace;
 
 const REPLY_OK: &str = "Done. The build is **green** — `0 warnings`, all checks passed.\n\n- `cargo build --locked` finished in 3.6s\n- clippy: clean\n- nextest: 0 tests";
@@ -10,11 +10,19 @@ const REPLY_FAIL: &str = "The command **failed** — see the tool output above.\
 const TOOL_OUTPUT: &str =
     "$ cargo build --locked\n   Compiling rixlcode v0.1.0\n    Finished `dev` profile [optimized + debuginfo] target(s) in 3.68s";
 
+pub(crate) struct AgentSpec {
+    pub name: &'static str,
+    pub lane: &'static str,
+    pub steps_total: usize,
+}
+
 /// Simulated agent reply: a tool call that runs, a diff card, then a
 /// streamed text answer. Replaced by the real backend event stream later
 /// (docs/todo/backend.md).
 pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
     let chat_ix = this.active;
+    this.spawn_agent(AgentSpec { name: "explorer", lane: "rixl/explore", steps_total: 4 }, cx);
+    this.spawn_agent(AgentSpec { name: "reviewer", lane: "rixl/review", steps_total: 3 }, cx);
     this.chats[chat_ix].messages.push(ChatMessage {
         role: Role::Assistant,
         kind: MessageKind::Tool(ToolCall {
@@ -40,6 +48,35 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
         let _ = this.update(cx, |this, cx| this.finish_stream(chat_ix, cx));
     })
     .detach();
+}
+
+impl Workspace {
+    /// Spawn a simulated subagent that walks its steps on a timer.
+    pub(crate) fn spawn_agent(&mut self, spec: AgentSpec, cx: &mut Context<Self>) {
+        let AgentSpec { name, lane, steps_total } = spec;
+        self.agents.push(Agent::new(name, lane, steps_total));
+        let ix = self.agents.len() - 1;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            for step in 1..=steps_total {
+                cx.background_executor().timer(Duration::from_millis(700)).await;
+                let _ = this.update(cx, |this, cx| this.advance_agent(ix, step, cx));
+            }
+        })
+        .detach();
+    }
+
+    fn advance_agent(&mut self, ix: usize, step: usize, cx: &mut Context<Self>) {
+        let agent = &mut self.agents[ix];
+        agent.steps_done = step;
+        agent.elapsed_secs += 1;
+        agent.step = format!("step {step}").into();
+        if step == agent.steps_total {
+            agent.status = if Self::reply_failed() { AgentStatus::Failed } else { AgentStatus::Done };
+            agent.step = "finished".into();
+        }
+        cx.notify();
+    }
 }
 
 impl Workspace {

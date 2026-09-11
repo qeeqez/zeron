@@ -10,7 +10,12 @@ use workspace::Workspace;
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div().flex().size_full().child(self.render_sidebar(window, cx)).child(self.render_chat(window, cx))
+        div()
+            .flex()
+            .size_full()
+            .child(self.render_sidebar(window, cx))
+            .child(self.render_chat(window, cx))
+            .when(self.agents_panel_open, |d| d.child(self.render_agents_panel(window, cx)))
     }
 }
 

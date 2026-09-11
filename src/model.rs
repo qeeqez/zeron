@@ -61,3 +61,35 @@ impl Chat {
         }
     }
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AgentStatus {
+    Running,
+    Done,
+    Failed,
+}
+
+#[derive(Clone)]
+pub struct Agent {
+    pub name: SharedString,
+    pub lane: SharedString,
+    pub status: AgentStatus,
+    pub step: SharedString,
+    pub steps_done: usize,
+    pub steps_total: usize,
+    pub elapsed_secs: u64,
+}
+
+impl Agent {
+    pub fn new(name: impl Into<SharedString>, lane: impl Into<SharedString>, steps_total: usize) -> Self {
+        Self {
+            name: name.into(),
+            lane: lane.into(),
+            status: AgentStatus::Running,
+            step: "starting".into(),
+            steps_done: 0,
+            steps_total,
+            elapsed_secs: 0,
+        }
+    }
+}
