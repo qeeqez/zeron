@@ -1,5 +1,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use gpui_kit::component::WindowExt;
+use gpui_kit::component::notification::Notification;
 use gpui_kit::*;
 
 use crate::model::{Agent, AgentStatus, ChatMessage, DiffCard, MessageKind, Role, ToolCall, ToolStatus};
@@ -46,7 +48,11 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
             cx.background_executor().timer(Duration::from_millis(80)).await;
             let _ = this.update(cx, |this, cx| this.stream_chunk(chat_ix, cx));
         }
-        let _ = this.update(cx, |this, cx| this.finish_stream(chat_ix, cx));
+        let _ = this.update_in(cx, |this, window, cx| {
+            this.finish_stream(chat_ix, cx);
+            let title = this.chats[chat_ix].title.clone();
+            window.push_notification(Notification::success(format!("{title} — reply complete")), cx);
+        });
     })
     .detach();
 }
@@ -104,6 +110,7 @@ impl Workspace {
                     removed: 6,
                     hunks: "@@ -10,6 +10,24 @@\n fn main() {\n-    println!(\"old\");\n+    gpui_kit::application().run(|cx| {\n+        gpui_kit::init(cx);\n+    });\n }".into(),
                     expanded: false,
+                    applied: None,
                 }),
                 rating: None,
             });

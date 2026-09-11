@@ -17,7 +17,6 @@ pub struct ToolCall {
     pub status: ToolStatus,
     pub expanded: bool,
 }
-
 #[derive(Clone)]
 pub struct DiffCard {
     pub path: SharedString,
@@ -25,6 +24,7 @@ pub struct DiffCard {
     pub removed: usize,
     pub hunks: SharedString,
     pub expanded: bool,
+    pub applied: Option<bool>,
 }
 
 #[derive(Clone)]

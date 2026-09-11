@@ -188,6 +188,17 @@ impl Workspace {
         simulate_reply(self, cx);
     }
 
+    pub fn set_diff_applied(&mut self, ix: usize, applied: bool, cx: &mut Context<Self>) {
+        let Some(msg) = self.chats[self.active].messages.get_mut(ix) else { return };
+        if let MessageKind::Diff(diff) = &mut msg.kind {
+            diff.applied = Some(applied);
+        }
+        self.scroller.update(cx, |s, cx| {
+            s.remeasure_items(ix..ix + 1, cx);
+        });
+        cx.notify();
+    }
+
     pub fn rate_message(&mut self, ix: usize, up: bool, cx: &mut Context<Self>) {
         let chat = &mut self.chats[self.active];
         if let Some(msg) = chat.messages.get_mut(ix) {
