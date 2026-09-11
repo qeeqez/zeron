@@ -206,7 +206,19 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
         .when(role == Role::User, |d| d.bg(cx.theme().accent).text_color(cx.theme().accent_foreground))
         .when(role == Role::Assistant, |d| d.bg(cx.theme().secondary).text_color(cx.theme().foreground))
         .child(if role == Role::Assistant {
-            TextView::markdown(("md", ix), text.clone()).into_any_element()
+            TextView::markdown(("md", ix), text.clone())
+                .code_block_actions(|block, _window, _cx| {
+                    let code = block.code().to_string();
+                    div()
+                        .id("copy-code")
+                        .cursor_pointer()
+                        .text_color(hsla(0.0, 0.0, 0.55, 1.0))
+                        .child(IconName::Copy)
+                        .on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(code.clone()));
+                        })
+                })
+                .into_any_element()
         } else {
             div().child(text.clone()).into_any_element()
         });
