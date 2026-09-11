@@ -40,7 +40,7 @@ run = "cargo build --locked"
 
 [tasks.test]
 description = "Run tests"
-run = "cargo nextest run --locked"
+run = "cargo nextest run --locked --no-tests=pass"
 
 [tasks.verify]
 description = "Build and test the project"

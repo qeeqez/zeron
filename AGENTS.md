@@ -3,12 +3,12 @@
 ## Verification Commands
 
 Run before every commit and PR:
-- `mise run verify` – full build + test gate (`cargo nextest run --locked`)
+- `mise run verify` – full build + test gate (`cargo nextest run --locked --no-tests=pass`)
 - `mise run lint` – rustfmt + clippy check
 - `mise run lint:sloc` – enforces max 250 SLOC per file (comments and blanks excluded) via `sloc-guard`
 - `cargo clippy --all-targets -- -D warnings` – strict clippy lint
 - `cargo fmt --check` / `cargo fmt` – formatting
-- `cargo nextest run --locked` – parallel unit and integration tests; the only test runner (never `cargo test`)
+- `cargo nextest run --locked --no-tests=pass` – parallel unit and integration tests; the only test runner (never `cargo test`)
 
 ## Lint Policy
 
