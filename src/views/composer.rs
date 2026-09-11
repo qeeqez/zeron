@@ -26,8 +26,7 @@ impl Workspace {
 
         let send_button = if running {
             Button::new("stop").danger().icon(IconName::Pause).on_click(cx.listener(|this, _, _, cx| {
-                this.chats[this.active].running = false;
-                cx.notify();
+                this.stop_reply(cx);
             }))
         } else {
             Button::new("send")

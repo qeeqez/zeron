@@ -55,6 +55,7 @@ pub struct Chat {
     pub pinned: bool,
     pub created_at: SystemTime,
     pub started_at: Option<Instant>,
+    pub reply_task: Option<Task<()>>,
 }
 
 impl Chat {
@@ -67,6 +68,7 @@ impl Chat {
             pinned: false,
             created_at: SystemTime::now(),
             started_at: None,
+            reply_task: None,
         }
     }
 }

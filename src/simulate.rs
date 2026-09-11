@@ -41,7 +41,7 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
     });
     cx.notify();
 
-    cx.spawn(async move |this, cx| {
+    let task = cx.spawn(async move |this, cx| {
         cx.background_executor().timer(Duration::from_millis(900)).await;
         let _ = this.update(cx, |this, cx| this.begin_stream(chat_ix, cx));
         for _ in 0..12 {
@@ -53,8 +53,8 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
             let title = this.chats[chat_ix].title.clone();
             window.push_notification(Notification::success(format!("{title} — reply complete")), cx);
         });
-    })
-    .detach();
+    });
+    this.chats[chat_ix].reply_task = Some(task);
 }
 
 impl Workspace {
