@@ -97,11 +97,17 @@ impl Workspace {
         cx.notify();
     }
 
-    pub fn select_chat(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index >= self.chats.len() {
+    pub fn select_chat(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if index >= self.chats.len() || index == self.active {
             return;
         }
+        // Save current draft, restore target's.
+        self.chats[self.active].draft = self.composer.read(cx).value().to_string();
         self.active = index;
+        let draft = self.chats[index].draft.clone();
+        self.composer.update(cx, |s, cx| {
+            s.set_value(draft, window, cx);
+        });
         let count = self.chats[index].messages.len();
         self.scroller.update(cx, |s, cx| {
             s.reset(count, cx);

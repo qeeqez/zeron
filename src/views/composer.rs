@@ -1,4 +1,5 @@
 use gpui_kit::assets::IconName;
+use gpui_kit::component::Disableable;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::Textarea;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
@@ -29,10 +30,12 @@ impl Workspace {
                 this.stop_reply(cx);
             }))
         } else {
-            Button::new("send")
+            let empty = self.composer.read(cx).value().trim().is_empty();
+            let btn = Button::new("send")
                 .primary()
                 .icon(IconName::ArrowUp)
-                .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
+                .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)));
+            if empty { btn.disabled(true) } else { btn }
         };
 
         let model_picker = picker(PickerSpec {

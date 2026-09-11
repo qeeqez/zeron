@@ -57,6 +57,7 @@ pub struct Chat {
     pub created_at: SystemTime,
     pub started_at: Option<Instant>,
     pub reply_task: Option<Task<()>>,
+    pub draft: String,
 }
 
 impl Chat {
@@ -70,6 +71,7 @@ impl Chat {
             created_at: SystemTime::now(),
             started_at: None,
             reply_task: None,
+            draft: String::new(),
         }
     }
 }

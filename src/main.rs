@@ -87,8 +87,8 @@ impl Render for Workspace {
 /// Build an `on_action` handler that selects chat `A::IX`.
 fn chat_switch<A: Action + ChatIx>(cx: &mut Context<Workspace>) -> impl Fn(&A, &mut Window, &mut App) + 'static {
     let ws = cx.entity();
-    move |_: &A, _, cx| {
-        ws.update(cx, |this, cx| this.select_chat(A::IX, cx));
+    move |_: &A, window, cx| {
+        ws.update(cx, |this, cx| this.select_chat(A::IX, window, cx));
     }
 }
 

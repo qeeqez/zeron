@@ -145,7 +145,7 @@ fn chat_row(chat: &crate::model::Chat, ix: usize, active: usize, cx: &mut Contex
         .icon(if pinned { IconName::StarFill } else { IconName::FileText })
         .suffix(move |_window, _cx| if running { IconName::LoaderCircle.into_any_element() } else { div().into_any_element() })
         .context_menu(move |menu, _window, _cx| chat_row_menu(&ws, ix, pinned, menu))
-        .on_click(cx.listener(move |this, _, _, cx| this.select_chat(ix, cx)))
+        .on_click(cx.listener(move |this, _, window, cx| this.select_chat(ix, window, cx)))
 }
 
 fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, pinned: bool, menu: PopupMenu) -> PopupMenu {
