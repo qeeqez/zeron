@@ -62,6 +62,7 @@ impl Workspace {
             }
         })
         .detach();
+        let settings = crate::persist::load_settings();
         let mut this = Self {
             chats: Vec::new(),
             active: 0,
@@ -71,14 +72,14 @@ impl Workspace {
             composer,
             search,
             scroller,
-            model: "gpt-5-codex".into(),
-            mode: "Agent".into(),
+            model: settings.model.clone().into(),
+            mode: settings.mode.clone().into(),
             palette,
             rename,
             renaming: None,
             chat_search,
             chat_search_open: false,
-            notify_on_done: true,
+            notify_on_done: settings.notify_on_done,
         };
         let loaded = crate::persist::load_chats();
         if loaded.is_empty() {
@@ -93,6 +94,14 @@ impl Workspace {
     fn save(&self) {
         crate::persist::save_chats(&self.chats);
         crate::persist::enforce_retention(&self.chats);
+    }
+
+    pub(crate) fn save_settings(&self) {
+        crate::persist::save_settings(&crate::persist::Settings {
+            model: self.model.to_string(),
+            mode: self.mode.to_string(),
+            notify_on_done: self.notify_on_done,
+        });
     }
 
     /// Re-render once a second while any chat is running so the elapsed

@@ -82,3 +82,43 @@ pub fn enforce_retention(chats: &[Chat]) {
         let _ = fs::remove_file(dir.join(format!("{ix}.json")));
     }
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct Settings {
+    pub model: String,
+    pub mode: String,
+    pub notify_on_done: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            model: "gpt-5-codex".into(),
+            mode: "Agent".into(),
+            notify_on_done: true,
+        }
+    }
+}
+
+fn settings_path() -> PathBuf {
+    dirs_home().join(".rixl/rixlcode/settings.json")
+}
+
+pub fn save_settings(s: &Settings) {
+    let path = settings_path();
+    if let Some(dir) = path.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let tmp = path.with_extension("json.tmp");
+    if let Ok(json) = serde_json::to_string_pretty(s) {
+        let _ = fs::write(&tmp, json);
+        let _ = fs::rename(&tmp, &path);
+    }
+}
+
+pub fn load_settings() -> Settings {
+    fs::read_to_string(settings_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}

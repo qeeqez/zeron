@@ -224,9 +224,9 @@ pub fn settings_body(notify: bool, ws: Entity<Workspace>, _cx: &mut App) -> impl
                         .cursor_pointer()
                         .child(if notify { IconName::Check } else { IconName::X })
                         .on_click(move |_, _, cx| {
-                            ws.update(cx, |this, cx| {
+                            ws.update(cx, |this, _cx| {
                                 this.notify_on_done = !this.notify_on_done;
-                                cx.notify();
+                                this.save_settings();
                             });
                         }),
                 ),

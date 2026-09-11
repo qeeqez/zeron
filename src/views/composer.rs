@@ -55,14 +55,20 @@ impl Workspace {
             current: self.model.clone(),
             options: &MODELS,
             ws: ws.clone(),
-            set: |this, v| this.model = v.into(),
+            set: |this, v| {
+                this.model = v.into();
+                this.save_settings();
+            },
         });
         let mode_picker = picker(PickerSpec {
             id: "mode",
             current: self.mode.clone(),
             options: &MODES,
             ws: ws.clone(),
-            set: |this, v| this.mode = v.into(),
+            set: |this, v| {
+                this.mode = v.into();
+                this.save_settings();
+            },
         });
         let composer_text = self.composer.read(cx).value().to_string();
         let mention_open = composer_text.contains('@');
