@@ -6,6 +6,7 @@ mod views;
 mod workspace;
 
 use gpui_kit::component::Root;
+use gpui_kit::component::TitleBar;
 use gpui_kit::component::status_bar::StatusBar;
 
 use gpui_kit::component::theme::{ActiveTheme, Theme, ThemeMode};
@@ -23,6 +24,7 @@ actions!(
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let title = self.chats[self.active].title.clone();
         let ws_new = cx.entity();
         let ws_del = cx.entity();
         let ws_side = cx.entity();
@@ -72,6 +74,7 @@ impl Render for Workspace {
             .flex()
             .flex_col()
             .size_full()
+            .child(TitleBar::new().child(div().flex_1().text_center().text_sm().child(title.clone())))
             .child(
                 div()
                     .flex()
@@ -133,7 +136,7 @@ fn main() {
             cx.open_window(
                 WindowOptions {
                     window_min_size: Some(Size { width: px(800.), height: px(600.) }),
-                    ..WindowOptions::default()
+                    ..TitleBar::window_options()
                 },
                 |window, cx| {
                     let view = cx.new(|cx| Workspace::new(window, cx));
