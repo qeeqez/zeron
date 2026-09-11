@@ -136,3 +136,15 @@ impl Workspace {
         self.new_chat(cx);
     }
 }
+
+impl Workspace {
+    pub fn rename_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let ix = self.active;
+        self.open_rename(ix, window, cx);
+    }
+
+    pub fn export_active(&mut self, cx: &mut Context<Self>) {
+        let ix = self.active;
+        self.export_chat(ix, cx);
+    }
+}

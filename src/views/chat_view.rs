@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::message::{Message, MessageAlignment, MessageContent, MessageFooter, MessageHeader};
 use gpui_kit::component::message_scroller::MessageScroller;
 use gpui_kit::component::text::TextView;
@@ -22,6 +24,7 @@ impl Workspace {
         let title = chat.title.clone();
         let ws = cx.entity();
         let ws_empty = cx.entity();
+        let ws_menu = cx.entity();
         let ws_toggle = cx.entity();
 
         let running_agents = self.running_agents();
@@ -64,7 +67,17 @@ impl Workspace {
                     .on_click(move |_, _, cx| {
                         ws_toggle.update(cx, |this, cx| this.toggle_agents_panel(cx));
                     }),
-            );
+            )
+            .child(Button::new("chat-menu").ghost().icon(IconName::Ellipsis).dropdown_menu(move |menu, _window, _cx| {
+                let ws_rename = ws_menu.clone();
+                let ws_export = ws_menu.clone();
+                menu.item(PopupMenuItem::new("Rename").icon(IconName::Pencil).on_click(move |_, window, cx| {
+                    ws_rename.update(cx, |this, cx| this.rename_active(window, cx));
+                }))
+                .item(PopupMenuItem::new("Export").icon(IconName::Share).on_click(move |_, _, cx| {
+                    ws_export.update(cx, |this, cx| this.export_active(cx));
+                }))
+            }));
 
         div()
             .flex()
