@@ -1,0 +1,9 @@
+.DS_Store
+.idea/
+.sloc-guard/
+/target
+*.err
+__pycache__/
+.agents/
+.omo/
+.serena/

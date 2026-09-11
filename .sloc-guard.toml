@@ -1,0 +1,20 @@
+# sloc-guard Configuration
+# Enforces a maximum of 250 source lines of code per file (comments and blanks
+# excluded). This prevents code bloat and keeps files focused on a single
+# responsibility.
+# Tool: https://github.com/doraemonkeys/sloc-guard
+version = "2"
+
+[scanner]
+gitignore = true
+exclude = [".git/**", "target/**", "data/**"]
+
+[content]
+extensions = ["rs"]
+max_lines = 250
+warn_threshold = 1.0
+skip_comments = true
+skip_blank = true
+
+[check]
+warnings_as_errors = true

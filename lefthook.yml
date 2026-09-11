@@ -1,0 +1,42 @@
+glob_matcher: doublestar
+
+pre-commit:
+  parallel: true
+
+  jobs:
+    - name: fmt
+      glob: "**/*.rs"
+      run: mise run fmt:files {staged_files}
+      stage_fixed: true
+
+    - name: lint
+      glob:
+        - "**/*.rs"
+        - "Cargo.toml"
+        - "Cargo.lock"
+        - "clippy.toml"
+        - ".clippy.toml"
+        - ".cargo/config"
+        - ".cargo/config.toml"
+        - "mise.toml"
+      run: mise run lint
+
+    - name: sloc
+      glob:
+        - "**/*.rs"
+        - ".sloc-guard.toml"
+        - "mise.toml"
+      run: mise run lint:sloc
+
+pre-push:
+  jobs:
+    - name: verify
+      glob:
+        - "**/*.rs"
+        - "Cargo.toml"
+        - "Cargo.lock"
+        - ".cargo/config"
+        - ".cargo/config.toml"
+        - ".config/nextest.toml"
+        - "mise.toml"
+      run: mise run verify

@@ -1,0 +1,20 @@
+edition = "2024"
+style_edition = "2024"
+
+max_width = 140
+use_field_init_shorthand = true
+use_try_shorthand = true
+
+reorder_imports = true
+reorder_modules = true
+merge_derives = true
+
+fn_params_layout = "Compressed"
+use_small_heuristics = "Max"
+array_width = 100
+struct_lit_width = 60
+struct_variant_width = 70
+chain_width = 100
+short_array_element_width_threshold = 20
+single_line_if_else_max_width = 100
+match_block_trailing_comma = true
