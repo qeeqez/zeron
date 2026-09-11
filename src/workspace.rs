@@ -87,8 +87,12 @@ impl Workspace {
             chat_search_open: false,
             notify_on_done: settings.notify_on_done,
             word_wrap: settings.word_wrap,
+            backend: if settings.use_codex_cli {
+                std::sync::Arc::new(crate::backend::CodexCliBackend::new())
+            } else {
+                std::sync::Arc::new(crate::backend::SimBackend)
+            },
             font_size: settings.font_size,
-            backend: std::sync::Arc::new(crate::backend::SimBackend),
         };
         let loaded = crate::persist::load_chats();
         if loaded.is_empty() {
@@ -112,6 +116,8 @@ impl Workspace {
             word_wrap: self.word_wrap,
             font_size: self.font_size,
             notify_on_done: self.notify_on_done,
+
+            use_codex_cli: matches!(self.backend.name(), "codex-cli"),
         });
     }
 
@@ -166,11 +172,14 @@ impl Workspace {
     pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let ws = cx.entity();
         window.open_sheet(cx, move |sheet, _window, cx| {
-            let (notify, font_size) = {
-                let s = ws.read(cx);
-                (s.notify_on_done, s.font_size)
+            let s = ws.read(cx);
+            let view = crate::views::settings::SettingsView {
+                notify: s.notify_on_done,
+                font_size: s.font_size,
+                use_codex: matches!(s.backend.name(), "codex-cli"),
+                ws: ws.clone(),
             };
-            sheet.title("Settings").child(crate::views::settings_body(notify, font_size, ws.clone(), cx))
+            sheet.title("Settings").child(crate::views::settings_body(view, cx))
         });
     }
 
@@ -184,6 +193,16 @@ impl Workspace {
         }
         let count = self.filtered_count(cx);
         self.scroller.update(cx, |s, cx| s.reset(count, cx));
+        cx.notify();
+    }
+
+    pub fn toggle_backend(&mut self, cx: &mut Context<Self>) {
+        self.backend = if matches!(self.backend.name(), "codex-cli") {
+            std::sync::Arc::new(crate::backend::SimBackend)
+        } else {
+            std::sync::Arc::new(crate::backend::CodexCliBackend::new())
+        };
+        self.save_settings();
         cx.notify();
     }
 

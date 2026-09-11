@@ -5594,6 +5594,7 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "gpui-kit",
+ "parking_lot",
  "serde",
  "serde_json",
 ]

@@ -13,5 +13,5 @@ Codex-style task & subagent surfaces.
 
 ## Todo
 
-- [ ] Expand agent → its own message/tool stream
-- [ ] Completed-agent history section
+- [x] Expand agent → its own message/tool stream
+- [x] Completed-agent history section

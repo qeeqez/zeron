@@ -89,6 +89,7 @@ pub struct Settings {
     pub mode: String,
     pub notify_on_done: bool,
     pub word_wrap: bool,
+    pub use_codex_cli: bool,
     pub font_size: u8,
 }
 
@@ -99,6 +100,8 @@ impl Default for Settings {
             mode: "Agent".into(),
             notify_on_done: true,
             word_wrap: true,
+            use_codex_cli: false,
+
             font_size: 14,
         }
     }

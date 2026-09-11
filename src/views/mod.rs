@@ -5,7 +5,7 @@ mod composer;
 mod composer_helpers;
 mod empty;
 mod message;
-mod settings;
+pub mod settings;
 
 mod sidebar;
 

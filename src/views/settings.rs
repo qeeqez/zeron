@@ -5,8 +5,15 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::workspace::Workspace;
+pub struct SettingsView {
+    pub notify: bool,
+    pub font_size: u8,
+    pub use_codex: bool,
+    pub ws: Entity<Workspace>,
+}
 
-pub fn settings_body(notify: bool, font_size: u8, ws: Entity<Workspace>, _cx: &mut App) -> impl IntoElement {
+pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
+    let ws = s.ws;
     div()
         .flex()
         .flex_col()
@@ -33,7 +40,7 @@ pub fn settings_body(notify: bool, font_size: u8, ws: Entity<Workspace>, _cx: &m
                     div()
                         .id("toggle-notify")
                         .cursor_pointer()
-                        .child(if notify { IconName::Check } else { IconName::X })
+                        .child(if s.notify { IconName::Check } else { IconName::X })
                         .on_click({
                             let ws = ws.clone();
                             move |_, _, cx| {
@@ -62,14 +69,31 @@ pub fn settings_body(notify: bool, font_size: u8, ws: Entity<Workspace>, _cx: &m
                         });
                     }
                 }))
-                .child(format!("{font_size}px"))
-                .child(div().id("font-inc").cursor_pointer().child(IconName::Plus).on_click(move |_, _, cx| {
-                    ws.update(cx, |this, cx| {
-                        this.font_size = (this.font_size + 1).min(24);
-                        this.save_settings();
-                        cx.notify();
-                    });
+                .child(format!("{}px", s.font_size))
+                .child(div().id("font-inc").cursor_pointer().child(IconName::Plus).on_click({
+                    let ws = ws.clone();
+                    move |_, _, cx| {
+                        ws.update(cx, |this, cx| {
+                            this.font_size = (this.font_size + 1).min(24);
+                            this.save_settings();
+                            cx.notify();
+                        });
+                    }
                 })),
+        )
+        .child(div().text_sm().pt_2().child("Backend"))
+        .child(
+            div().flex().items_center().gap_2().text_xs().child("Use codex CLI").child(div().flex_1()).child(
+                div()
+                    .id("toggle-backend")
+                    .cursor_pointer()
+                    .child(if s.use_codex { IconName::Check } else { IconName::X })
+                    .on_click(move |_, _, cx| {
+                        ws.update(cx, |this, cx| {
+                            this.toggle_backend(cx);
+                        });
+                    }),
+            ),
         )
         .child(div().text_sm().pt_2().child("Shortcuts"))
         .child(div().flex().flex_col().gap_1().text_xs().children(SHORTCUTS.iter().map(|(key, desc)| {
