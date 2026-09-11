@@ -7,6 +7,7 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::views::{apply_pick, attachment_chips, mention_item, slash_item};
 use crate::workspace::Workspace;
 
 const MODELS: [&str; 3] = ["gpt-5-codex", "gpt-5", "gpt-5-mini"];
@@ -105,6 +106,16 @@ impl Workspace {
                 .border_1()
                 .border_color(cx.theme().border)
                 .bg(cx.theme().input)
+                .when(!self.chats[self.active].attachments.is_empty(), |d| {
+                    d.child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap_1()
+                            .pb_1()
+                            .children(attachment_chips(&self.chats[self.active], &ws, cx)),
+                    )
+                })
                 .when(slash_open && !slash_items.is_empty(), |d| {
                     d.child(
                         div()
@@ -123,6 +134,9 @@ impl Workspace {
                         .items_end()
                         .gap_2()
                         .child(div().flex_1().child(Textarea::new(&self.composer).appearance(false)))
+                        .child(Button::new("attach").ghost().icon(IconName::Paperclip).on_click(cx.listener(|this, _, _, cx| {
+                            this.attach_file(cx);
+                        })))
                         .child(send_button),
                 )
                 .child(
@@ -164,64 +178,5 @@ fn picker(spec: PickerSpec) -> impl IntoElement {
                     apply_pick(&ws, set, opt, cx);
                 }))
             })
-        })
-}
-
-fn mention_item(file: &&str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
-    let ws = ws.clone();
-    let path = file.to_string();
-    div()
-        .id(SharedString::from(format!("mention-{file}")))
-        .cursor_pointer()
-        .px_2()
-        .py_1()
-        .rounded_md()
-        .text_sm()
-        .hover(|d| d.bg(cx.theme().accent))
-        .child(format!("@{file}"))
-        .on_click(move |_, window, cx| {
-            apply_mention(&ws, &path, window, cx);
-        })
-}
-
-fn apply_mention(ws: &Entity<Workspace>, path: &str, window: &mut Window, cx: &mut App) {
-    ws.update(cx, |this, cx| {
-        this.composer.update(cx, |s, cx| {
-            let cur = s.value().to_string();
-            let before = cur.rsplit_once('@').map(|(b, _)| b).unwrap_or("");
-            s.set_value(format!("{before}@{path} "), window, cx);
-        });
-    });
-}
-
-fn apply_slash(ws: &Entity<Workspace>, cmd: &str, window: &mut Window, cx: &mut App) {
-    ws.update(cx, |this, cx| {
-        this.composer.update(cx, |s, cx| {
-            s.set_value(format!("/{cmd} "), window, cx);
-        });
-    });
-}
-
-fn apply_pick(ws: &Entity<Workspace>, set: fn(&mut Workspace, &'static str), opt: &'static str, cx: &mut App) {
-    ws.update(cx, |this, cx| {
-        set(this, opt);
-        cx.notify();
-    });
-}
-
-fn slash_item(cmd: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
-    let ws = ws.clone();
-    let cmd_str = cmd.to_string();
-    div()
-        .id(SharedString::from(format!("slash-{cmd}")))
-        .cursor_pointer()
-        .px_2()
-        .py_1()
-        .rounded_md()
-        .text_sm()
-        .hover(|d| d.bg(cx.theme().accent))
-        .child(format!("/{cmd}"))
-        .on_click(move |_, window, cx| {
-            apply_slash(&ws, &cmd_str, window, cx);
         })
 }

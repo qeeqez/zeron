@@ -60,6 +60,7 @@ pub struct Chat {
     pub draft: String,
     pub unread: bool,
     pub archived: bool,
+    pub attachments: Vec<SharedString>,
 }
 
 impl Chat {
@@ -74,8 +75,9 @@ impl Chat {
             started_at: None,
             draft: String::new(),
             unread: false,
-            reply_task: None,
             archived: false,
+            reply_task: None,
+            attachments: Vec::new(),
         }
     }
 }

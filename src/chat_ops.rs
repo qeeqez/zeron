@@ -95,6 +95,22 @@ impl Workspace {
         }
         cx.notify();
     }
+
+    /// Attach a file to the active chat (simulated picker).
+    pub fn attach_file(&mut self, cx: &mut Context<Self>) {
+        let names = ["README.md", "src/main.rs", "Cargo.toml", "docs/spec.md", "tests/integration.rs"];
+        let chat = &mut self.chats[self.active];
+        let next = names.iter().find(|n| !chat.attachments.iter().any(|a| a.as_str() == **n));
+        if let Some(name) = next {
+            chat.attachments.push((*name).into());
+        }
+        cx.notify();
+    }
+
+    pub fn remove_attachment(&mut self, ix: usize, cx: &mut Context<Self>) {
+        self.chats[self.active].attachments.remove(ix);
+        cx.notify();
+    }
     /// Export chat `ix` as markdown to the clipboard.
     pub fn export_chat(&self, ix: usize, cx: &mut Context<Self>) {
         let Some(chat) = self.chats.get(ix) else { return };
