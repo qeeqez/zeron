@@ -128,3 +128,11 @@ impl Workspace {
             / 4
     }
 }
+
+impl Workspace {
+    /// Delete every chat and start a fresh one.
+    pub fn clear_all_chats(&mut self, cx: &mut Context<Self>) {
+        self.chats.clear();
+        self.new_chat(cx);
+    }
+}

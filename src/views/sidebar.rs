@@ -87,6 +87,13 @@ impl Workspace {
                 .child(IconName::CircleUser)
                 .child("Local")
                 .child(div().flex_1())
+                .child(
+                    div()
+                        .id("clear-chats")
+                        .cursor_pointer()
+                        .child(IconName::Trash)
+                        .on_click(cx.listener(|this, _, _, cx| this.clear_all_chats(cx))),
+                )
                 .child(div().id("settings-btn").cursor_pointer().child(IconName::Settings).on_click(cx.listener(
                     |_this, _, window, cx| {
                         window.open_sheet(cx, |sheet, _window, _cx| sheet.title("Settings").child(settings_body()));

@@ -58,13 +58,36 @@ pub fn render_tool_call(ix: usize, tool: &ToolCall, ws: Entity<Workspace>, cx: &
         .child(div().text_color(cx.theme().muted_foreground).child(tool.detail.clone()))
         .child(div().flex_1())
         .child(div().text_color(cx.theme().muted_foreground).child(chevron(tool.expanded)))
-        .on_click(toggle_expanded(ws, ix));
+        .on_click(toggle_expanded(ws.clone(), ix));
 
     let mut card = card_frame(cx).child(header);
     if tool.expanded && !tool.output.is_empty() {
-        card = card.child(detail_block(&tool.output, cx));
+        card = card.child(detail_block(&tool.output, cx)).child(tool_output_bar(ix, &ws, cx));
     }
     card
+}
+
+fn tool_output_bar(ix: usize, ws: &Entity<Workspace>, cx: &mut App) -> Div {
+    let ws = ws.clone();
+    div()
+        .flex()
+        .items_center()
+        .justify_end()
+        .px_3()
+        .py_1()
+        .border_t_1()
+        .border_color(cx.theme().border)
+        .child(
+            div()
+                .id(("copy-tool", ix))
+                .cursor_pointer()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("Copy output")
+                .on_click(move |_, _, cx| {
+                    ws.update(cx, |this, cx| this.copy_message(ix, cx));
+                }),
+        )
 }
 
 pub fn render_diff(ix: usize, diff: &DiffCard, ws: Entity<Workspace>, cx: &mut App) -> impl IntoElement {

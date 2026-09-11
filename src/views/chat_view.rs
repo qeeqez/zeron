@@ -20,6 +20,7 @@ impl Workspace {
         let running = chat.running;
         let title = chat.title.clone();
         let ws = cx.entity();
+        let ws_empty = cx.entity();
         let ws_toggle = cx.entity();
 
         let running_agents = self.running_agents();
@@ -68,12 +69,11 @@ impl Workspace {
             .flex_1()
             .h_full()
             .child(header)
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .child(if empty { render_empty_state(cx).into_any_element() } else { list.into_any_element() }),
-            )
+            .child(div().flex_1().min_h_0().child(if empty {
+                render_empty_state(ws_empty.clone(), cx).into_any_element()
+            } else {
+                list.into_any_element()
+            }))
             .when(running, |d| {
                 let elapsed = chat.started_at.map(|t| t.elapsed().as_secs()).unwrap_or(0);
                 d.child(
@@ -100,8 +100,7 @@ fn render_message(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut
         MessageKind::Diff(diff) => render_diff(ix, diff, ws.clone(), cx).into_any_element(),
     }
 }
-
-fn render_empty_state(cx: &mut App) -> impl IntoElement {
+fn render_empty_state(ws: Entity<Workspace>, cx: &mut App) -> impl IntoElement {
     let suggestions = [
         "Explain this codebase",
         "Fix the failing tests",
@@ -116,6 +115,21 @@ fn render_empty_state(cx: &mut App) -> impl IntoElement {
         .justify_center()
         .gap_4()
         .child(div().text_lg().text_color(cx.theme().muted_foreground).child("What should we work on?"))
+        .child(
+            div()
+                .id("empty-new-chat")
+                .cursor_pointer()
+                .px_4()
+                .py_2()
+                .rounded_lg()
+                .bg(cx.theme().accent)
+                .text_color(cx.theme().accent_foreground)
+                .text_sm()
+                .child("New chat")
+                .on_click(move |_, _, cx| {
+                    ws.update(cx, |this, cx| this.new_chat(cx));
+                }),
+        )
         .child(div().flex().flex_col().gap_2().items_center().children(suggestions.iter().map(|s| {
             div()
                 .px_4()
