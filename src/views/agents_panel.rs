@@ -50,6 +50,13 @@ impl Workspace {
                             .text_color(cx.theme().muted_foreground)
                             .child("Clear")
                             .on_click(cx.listener(|this, _, _, cx| this.clear_finished_agents(cx))),
+                    )
+                    .child(
+                        div()
+                            .id("close-agents")
+                            .cursor_pointer()
+                            .child(IconName::X)
+                            .on_click(cx.listener(|this, _, _, cx| this.toggle_agents_panel(cx))),
                     ),
             )
             .child(

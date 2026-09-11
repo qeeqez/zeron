@@ -9,7 +9,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::model::{ChatMessage, MessageKind, Role};
-use crate::views::cards::{render_diff, render_tool_call};
+use crate::views::cards::{message_footer, render_diff, render_tool_call};
 use crate::workspace::Workspace;
 
 impl Workspace {
@@ -198,51 +198,7 @@ fn render_text(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut Ap
                     .child("Rixl"),
             ),
         );
-        message = message.footer(MessageFooter::new().child(message_footer(ix, msg.rating, ws, cx)));
     }
+    message = message.footer(MessageFooter::new().child(message_footer(ix, msg, ws, cx)));
     message.into_any_element()
-}
-
-fn message_footer(ix: usize, rating: Option<bool>, ws: &Entity<Workspace>, cx: &mut App) -> Div {
-    let ws_copy = ws.clone();
-    let ws_retry = ws.clone();
-    let ws_up = ws.clone();
-    let ws_down = ws.clone();
-    div()
-        .flex()
-        .items_center()
-        .gap_1()
-        .child(
-            div()
-                .id(("copy", ix))
-                .cursor_pointer()
-                .text_color(hsla(0.0, 0.0, 0.55, 1.0))
-                .child(IconName::Copy)
-                .on_click(move |_, _, cx| {
-                    ws_copy.update(cx, |this, cx| this.copy_message(ix, cx));
-                }),
-        )
-        .child(div().id(("retry", ix)).cursor_pointer().child(IconName::RotateCcw).on_click(move |_, _, cx| {
-            ws_retry.update(cx, |this, cx| this.retry_last(cx));
-        }))
-        .child(
-            div()
-                .id(("up", ix))
-                .cursor_pointer()
-                .child(IconName::ThumbsUp)
-                .text_color(if rating == Some(true) { cx.theme().accent } else { hsla(0.0, 0.0, 0.55, 1.0) })
-                .on_click(move |_, _, cx| {
-                    ws_up.update(cx, |this, cx| this.rate_message(ix, true, cx));
-                }),
-        )
-        .child(
-            div()
-                .id(("down", ix))
-                .cursor_pointer()
-                .child(IconName::ThumbsDown)
-                .text_color(if rating == Some(false) { cx.theme().accent } else { hsla(0.0, 0.0, 0.55, 1.0) })
-                .on_click(move |_, _, cx| {
-                    ws_down.update(cx, |this, cx| this.rate_message(ix, false, cx));
-                }),
-        )
 }

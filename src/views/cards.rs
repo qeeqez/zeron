@@ -3,7 +3,7 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::model::{DiffCard, MessageKind, ToolCall, ToolStatus};
+use crate::model::{ChatMessage, DiffCard, MessageKind, Role, ToolCall, ToolStatus};
 use crate::workspace::Workspace;
 
 fn toggle_expanded(ws: Entity<Workspace>, ix: usize) -> impl Fn(&ClickEvent, &mut Window, &mut App) {
@@ -149,4 +149,60 @@ fn diff_actions(ix: usize, ws: &Entity<Workspace>, cx: &mut App) -> Div {
                     ws_reject.update(cx, |this, cx| this.set_diff_applied(ix, false, cx));
                 }),
         )
+}
+
+pub fn message_footer(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> Div {
+    let role = msg.role;
+    let rating = msg.rating;
+    let ws_copy = ws.clone();
+    let ws_retry = ws.clone();
+    let ws_up = ws.clone();
+    let ws_down = ws.clone();
+    let muted = hsla(0.0, 0.0, 0.55, 1.0);
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(
+            div()
+                .id(("copy", ix))
+                .cursor_pointer()
+                .text_color(muted)
+                .child(IconName::Copy)
+                .on_click(move |_, _, cx| {
+                    ws_copy.update(cx, |this, cx| this.copy_message(ix, cx));
+                }),
+        )
+        .when(role == Role::Assistant, |d| {
+            d.child(
+                div()
+                    .id(("retry", ix))
+                    .cursor_pointer()
+                    .text_color(muted)
+                    .child(IconName::RotateCcw)
+                    .on_click(move |_, _, cx| {
+                        ws_retry.update(cx, |this, cx| this.retry_last(cx));
+                    }),
+            )
+            .child(
+                div()
+                    .id(("up", ix))
+                    .cursor_pointer()
+                    .child(IconName::ThumbsUp)
+                    .text_color(if rating == Some(true) { cx.theme().accent } else { muted })
+                    .on_click(move |_, _, cx| {
+                        ws_up.update(cx, |this, cx| this.rate_message(ix, true, cx));
+                    }),
+            )
+            .child(
+                div()
+                    .id(("down", ix))
+                    .cursor_pointer()
+                    .child(IconName::ThumbsDown)
+                    .text_color(if rating == Some(false) { cx.theme().accent } else { muted })
+                    .on_click(move |_, _, cx| {
+                        ws_down.update(cx, |this, cx| this.rate_message(ix, false, cx));
+                    }),
+            )
+        })
 }
