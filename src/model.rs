@@ -49,6 +49,7 @@ pub struct Chat {
     pub messages: Vec<ChatMessage>,
     pub running: bool,
     pub failed_flag: bool,
+    pub pinned: bool,
 }
 
 impl Chat {
@@ -58,6 +59,7 @@ impl Chat {
             messages: Vec::new(),
             running: false,
             failed_flag: false,
+            pinned: false,
         }
     }
 }

@@ -10,9 +10,24 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use workspace::Workspace;
 
+actions!(workspace, [NewChat, ToggleSidebar, ToggleAgents]);
+
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ws_new = cx.entity();
+        let ws_side = cx.entity();
+        let ws_agents = cx.entity();
         div()
+            .key_context("workspace")
+            .on_action(move |_: &NewChat, _, cx| {
+                ws_new.update(cx, |this, cx| this.new_chat(cx));
+            })
+            .on_action(move |_: &ToggleSidebar, _, cx| {
+                ws_side.update(cx, |this, cx| this.toggle_sidebar(cx));
+            })
+            .on_action(move |_: &ToggleAgents, _, cx| {
+                ws_agents.update(cx, |this, cx| this.toggle_agents_panel(cx));
+            })
             .flex()
             .flex_col()
             .size_full()
@@ -36,6 +51,11 @@ impl Render for Workspace {
 fn main() {
     gpui_kit::application().run(|cx| {
         gpui_kit::init(cx);
+        cx.bind_keys([
+            KeyBinding::new("cmd-n", NewChat, Some("workspace")),
+            KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
+            KeyBinding::new("cmd-j", ToggleAgents, Some("workspace")),
+        ]);
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
                 let view = cx.new(|cx| Workspace::new(window, cx));

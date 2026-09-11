@@ -80,6 +80,30 @@ impl Workspace {
         cx.notify();
     }
 
+    pub fn toggle_pin(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(chat) = self.chats.get_mut(index) {
+            chat.pinned = !chat.pinned;
+        }
+        cx.notify();
+    }
+
+    pub fn delete_chat(&mut self, index: usize, cx: &mut Context<Self>) {
+        if self.chats.len() <= 1 || index >= self.chats.len() {
+            return;
+        }
+        self.chats.remove(index);
+        if self.active >= self.chats.len() {
+            self.active = self.chats.len() - 1;
+        } else if index < self.active {
+            self.active -= 1;
+        }
+        let count = self.chats[self.active].messages.len();
+        self.scroller.update(cx, |s, cx| {
+            s.reset(count, cx);
+        });
+        cx.notify();
+    }
+
     pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
         self.sidebar_collapsed = !self.sidebar_collapsed;
         cx.notify();
