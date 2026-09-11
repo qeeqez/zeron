@@ -12,9 +12,9 @@ Bottom input area.
 
 ## Todo
 
-- [ ] Send disabled when input empty
-- [ ] Slash-command menu on `/` (filtered list)
-- [ ] @-mention file picker
-- [ ] Attachment chips (images/files) + attach button
+- [x] Send disabled when input empty
+- [x] Slash-command menu on `/` (filtered list)
+- [x] @-mention file picker
+- [x] Attachment chips (images/files) + attach button
 - [ ] Token/context usage meter
-- [ ] Draft preserved per chat
+- [x] Draft preserved per chat

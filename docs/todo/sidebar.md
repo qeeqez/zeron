@@ -17,6 +17,6 @@ Codex-style left sidebar.
 
 ## Todo
 
-- [ ] Unread dot on finished-but-unseen chats
-- [ ] Keyboard shortcut Cmd+N new chat, Cmd+K search focus
-- [ ] Archive (hide without delete)
+- [x] Unread dot on finished-but-unseen chats
+- [x] Keyboard shortcut Cmd+N new chat, Cmd+K search focus
+- [x] Archive (hide without delete)

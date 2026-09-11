@@ -25,4 +25,4 @@ Main conversation surface.
 
 - [ ] Code blocks with syntax highlight + copy button
 - [x] Word-wrap toggle for long lines
-- [ ] Message search within chat
+- [x] Message search within chat
