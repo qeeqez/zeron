@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::message::{Message, MessageAlignment, MessageContent, MessageHeader};
+use gpui_kit::component::message::{Message, MessageAlignment, MessageContent, MessageFooter, MessageHeader};
 use gpui_kit::component::message_scroller::MessageScroller;
 use gpui_kit::component::text::TextView;
 use gpui_kit::component::theme::ActiveTheme;
@@ -75,6 +75,7 @@ impl Workspace {
                     .child(if empty { render_empty_state(cx).into_any_element() } else { list.into_any_element() }),
             )
             .when(running, |d| {
+                let elapsed = chat.started_at.map(|t| t.elapsed().as_secs()).unwrap_or(0);
                 d.child(
                     div()
                         .flex()
@@ -85,7 +86,7 @@ impl Workspace {
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
                         .child(IconName::LoaderCircle)
-                        .child("Working…"),
+                        .child(format!("Working… {elapsed}s")),
                 )
             })
             .child(self.render_composer(cx))
@@ -94,7 +95,7 @@ impl Workspace {
 
 fn render_message(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {
     match &msg.kind {
-        MessageKind::Text(text) => render_text(ix, msg.role, text, cx),
+        MessageKind::Text(_) => render_text(ix, msg, ws, cx),
         MessageKind::Tool(tool) => render_tool_call(ix, tool, ws.clone(), cx).into_any_element(),
         MessageKind::Diff(diff) => render_diff(ix, diff, ws.clone(), cx).into_any_element(),
     }
@@ -128,7 +129,9 @@ fn render_empty_state(cx: &mut App) -> impl IntoElement {
         })))
 }
 
-fn render_text(ix: usize, role: Role, text: &SharedString, cx: &mut App) -> AnyElement {
+fn render_text(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {
+    let MessageKind::Text(text) = &msg.kind else { unreachable!() };
+    let role = msg.role;
     let alignment = match role {
         Role::User => MessageAlignment::End,
         Role::Assistant => MessageAlignment::Start,
@@ -160,6 +163,51 @@ fn render_text(ix: usize, role: Role, text: &SharedString, cx: &mut App) -> AnyE
                     .child("Rixl"),
             ),
         );
+        message = message.footer(MessageFooter::new().child(message_footer(ix, msg.rating, ws, cx)));
     }
     message.into_any_element()
+}
+
+fn message_footer(ix: usize, rating: Option<bool>, ws: &Entity<Workspace>, cx: &mut App) -> Div {
+    let ws_copy = ws.clone();
+    let ws_retry = ws.clone();
+    let ws_up = ws.clone();
+    let ws_down = ws.clone();
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(
+            div()
+                .id(("copy", ix))
+                .cursor_pointer()
+                .text_color(hsla(0.0, 0.0, 0.55, 1.0))
+                .child(IconName::Copy)
+                .on_click(move |_, _, cx| {
+                    ws_copy.update(cx, |this, cx| this.copy_message(ix, cx));
+                }),
+        )
+        .child(div().id(("retry", ix)).cursor_pointer().child(IconName::RotateCcw).on_click(move |_, _, cx| {
+            ws_retry.update(cx, |this, cx| this.retry_last(cx));
+        }))
+        .child(
+            div()
+                .id(("up", ix))
+                .cursor_pointer()
+                .child(IconName::ThumbsUp)
+                .text_color(if rating == Some(true) { cx.theme().accent } else { hsla(0.0, 0.0, 0.55, 1.0) })
+                .on_click(move |_, _, cx| {
+                    ws_up.update(cx, |this, cx| this.rate_message(ix, true, cx));
+                }),
+        )
+        .child(
+            div()
+                .id(("down", ix))
+                .cursor_pointer()
+                .child(IconName::ThumbsDown)
+                .text_color(if rating == Some(false) { cx.theme().accent } else { hsla(0.0, 0.0, 0.55, 1.0) })
+                .on_click(move |_, _, cx| {
+                    ws_down.update(cx, |this, cx| this.rate_message(ix, false, cx));
+                }),
+        )
 }

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::*;
@@ -56,7 +58,26 @@ impl Workspace {
             mode: "Agent".into(),
         };
         this.new_chat(cx);
+        this.start_ticker(cx);
         this
+    }
+
+    /// Re-render once a second while any chat is running so the elapsed
+    /// indicator stays live.
+    fn start_ticker(&self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+                let _ = this.update(cx, Self::tick);
+            }
+        })
+        .detach();
+    }
+
+    fn tick(&mut self, cx: &mut Context<Self>) {
+        if self.chats.iter().any(|c| c.running) {
+            cx.notify();
+        }
     }
 
     pub fn new_chat(&mut self, cx: &mut Context<Self>) {
@@ -131,8 +152,13 @@ impl Workspace {
         if chat.messages.is_empty() {
             chat.title = text.chars().take(40).collect::<String>().into();
         }
-        chat.messages.push(ChatMessage { role: Role::User, kind: MessageKind::Text(text.into()) });
+        chat.messages.push(ChatMessage {
+            role: Role::User,
+            kind: MessageKind::Text(text.into()),
+            rating: None,
+        });
         chat.running = true;
+        chat.started_at = Some(std::time::Instant::now());
         self.composer.update(cx, |state, cx| {
             state.set_value("", window, cx);
         });
@@ -141,5 +167,45 @@ impl Workspace {
         });
         cx.notify();
         simulate_reply(self, cx);
+    }
+
+    /// Re-run the simulated reply for the last assistant message.
+    pub fn retry_last(&mut self, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[self.active];
+        if chat.running {
+            return;
+        }
+        while matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant) {
+            chat.messages.pop();
+        }
+        chat.running = true;
+        chat.started_at = Some(std::time::Instant::now());
+        let count = chat.messages.len();
+        self.scroller.update(cx, |s, cx| {
+            s.reset(count, cx);
+        });
+        cx.notify();
+        simulate_reply(self, cx);
+    }
+
+    pub fn rate_message(&mut self, ix: usize, up: bool, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[self.active];
+        if let Some(msg) = chat.messages.get_mut(ix) {
+            msg.rating = if msg.rating == Some(up) { None } else { Some(up) };
+        }
+        self.scroller.update(cx, |s, cx| {
+            s.remeasure_items(ix..ix + 1, cx);
+        });
+        cx.notify();
+    }
+
+    pub fn copy_message(&self, ix: usize, cx: &mut Context<Self>) {
+        let Some(msg) = self.chats[self.active].messages.get(ix) else { return };
+        let text = match &msg.kind {
+            MessageKind::Text(t) => t.to_string(),
+            MessageKind::Tool(t) => format!("{}: {}\n{}", t.name, t.detail, t.output),
+            MessageKind::Diff(d) => format!("{} (+{} -{})\n{}", d.path, d.added, d.removed, d.hunks),
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
     }
 }

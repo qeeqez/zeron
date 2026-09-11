@@ -32,6 +32,7 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
             status: ToolStatus::Running,
             expanded: false,
         }),
+        rating: None,
     });
     this.scroller.update(cx, |s, cx| {
         s.append(1, cx);
@@ -104,9 +105,14 @@ impl Workspace {
                     hunks: "@@ -10,6 +10,24 @@\n fn main() {\n-    println!(\"old\");\n+    gpui_kit::application().run(|cx| {\n+        gpui_kit::init(cx);\n+    });\n }".into(),
                     expanded: false,
                 }),
+                rating: None,
             });
         }
-        chat.messages.push(ChatMessage { role: Role::Assistant, kind: MessageKind::Text("".into()) });
+        chat.messages.push(ChatMessage {
+            role: Role::Assistant,
+            kind: MessageKind::Text("".into()),
+            rating: None,
+        });
         self.scroller.update(cx, |s, cx| {
             s.append(if failed { 1 } else { 2 }, cx);
         });
@@ -131,6 +137,7 @@ impl Workspace {
         let chat = &mut self.chats[chat_ix];
         chat.running = false;
         chat.failed_flag = false;
+        chat.started_at = None;
         self.scroller.update(cx, |s, cx| {
             s.remeasure(cx);
         });

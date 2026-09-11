@@ -1,3 +1,5 @@
+use std::time::{Instant, SystemTime};
+
 use gpui_kit::SharedString;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -36,6 +38,7 @@ pub enum MessageKind {
 pub struct ChatMessage {
     pub role: Role,
     pub kind: MessageKind,
+    pub rating: Option<bool>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -50,6 +53,8 @@ pub struct Chat {
     pub running: bool,
     pub failed_flag: bool,
     pub pinned: bool,
+    pub created_at: SystemTime,
+    pub started_at: Option<Instant>,
 }
 
 impl Chat {
@@ -60,6 +65,8 @@ impl Chat {
             running: false,
             failed_flag: false,
             pinned: false,
+            created_at: SystemTime::now(),
+            started_at: None,
         }
     }
 }
