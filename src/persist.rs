@@ -88,6 +88,7 @@ pub struct Settings {
     pub model: String,
     pub mode: String,
     pub notify_on_done: bool,
+    pub word_wrap: bool,
 }
 
 impl Default for Settings {
@@ -96,6 +97,7 @@ impl Default for Settings {
             model: "gpt-5-codex".into(),
             mode: "Agent".into(),
             notify_on_done: true,
+            word_wrap: true,
         }
     }
 }

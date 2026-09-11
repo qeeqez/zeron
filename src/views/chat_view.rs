@@ -17,6 +17,36 @@ use gpui_kit::*;
 
 use crate::workspace::Workspace;
 
+fn chat_menu(
+    menu: gpui_kit::component::menu::PopupMenu, ws: &Entity<Workspace>, pinned: bool, word_wrap: bool,
+) -> gpui_kit::component::menu::PopupMenu {
+    let ws_pin = ws.clone();
+    let ws_rename = ws.clone();
+    let ws_export = ws.clone();
+    let ws_copy = ws.clone();
+    let ws_wrap = ws.clone();
+    let pin_label = if pinned { "Unpin" } else { "Pin" };
+    menu.item(PopupMenuItem::new(pin_label).icon(IconName::Star).on_click(move |_, _, cx| {
+        ws_pin.update(cx, |this, cx| this.toggle_pin(this.active, cx));
+    }))
+    .item(PopupMenuItem::new("Rename").icon(IconName::Pencil).on_click(move |_, window, cx| {
+        ws_rename.update(cx, |this, cx| this.rename_active(window, cx));
+    }))
+    .item(PopupMenuItem::new("Export").icon(IconName::Share).on_click(move |_, _, cx| {
+        ws_export.update(cx, |this, cx| this.export_active(cx));
+    }))
+    .item(PopupMenuItem::new("Copy transcript").icon(IconName::Copy).on_click(move |_, _, cx| {
+        ws_copy.update(cx, |this, cx| this.copy_transcript(cx));
+    }))
+    .item(PopupMenuItem::new("Word wrap").icon(IconName::Check).checked(word_wrap).on_click(move |_, _, cx| {
+        ws_wrap.update(cx, |this, cx| {
+            this.word_wrap = !this.word_wrap;
+            this.save_settings();
+            cx.notify();
+        });
+    }))
+}
+
 impl Workspace {
     pub fn render_chat(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let chat = &self.chats[self.active];
@@ -74,24 +104,9 @@ impl Workspace {
                         ws_toggle.update(cx, |this, cx| this.toggle_agents_panel(cx));
                     }),
             )
-            .child(Button::new("chat-menu").ghost().icon(IconName::Ellipsis).dropdown_menu(move |menu, _window, _cx| {
-                let ws_rename = ws_menu.clone();
-                let ws_export = ws_menu.clone();
-                let ws_copy = ws_menu.clone();
-                let ws_pin = ws_menu.clone();
-                let pin_label = if pinned { "Unpin" } else { "Pin" };
-                menu.item(PopupMenuItem::new(pin_label).icon(IconName::Star).on_click(move |_, _, cx| {
-                    ws_pin.update(cx, |this, cx| this.toggle_pin(this.active, cx));
-                }))
-                .item(PopupMenuItem::new("Rename").icon(IconName::Pencil).on_click(move |_, window, cx| {
-                    ws_rename.update(cx, |this, cx| this.rename_active(window, cx));
-                }))
-                .item(PopupMenuItem::new("Export").icon(IconName::Share).on_click(move |_, _, cx| {
-                    ws_export.update(cx, |this, cx| this.export_active(cx));
-                }))
-                .item(PopupMenuItem::new("Copy transcript").icon(IconName::Copy).on_click(move |_, _, cx| {
-                    ws_copy.update(cx, |this, cx| this.copy_transcript(cx));
-                }))
+            .child(Button::new("chat-menu").ghost().icon(IconName::Ellipsis).dropdown_menu({
+                let word_wrap = self.word_wrap;
+                move |menu, _window, _cx| chat_menu(menu, &ws_menu, pinned, word_wrap)
             }));
 
         div()
@@ -177,6 +192,7 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
     let MsgCtx { ix, .. } = mc;
     let MessageKind::Text(text) = &msg.kind else { unreachable!() };
     let role = msg.role;
+    let word_wrap = ws.read(cx).word_wrap;
     let alignment = match role {
         Role::User => MessageAlignment::End,
         Role::Assistant => MessageAlignment::Start,
@@ -203,7 +219,11 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
                 })
                 .into_any_element()
         } else {
-            div().child(text.clone()).into_any_element()
+            div()
+                .whitespace_nowrap()
+                .when(word_wrap, |d| d.whitespace_normal())
+                .child(text.clone())
+                .into_any_element()
         });
 
     let mut message = Message::new().alignment(alignment).content(MessageContent::new().child(body));

@@ -27,6 +27,7 @@ pub struct Workspace {
     pub chat_search: Entity<InputState>,
     pub chat_search_open: bool,
     pub notify_on_done: bool,
+    pub word_wrap: bool,
 }
 
 impl Workspace {
@@ -78,8 +79,9 @@ impl Workspace {
             rename,
             renaming: None,
             chat_search,
-            chat_search_open: false,
             notify_on_done: settings.notify_on_done,
+            chat_search_open: false,
+            word_wrap: settings.word_wrap,
         };
         let loaded = crate::persist::load_chats();
         if loaded.is_empty() {
@@ -101,6 +103,7 @@ impl Workspace {
             model: self.model.to_string(),
             mode: self.mode.to_string(),
             notify_on_done: self.notify_on_done,
+            word_wrap: self.word_wrap,
         });
     }
 
