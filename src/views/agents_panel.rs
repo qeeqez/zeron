@@ -9,7 +9,20 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     pub fn render_agents_panel(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let cards = self.agents.iter().enumerate().map(|(ix, a)| agent_card(ix, a, cx)).collect::<Vec<_>>();
+        let running: Vec<AnyElement> = self
+            .agents
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.status == AgentStatus::Running)
+            .map(|(ix, a)| agent_card(ix, a, cx))
+            .collect();
+        let finished: Vec<AnyElement> = self
+            .agents
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.status != AgentStatus::Running)
+            .map(|(ix, a)| agent_card(ix, a, cx))
+            .collect();
 
         div()
             .w(px(280.))
@@ -67,8 +80,22 @@ impl Workspace {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .when(cards.is_empty(), |d| d.child(div().text_sm().text_color(cx.theme().muted_foreground).child("No agents running")))
-                    .children(cards),
+                    .when(running.is_empty() && finished.is_empty(), |d| {
+                        d.child(div().text_sm().text_color(cx.theme().muted_foreground).child("No agents running"))
+                    })
+                    .children(running)
+                    .when(!finished.is_empty(), |d| {
+                        d.child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .pt_2()
+                                .border_t_1()
+                                .border_color(cx.theme().border)
+                                .child("Finished"),
+                        )
+                        .children(finished)
+                    }),
             )
     }
 }
