@@ -1,4 +1,4 @@
-use gpui_kit::component::input::{InputEvent, TextareaState};
+use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::*;
 
@@ -12,6 +12,7 @@ pub struct Workspace {
     pub agents: Vec<Agent>,
     pub agents_panel_open: bool,
     pub composer: Entity<TextareaState>,
+    pub search: Entity<InputState>,
     pub scroller: Entity<MessageScrollerState>,
 }
 
@@ -24,6 +25,14 @@ impl Workspace {
                 .placeholder("Ask anything — @ to mention files, / for commands")
         });
         let scroller = cx.new(|cx| MessageScrollerState::new(0, cx));
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search chats"));
+
+        cx.subscribe_in(&search, window, |_this, _s, event: &InputEvent, _window, cx| {
+            if matches!(event, InputEvent::Change) {
+                cx.notify();
+            }
+        })
+        .detach();
 
         cx.subscribe_in(&composer, window, |this, _composer, event: &InputEvent, window, cx| {
             if matches!(event, InputEvent::PressEnter { shift: false, .. }) {
@@ -39,6 +48,7 @@ impl Workspace {
             agents: Vec::new(),
             agents_panel_open: false,
             composer,
+            search,
             scroller,
         };
         this.new_chat(cx);

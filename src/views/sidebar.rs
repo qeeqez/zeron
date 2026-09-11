@@ -1,5 +1,6 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
+use gpui_kit::component::input::Input;
 use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarMenuItem, SidebarToggleButton};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -10,28 +11,36 @@ use crate::workspace::Workspace;
 impl Workspace {
     pub fn render_sidebar(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let collapsed = self.sidebar_collapsed;
-
         let header = div()
             .flex()
-            .items_center()
-            .justify_between()
+            .flex_col()
             .gap_2()
-            .child(div().flex().items_center().gap_2().text_sm().font_bold().child(IconName::Bot).child("Rixl Code"))
             .child(
-                SidebarToggleButton::new()
-                    .collapsed(collapsed)
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
-            );
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(div().flex().items_center().gap_2().text_sm().font_bold().child(IconName::Bot).child("Rixl Code"))
+                    .child(
+                        SidebarToggleButton::new()
+                            .collapsed(collapsed)
+                            .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+                    ),
+            )
+            .child(Input::new(&self.search).prefix(IconName::Search).appearance(true));
 
         let new_chat = SidebarMenuItem::new("New chat")
             .icon(IconName::Plus)
             .on_click(cx.listener(|this, _, _, cx| this.new_chat(cx)));
 
+        let query = self.search.read(cx).value().to_lowercase();
         let items: Vec<SidebarMenuItem> = self
             .chats
             .iter()
             .enumerate()
             .rev()
+            .filter(|(_, chat)| query.is_empty() || chat.title.to_lowercase().contains(&query))
             .map(|(ix, chat)| {
                 let running = chat.running;
                 SidebarMenuItem::new(chat.title.clone())
