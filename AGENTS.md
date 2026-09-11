@@ -21,4 +21,5 @@ Run before every commit and PR:
 - **File Size Limit**: Max 250 SLOC per file (excluding blanks/comments), strictly enforced by `mise run lint:sloc` via `sloc-guard`. Split large modules into subdirectories with `types.rs`, `runner.rs`, `mod.rs`.
 - **Git Commit Attribution**: Exactly one `Co-authored-by: Rixl <agent@rixl.com>` trailer on every commit. No other attribution tags.
 - **PR Merge Policy**: **Rebase merge only** (`gh pr merge --rebase`) — keeps history linear. **NEVER squash merge, NEVER merge-commit.**
+- **Commit Messages**: Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `build:`, `ci:`).
 - **Subagent Workflows**: Always run subagents in isolated Copy-on-Write clones under `/tmp/rixl-rixlcode/<name>` on their own `rixl/<lane>` branch. Do NOT set a shared `CARGO_TARGET_DIR` (all lanes would serialize on one target lock); instead `cargo build`/`nextest` the main checkout periodically so each clone inherits a warm `target/` via CoW and builds in its own directory.
