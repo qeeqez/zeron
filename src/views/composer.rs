@@ -12,6 +12,16 @@ use crate::workspace::Workspace;
 const MODELS: [&str; 3] = ["gpt-5-codex", "gpt-5", "gpt-5-mini"];
 const MODES: [&str; 3] = ["Agent", "Plan", "Ask"];
 const SLASH_COMMANDS: [&str; 6] = ["clear", "compact", "export", "help", "model", "rename"];
+const MENTION_FILES: [&str; 8] = [
+    "src/main.rs",
+    "src/workspace.rs",
+    "src/model.rs",
+    "src/views/chat_view.rs",
+    "src/views/sidebar.rs",
+    "src/views/composer.rs",
+    "Cargo.toml",
+    "mise.toml",
+];
 
 struct PickerSpec {
     id: &'static str,
@@ -54,6 +64,13 @@ impl Workspace {
             set: |this, v| this.mode = v.into(),
         });
         let composer_text = self.composer.read(cx).value().to_string();
+        let mention_open = composer_text.contains('@');
+        let mention_query = composer_text.rsplit('@').next().unwrap_or("").to_lowercase();
+        let mention_items: Vec<AnyElement> = MENTION_FILES
+            .iter()
+            .filter(|f| mention_query.is_empty() || f.to_lowercase().contains(&mention_query))
+            .map(|f| mention_item(f, &ws, cx).into_any_element())
+            .collect();
         let slash_open = composer_text.starts_with('/');
         let slash_query = composer_text.trim_start_matches('/').to_lowercase();
         let slash_items: Vec<AnyElement> = SLASH_COMMANDS
@@ -66,7 +83,23 @@ impl Workspace {
             div()
                 .flex()
                 .flex_col()
-                .gap_1()
+                .p_2()
+                .rounded_lg()
+                .border_1()
+                .border_color(cx.theme().border)
+                .bg(cx.theme().input)
+                .when(mention_open && !mention_items.is_empty(), |d| {
+                    d.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_0p5()
+                            .pb_1()
+                            .border_b_1()
+                            .border_color(cx.theme().border)
+                            .children(mention_items),
+                    )
+                })
                 .p_2()
                 .rounded_lg()
                 .border_1()
@@ -132,6 +165,33 @@ fn picker(spec: PickerSpec) -> impl IntoElement {
                 }))
             })
         })
+}
+
+fn mention_item(file: &&str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
+    let ws = ws.clone();
+    let path = file.to_string();
+    div()
+        .id(SharedString::from(format!("mention-{file}")))
+        .cursor_pointer()
+        .px_2()
+        .py_1()
+        .rounded_md()
+        .text_sm()
+        .hover(|d| d.bg(cx.theme().accent))
+        .child(format!("@{file}"))
+        .on_click(move |_, window, cx| {
+            apply_mention(&ws, &path, window, cx);
+        })
+}
+
+fn apply_mention(ws: &Entity<Workspace>, path: &str, window: &mut Window, cx: &mut App) {
+    ws.update(cx, |this, cx| {
+        this.composer.update(cx, |s, cx| {
+            let cur = s.value().to_string();
+            let before = cur.rsplit_once('@').map(|(b, _)| b).unwrap_or("");
+            s.set_value(format!("{before}@{path} "), window, cx);
+        });
+    });
 }
 
 fn apply_slash(ws: &Entity<Workspace>, cmd: &str, window: &mut Window, cx: &mut App) {
