@@ -1,16 +1,14 @@
 use std::rc::Rc;
 
-use crate::model::{ChatMessage, MessageKind, Role};
-use crate::views::cards::{MsgCtx, message_footer, render_diff, render_tool_call};
+use crate::model::{ChatMessage, MessageKind};
+use crate::views::cards::MsgCtx;
 use crate::views::render_empty_state;
+use crate::views::render_message;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
-use gpui_kit::component::message::{Message, MessageAlignment, MessageContent, MessageFooter, MessageHeader};
-
 use gpui_kit::component::message_scroller::MessageScroller;
-use gpui_kit::component::text::TextView;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -25,10 +23,13 @@ fn chat_menu(
     let ws_export = ws.clone();
     let ws_copy = ws.clone();
     let ws_wrap = ws.clone();
-    let pin_label = if pinned { "Unpin" } else { "Pin" };
-    menu.item(PopupMenuItem::new(pin_label).icon(IconName::Star).on_click(move |_, _, cx| {
-        ws_pin.update(cx, |this, cx| this.toggle_pin(this.active, cx));
-    }))
+    menu.item(
+        PopupMenuItem::new(if pinned { "Unpin" } else { "Pin" })
+            .icon(IconName::Star)
+            .on_click(move |_, _, cx| {
+                ws_pin.update(cx, |this, cx| this.toggle_pin(this.active, cx));
+            }),
+    )
     .item(PopupMenuItem::new("Rename").icon(IconName::Pencil).on_click(move |_, window, cx| {
         ws_rename.update(cx, |this, cx| this.rename_active(window, cx));
     }))
@@ -65,10 +66,27 @@ impl Workspace {
         let panel_open = self.agents_panel_open;
 
         let msg_count = messages.len();
+        let query = self.chat_search.read(cx).value().to_string().to_lowercase();
+        let filtered: Vec<usize> = if self.chat_search_open && !query.is_empty() {
+            (0..msg_count)
+                .filter(|&ix| {
+                    let msg = &messages[ix];
+                    let text = match &msg.kind {
+                        MessageKind::Text(t) => t.as_str(),
+                        MessageKind::Tool(t) => t.name.as_str(),
+                        MessageKind::Diff(d) => d.path.as_str(),
+                    };
+                    text.to_lowercase().contains(&query)
+                })
+                .collect()
+        } else {
+            (0..msg_count).collect()
+        };
         let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, _window, cx| {
-            messages
+            filtered
                 .get(ix)
-                .map(|msg| render_message(MsgCtx { ix, is_last: ix == msg_count - 1 }, msg, &ws, cx))
+                .and_then(|&real_ix| messages.get(real_ix).map(|msg| (real_ix, msg)))
+                .map(|(real_ix, msg)| render_message(MsgCtx { ix: real_ix, is_last: real_ix == msg_count - 1 }, msg, &ws, cx))
                 .unwrap_or_else(|| div().into_any_element())
         })
         .jump_button(true)
@@ -177,70 +195,4 @@ impl Workspace {
             })
             .child(self.render_composer(cx))
     }
-}
-
-fn render_message(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {
-    let MsgCtx { ix, .. } = mc;
-    match &msg.kind {
-        MessageKind::Text(_) => render_text(mc, msg, ws, cx),
-        MessageKind::Tool(tool) => render_tool_call(ix, tool, ws.clone(), cx).into_any_element(),
-        MessageKind::Diff(diff) => render_diff(ix, diff, ws.clone(), cx).into_any_element(),
-    }
-}
-
-fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {
-    let MsgCtx { ix, .. } = mc;
-    let MessageKind::Text(text) = &msg.kind else { unreachable!() };
-    let role = msg.role;
-    let word_wrap = ws.read(cx).word_wrap;
-    let alignment = match role {
-        Role::User => MessageAlignment::End,
-        Role::Assistant => MessageAlignment::Start,
-    };
-    let body = div()
-        .px_4()
-        .py_2()
-        .rounded_lg()
-        .text_sm()
-        .when(role == Role::User, |d| d.bg(cx.theme().accent).text_color(cx.theme().accent_foreground))
-        .when(role == Role::Assistant, |d| d.bg(cx.theme().secondary).text_color(cx.theme().foreground))
-        .child(if role == Role::Assistant {
-            TextView::markdown(("md", ix), text.clone())
-                .code_block_actions(|block, _window, _cx| {
-                    let code = block.code().to_string();
-                    div()
-                        .id("copy-code")
-                        .cursor_pointer()
-                        .text_color(hsla(0.0, 0.0, 0.55, 1.0))
-                        .child(IconName::Copy)
-                        .on_click(move |_, _, cx| {
-                            cx.write_to_clipboard(ClipboardItem::new_string(code.clone()));
-                        })
-                })
-                .into_any_element()
-        } else {
-            div()
-                .whitespace_nowrap()
-                .when(word_wrap, |d| d.whitespace_normal())
-                .child(text.clone())
-                .into_any_element()
-        });
-
-    let mut message = Message::new().alignment(alignment).content(MessageContent::new().child(body));
-    if role == Role::Assistant {
-        message = message.header(
-            MessageHeader::new().child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(IconName::Bot)
-                    .child("Rixl"),
-            ),
-        );
-    }
-    message = message.footer(MessageFooter::new().child(message_footer(mc, msg, ws, cx)));
-    message.into_any_element()
 }
