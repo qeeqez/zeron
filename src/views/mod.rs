@@ -3,3 +3,5 @@ mod cards;
 mod chat_view;
 mod composer;
 mod sidebar;
+
+pub use sidebar::settings_body;

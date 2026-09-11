@@ -187,7 +187,7 @@ fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, pinned: bool, menu: PopupMen
     }))
 }
 
-fn settings_body() -> impl IntoElement {
+pub fn settings_body() -> impl IntoElement {
     div().flex().flex_col().gap_2().p_4().child(div().text_sm().child("Theme")).child(
         div()
             .flex()

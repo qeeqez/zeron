@@ -1,5 +1,7 @@
 use std::time::{Duration, SystemTime};
 
+use gpui_kit::component::WindowExt;
+
 use gpui_kit::component::command::CommandState;
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::component::message_scroller::MessageScrollerState;
@@ -114,6 +116,10 @@ impl Workspace {
             s.reset(count, cx);
         });
         cx.notify();
+    }
+
+    pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        window.open_sheet(cx, |sheet, _window, _cx| sheet.title("Settings").child(crate::views::settings_body()));
     }
 
     pub fn toggle_pin(&mut self, index: usize, cx: &mut Context<Self>) {

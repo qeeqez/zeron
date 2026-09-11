@@ -17,7 +17,7 @@ actions!(
     workspace,
     [
         NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6,
-        Chat7, Chat8, Chat9
+        Chat7, Chat8, Chat9, CloseWindow, OpenSettings
     ]
 );
 
@@ -59,6 +59,15 @@ impl Render for Workspace {
             })
             .on_action(move |_: &ThemeDark, window, cx| {
                 Theme::change(ThemeMode::Dark, Some(window), cx);
+            })
+            .on_action(|_: &CloseWindow, window, _cx| {
+                window.remove_window();
+            })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &OpenSettings, window, cx| {
+                    ws.update(cx, |this, cx| this.open_settings(window, cx));
+                }
             })
             .flex()
             .flex_col()
@@ -107,7 +116,8 @@ fn main() {
             KeyBinding::new("cmd-n", NewChat, Some("workspace")),
             KeyBinding::new("cmd-shift-backspace", DeleteChat, Some("workspace")),
             KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
-            KeyBinding::new("cmd-j", ToggleAgents, Some("workspace")),
+            KeyBinding::new("cmd-w", CloseWindow, Some("workspace")),
+            KeyBinding::new("cmd-,", OpenSettings, Some("workspace")),
             KeyBinding::new("cmd-k", OpenPalette, Some("workspace")),
             KeyBinding::new("cmd-1", Chat1, Some("workspace")),
             KeyBinding::new("cmd-2", Chat2, Some("workspace")),
