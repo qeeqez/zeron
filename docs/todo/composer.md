@@ -6,12 +6,13 @@ Bottom input area.
 
 - [x] Multi-line auto-growing textarea (1–8 rows), Enter sends / Shift+Enter newline
 - [x] Send button; swaps to Stop while running
+- [x] Model picker dropdown
+- [x] Reasoning-effort / mode picker
+- [x] Live char counter
 
 ## Todo
 
 - [ ] Send disabled when input empty
-- [ ] Model picker dropdown (e.g. GPT-5, GPT-5-codex variants)
-- [ ] Reasoning-effort / mode picker (e.g. Agent / Plan / Ask)
 - [ ] Slash-command menu on `/` (filtered list)
 - [ ] @-mention file picker
 - [ ] Attachment chips (images/files) + attach button

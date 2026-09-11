@@ -2,12 +2,12 @@
 
 ## Done
 
-- [ ] (pending)
+- [x] Settings sheet from sidebar gear
+- [x] Theme: light / dark (`Theme::change`)
 
 ## Todo
 
-- [ ] Settings window/sheet from sidebar gear
-- [ ] Theme: system / light / dark (`Theme::change`)
+- [ ] Theme: system option
 - [ ] Model defaults, reasoning effort default
 - [ ] Notification toggles
 - [ ] Keyboard shortcut reference pane

@@ -9,15 +9,20 @@ Main conversation surface.
 - [x] Assistant messages: left-aligned bubble + "Rixl" bot header
 - [x] Tool-call cards: icon + name + status icon (running/done/failed)
 - [x] "Working…" strip while running
+- [x] Markdown rendering in assistant text
+- [x] Tool-call card: collapsible detail (command, args, output)
+- [x] Diff cards: file path, +/- counts, inline diff view
+- [x] Streaming text: token-by-token append with caret
+- [x] Elapsed-time in Working strip; Stop button there too
+- [x] Message footer actions: copy, retry, thumbs up/down
+- [x] Empty state: centered prompt suggestions
+- [x] Error banner on failed run with retry
+- [x] Message timestamps (HH:MM) in footer
+- [x] "Regenerate" on last assistant message
+- [x] Header overflow menu: pin, rename, export, copy transcript
 
 ## Todo
 
-- [ ] Markdown rendering in assistant text
-- [ ] Tool-call card: collapsible detail (command, args, output)
-- [ ] Diff cards: file path, +/- counts, inline diff view
-- [ ] Streaming text: token-by-token append with caret
-- [ ] Elapsed-time in Working strip; Stop button there too
-- [ ] Message footer actions: copy, retry, thumbs up/down
-- [ ] Empty state: centered prompt suggestions
-- [ ] Error banner on failed run with retry
 - [ ] Code blocks with syntax highlight + copy button
+- [ ] Word-wrap toggle for long lines
+- [ ] Message search within chat
