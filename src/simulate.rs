@@ -5,7 +5,10 @@ use gpui_kit::*;
 use crate::model::{ChatMessage, MessageKind, Role, ToolCall, ToolStatus};
 use crate::workspace::Workspace;
 
-/// Simulated agent reply: a tool call that runs, then a text answer.
+const REPLY_OK: &str = "Done. The build is **green** — `0 warnings`, all checks passed.\n\n- `cargo build --locked` finished in 3.6s\n- clippy: clean\n- nextest: 0 tests";
+const REPLY_FAIL: &str = "The command **failed** — see the tool output above.\n\n```\nerror[E0308]: mismatched types\n```";
+
+/// Simulated agent reply: a tool call that runs, then a streamed text answer.
 /// Replaced by the real backend event stream later (docs/todo/backend.md).
 pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
     let chat_ix = this.active;
@@ -24,29 +27,57 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
 
     cx.spawn(async move |this, cx| {
         cx.background_executor().timer(Duration::from_millis(900)).await;
-        let _ = this.update(cx, |this, cx| this.finish_reply(chat_ix, cx));
+        let _ = this.update(cx, |this, cx| this.begin_stream(chat_ix, cx));
+        for _ in 0..12 {
+            cx.background_executor().timer(Duration::from_millis(80)).await;
+            let _ = this.update(cx, |this, cx| this.stream_chunk(chat_ix, cx));
+        }
+        let _ = this.update(cx, |this, cx| this.finish_stream(chat_ix, cx));
     })
     .detach();
 }
 
 impl Workspace {
-    pub(crate) fn finish_reply(&mut self, chat_ix: usize, cx: &mut Context<Self>) {
-        let failed = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos() % 4 == 0).unwrap_or(false);
+    fn reply_failed() -> bool {
+        SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos() % 4 == 0).unwrap_or(false)
+    }
+
+    fn begin_stream(&mut self, chat_ix: usize, cx: &mut Context<Self>) {
+        let failed = Self::reply_failed();
         let chat = &mut self.chats[chat_ix];
+        chat.failed_flag = failed;
         if let Some(last) = chat.messages.last_mut()
             && let MessageKind::Tool(tool) = &mut last.kind
         {
             tool.status = if failed { ToolStatus::Failed } else { ToolStatus::Done };
         }
-        let text = if failed {
-            "The command failed — see the tool output above."
-        } else {
-            "Done. The build is green — 0 warnings, all checks passed."
-        };
-        chat.messages.push(ChatMessage { role: Role::Assistant, kind: MessageKind::Text(text.into()) });
-        chat.running = false;
+        chat.messages.push(ChatMessage { role: Role::Assistant, kind: MessageKind::Text("".into()) });
         self.scroller.update(cx, |s, cx| {
             s.append(1, cx);
+        });
+        cx.notify();
+    }
+
+    fn stream_chunk(&mut self, chat_ix: usize, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[chat_ix];
+        let Some(last) = chat.messages.last_mut() else { return };
+        let MessageKind::Text(text) = &mut last.kind else { return };
+        let full: &str = if chat.failed_flag { REPLY_FAIL } else { REPLY_OK };
+        let next_len = (text.len() + full.len() / 12 + 1).min(full.len());
+        *text = full[..next_len].into();
+        let last_ix = chat.messages.len() - 1;
+        self.scroller.update(cx, |s, cx| {
+            s.remeasure_items(last_ix..last_ix + 1, cx);
+        });
+        cx.notify();
+    }
+
+    fn finish_stream(&mut self, chat_ix: usize, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[chat_ix];
+        chat.running = false;
+        chat.failed_flag = false;
+        self.scroller.update(cx, |s, cx| {
+            s.remeasure(cx);
         });
         cx.notify();
     }

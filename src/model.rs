@@ -36,10 +36,16 @@ pub struct Chat {
     pub title: SharedString,
     pub messages: Vec<ChatMessage>,
     pub running: bool,
+    pub failed_flag: bool,
 }
 
 impl Chat {
     pub fn new(title: impl Into<SharedString>) -> Self {
-        Self { title: title.into(), messages: Vec::new(), running: false }
+        Self {
+            title: title.into(),
+            messages: Vec::new(),
+            running: false,
+            failed_flag: false,
+        }
     }
 }

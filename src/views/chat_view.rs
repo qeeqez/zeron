@@ -3,6 +3,7 @@ use std::rc::Rc;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::message::{Message, MessageAlignment, MessageContent, MessageHeader};
 use gpui_kit::component::message_scroller::MessageScroller;
+use gpui_kit::component::text::TextView;
 
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -13,13 +14,15 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     pub fn render_chat(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let messages: Rc<Vec<ChatMessage>> = Rc::new(self.chats[self.active].messages.clone());
-        let running = self.chats[self.active].running;
+        let chat = &self.chats[self.active];
+        let empty = chat.messages.is_empty();
+        let messages: Rc<Vec<ChatMessage>> = Rc::new(chat.messages.clone());
+        let running = chat.running;
 
         let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, window, cx| {
             messages
                 .get(ix)
-                .map(|msg| render_message(msg, window, cx))
+                .map(|msg| render_message(ix, msg, window, cx))
                 .unwrap_or_else(|| div().into_any_element())
         });
 
@@ -28,7 +31,12 @@ impl Workspace {
             .flex_col()
             .flex_1()
             .h_full()
-            .child(div().flex_1().min_h_0().child(list))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .child(if empty { render_empty_state(cx).into_any_element() } else { list.into_any_element() }),
+            )
             .when(running, |d| {
                 d.child(
                     div()
@@ -47,14 +55,42 @@ impl Workspace {
     }
 }
 
-fn render_message(msg: &ChatMessage, _window: &mut Window, cx: &mut App) -> AnyElement {
+fn render_message(ix: usize, msg: &ChatMessage, _window: &mut Window, cx: &mut App) -> AnyElement {
     match &msg.kind {
-        MessageKind::Text(text) => render_text(msg.role, text, cx),
+        MessageKind::Text(text) => render_text(ix, msg.role, text, cx),
         MessageKind::Tool(tool) => render_tool_call(tool, cx).into_any_element(),
     }
 }
 
-fn render_text(role: Role, text: &SharedString, cx: &mut App) -> AnyElement {
+fn render_empty_state(cx: &mut App) -> impl IntoElement {
+    let suggestions = [
+        "Explain this codebase",
+        "Fix the failing tests",
+        "Refactor the parser module",
+        "Write docs for the public API",
+    ];
+    div()
+        .flex()
+        .flex_col()
+        .size_full()
+        .items_center()
+        .justify_center()
+        .gap_4()
+        .child(div().text_lg().text_color(cx.theme().muted_foreground).child("What should we work on?"))
+        .child(div().flex().flex_col().gap_2().items_center().children(suggestions.iter().map(|s| {
+            div()
+                .px_4()
+                .py_2()
+                .rounded_lg()
+                .border_1()
+                .border_color(cx.theme().border)
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(*s)
+        })))
+}
+
+fn render_text(ix: usize, role: Role, text: &SharedString, cx: &mut App) -> AnyElement {
     let alignment = match role {
         Role::User => MessageAlignment::End,
         Role::Assistant => MessageAlignment::Start,
@@ -66,7 +102,11 @@ fn render_text(role: Role, text: &SharedString, cx: &mut App) -> AnyElement {
         .text_sm()
         .when(role == Role::User, |d| d.bg(cx.theme().accent).text_color(cx.theme().accent_foreground))
         .when(role == Role::Assistant, |d| d.bg(cx.theme().secondary).text_color(cx.theme().foreground))
-        .child(text.clone());
+        .child(if role == Role::Assistant {
+            TextView::markdown(("md", ix), text.clone()).into_any_element()
+        } else {
+            div().child(text.clone()).into_any_element()
+        });
 
     let mut message = Message::new().alignment(alignment).content(MessageContent::new().child(body));
     if role == Role::Assistant {
