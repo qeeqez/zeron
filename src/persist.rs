@@ -7,6 +7,7 @@ use crate::model::{Chat, ChatMessage};
 
 #[derive(Serialize, Deserialize)]
 struct StoredChat {
+    v: u32,
     title: String,
     messages: Vec<ChatMessage>,
     pinned: bool,
@@ -28,6 +29,7 @@ pub fn save_chats(chats: &[Chat]) {
     let _ = fs::create_dir_all(&dir);
     for (ix, chat) in chats.iter().enumerate() {
         let stored = StoredChat {
+            v: 1,
             title: chat.title.to_string(),
             messages: chat.messages.clone(),
             pinned: chat.pinned,
@@ -54,7 +56,9 @@ pub fn load_chats() -> Vec<Chat> {
                 return None;
             }
             let stored: StoredChat = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
-
+            if stored.v != 1 {
+                return None;
+            }
             let mut chat = Chat::new(stored.title);
             chat.messages = stored.messages;
             chat.pinned = stored.pinned;
