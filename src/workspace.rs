@@ -14,6 +14,8 @@ pub struct Workspace {
     pub composer: Entity<TextareaState>,
     pub search: Entity<InputState>,
     pub scroller: Entity<MessageScrollerState>,
+    pub model: SharedString,
+    pub mode: SharedString,
 }
 
 impl Workspace {
@@ -50,6 +52,8 @@ impl Workspace {
             composer,
             search,
             scroller,
+            model: "gpt-5-codex".into(),
+            mode: "Agent".into(),
         };
         this.new_chat(cx);
         this
