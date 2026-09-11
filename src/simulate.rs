@@ -35,6 +35,7 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
             expanded: false,
         }),
         rating: None,
+        at: SystemTime::now(),
     });
     this.scroller.update(cx, |s, cx| {
         s.append(1, cx);
@@ -113,12 +114,14 @@ impl Workspace {
                     applied: None,
                 }),
                 rating: None,
+                at: SystemTime::now(),
             });
         }
         chat.messages.push(ChatMessage {
             role: Role::Assistant,
             kind: MessageKind::Text("".into()),
             rating: None,
+            at: SystemTime::now(),
         });
         self.scroller.update(cx, |s, cx| {
             s.append(if failed { 1 } else { 2 }, cx);

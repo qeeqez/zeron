@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use gpui_kit::component::command::CommandState;
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
@@ -164,6 +164,7 @@ impl Workspace {
             role: Role::User,
             kind: MessageKind::Text(text.into()),
             rating: None,
+            at: SystemTime::now(),
         });
         chat.running = true;
         chat.started_at = Some(std::time::Instant::now());

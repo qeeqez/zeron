@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use gpui_kit::assets::IconName;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -219,4 +221,13 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
                     }),
             )
         })
+        .child(div().flex_1())
+        .child(div().text_xs().text_color(muted).child(format_time(msg.at)))
+}
+
+fn format_time(at: SystemTime) -> String {
+    let secs = at.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let h = (secs / 3600) % 24;
+    let m = (secs / 60) % 60;
+    format!("{h:02}:{m:02}")
 }

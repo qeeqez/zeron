@@ -39,6 +39,7 @@ pub struct ChatMessage {
     pub role: Role,
     pub kind: MessageKind,
     pub rating: Option<bool>,
+    pub at: SystemTime,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
