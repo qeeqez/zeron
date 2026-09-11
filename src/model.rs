@@ -86,6 +86,18 @@ pub enum AgentStatus {
     Cancelled,
 }
 
+impl std::fmt::Display for AgentStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Running => "running",
+            Self::Done => "done",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        };
+        f.write_str(s)
+    }
+}
+
 pub struct Agent {
     pub name: SharedString,
     pub lane: SharedString,
@@ -95,6 +107,8 @@ pub struct Agent {
     pub steps_total: usize,
     pub elapsed_secs: u64,
     pub task: Option<Task<()>>,
+    pub log: Vec<SharedString>,
+    pub expanded: bool,
 }
 
 impl Agent {
@@ -108,6 +122,8 @@ impl Agent {
             steps_total,
             elapsed_secs: 0,
             task: None,
+            log: Vec::new(),
+            expanded: false,
         }
     }
 }

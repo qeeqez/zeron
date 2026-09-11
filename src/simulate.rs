@@ -79,9 +79,11 @@ impl Workspace {
         agent.steps_done = step;
         agent.elapsed_secs += 1;
         agent.step = format!("step {step}").into();
+        agent.log.push(format!("[{}s] step {step}", agent.elapsed_secs).into());
         if step == agent.steps_total {
             agent.status = if Self::reply_failed() { AgentStatus::Failed } else { AgentStatus::Done };
             agent.step = "finished".into();
+            agent.log.push(format!("[{}s] {}", agent.elapsed_secs, agent.status).into());
         }
         cx.notify();
     }

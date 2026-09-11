@@ -74,6 +74,13 @@ impl Workspace {
         cx.notify();
     }
 
+    pub fn toggle_agent_expand(&mut self, ix: usize, cx: &mut Context<Self>) {
+        if let Some(agent) = self.agents.get_mut(ix) {
+            agent.expanded = !agent.expanded;
+        }
+        cx.notify();
+    }
+
     /// Export chat `ix` as markdown to the clipboard.
     pub fn export_chat(&self, ix: usize, cx: &mut Context<Self>) {
         let Some(chat) = self.chats.get(ix) else { return };

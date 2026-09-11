@@ -108,7 +108,15 @@ fn agent_card(ix: usize, agent: &Agent, cx: &mut Context<Workspace>) -> AnyEleme
                             .child(IconName::CircleX)
                             .on_click(cx.listener(move |this, _, _, cx| this.cancel_agent(ix, cx))),
                     )
-                }),
+                })
+                .child(
+                    div()
+                        .id(("expand-agent", ix))
+                        .cursor_pointer()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(if agent.expanded { IconName::ChevronDown } else { IconName::ChevronRight })
+                        .on_click(cx.listener(move |this, _, _, cx| this.toggle_agent_expand(ix, cx))),
+                ),
         )
         .child(
             div()
@@ -122,5 +130,18 @@ fn agent_card(ix: usize, agent: &Agent, cx: &mut Context<Workspace>) -> AnyEleme
                 .text_color(cx.theme().muted_foreground)
                 .child(format!("step {}/{}", agent.steps_done, agent.steps_total)),
         )
+        .when(agent.expanded, |d| {
+            d.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .mt_1()
+                    .p_2()
+                    .rounded_md()
+                    .bg(cx.theme().input)
+                    .children(agent.log.iter().map(|line| div().text_xs().child(line.clone()))),
+            )
+        })
         .into_any_element()
 }
