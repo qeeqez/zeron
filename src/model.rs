@@ -59,6 +59,7 @@ pub struct Chat {
     pub reply_task: Option<Task<()>>,
     pub draft: String,
     pub unread: bool,
+    pub archived: bool,
 }
 
 impl Chat {
@@ -72,8 +73,9 @@ impl Chat {
             created_at: SystemTime::now(),
             started_at: None,
             draft: String::new(),
-            reply_task: None,
             unread: false,
+            reply_task: None,
+            archived: false,
         }
     }
 }

@@ -81,6 +81,20 @@ impl Workspace {
         cx.notify();
     }
 
+    pub fn toggle_archive(&mut self, ix: usize, cx: &mut Context<Self>) {
+        if let Some(chat) = self.chats.get_mut(ix) {
+            chat.archived = !chat.archived;
+        }
+        // If we archived the active chat, switch to the first non-archived.
+        if self.chats[self.active].archived {
+            if let Some(next) = self.chats.iter().position(|c| !c.archived) {
+                self.active = next;
+            } else {
+                self.new_chat(cx);
+            }
+        }
+        cx.notify();
+    }
     /// Export chat `ix` as markdown to the clipboard.
     pub fn export_chat(&self, ix: usize, cx: &mut Context<Self>) {
         let Some(chat) = self.chats.get(ix) else { return };

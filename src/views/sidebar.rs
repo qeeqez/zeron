@@ -76,7 +76,7 @@ impl Workspace {
         order.sort_by_key(|ix| (bucket(*ix), std::cmp::Reverse(self.chats[*ix].created_at)));
         let filtered: Vec<usize> = order
             .into_iter()
-            .filter(|ix| query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query))
+            .filter(|ix| !self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query)))
             .collect();
 
         let group_names = ["Pinned", "Today", "Previous 7 Days", "Older"];
@@ -183,6 +183,12 @@ fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, pinned: bool, menu: PopupMen
         let ws = ws.clone();
         move |_, _, cx| {
             ws.update(cx, |this, cx| this.delete_chat(ix, cx));
+        }
+    }))
+    .item(PopupMenuItem::new("Archive").icon(IconName::Archive).on_click({
+        let ws = ws.clone();
+        move |_, _, cx| {
+            ws.update(cx, |this, cx| this.toggle_archive(ix, cx));
         }
     }))
 }
