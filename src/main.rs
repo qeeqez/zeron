@@ -130,10 +130,16 @@ fn main() {
             KeyBinding::new("cmd-9", Chat9, Some("workspace")),
         ]);
         cx.spawn(async move |cx| {
-            cx.open_window(WindowOptions::default(), |window, cx| {
-                let view = cx.new(|cx| Workspace::new(window, cx));
-                cx.new(|cx| Root::new(view, window, cx))
-            })
+            cx.open_window(
+                WindowOptions {
+                    window_min_size: Some(Size { width: px(800.), height: px(600.) }),
+                    ..WindowOptions::default()
+                },
+                |window, cx| {
+                    let view = cx.new(|cx| Workspace::new(window, cx));
+                    cx.new(|cx| Root::new(view, window, cx))
+                },
+            )
             .expect("failed to open window");
         })
         .detach();
