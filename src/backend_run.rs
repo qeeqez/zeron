@@ -1,0 +1,159 @@
+use std::time::{Duration, SystemTime};
+
+use gpui_kit::component::WindowExt;
+use gpui_kit::component::notification::Notification;
+use gpui_kit::*;
+
+use crate::backend::AgentEvent;
+use crate::model::{ChatMessage, MessageKind, Role, ToolCall, ToolStatus};
+use crate::workspace::Workspace;
+
+/// Drive a real `AgentBackend` reply: spawn the backend, pump its event
+/// stream on a thread, and apply events on the UI thread via a channel.
+pub fn run_backend(this: &mut Workspace, cx: &mut Context<Workspace>) {
+    let chat_ix = this.active;
+    let prompt = this.chats[chat_ix]
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == Role::User)
+        .map(|m| match &m.kind {
+            MessageKind::Text(t) => t.to_string(),
+            _ => String::new(),
+        })
+        .unwrap_or_default();
+    let model = this.model.to_string();
+    let mode = this.mode.to_string();
+    let stream = this.backend.send(&prompt, &model, &mode);
+
+    let (tx, rx) = std::sync::mpsc::channel::<AgentEvent>();
+    std::thread::spawn(move || pump_stream(stream, tx));
+
+    let task = cx.spawn(async move |this, cx| {
+        'outer: loop {
+            let e = match rx.try_recv() {
+                Ok(e) => e,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    cx.background_executor().timer(Duration::from_millis(30)).await;
+                    continue;
+                },
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+            };
+            let done = matches!(e, AgentEvent::Done | AgentEvent::Error(_));
+            let _ = this.update(cx, |this, cx| this.apply_event(chat_ix, e, cx));
+            if done {
+                break 'outer;
+            }
+        }
+        let _ = this.update_in(cx, |this, window, cx| {
+            this.finish_reply(chat_ix, cx);
+            let title = this.chats[chat_ix].title.clone();
+            if this.notify_on_done {
+                window.push_notification(Notification::success(format!("{title} — reply complete")), cx);
+            }
+        });
+    });
+    this.chats[chat_ix].reply_task = Some(task);
+}
+
+impl Workspace {
+    /// Apply one backend event to the chat.
+    fn apply_event(&mut self, chat_ix: usize, ev: AgentEvent, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[chat_ix];
+        match ev {
+            AgentEvent::TextDelta(text) => {
+                let needs_new = !matches!(chat.messages.last(), Some(m) if matches!(m.kind, MessageKind::Text(_)));
+                if needs_new {
+                    chat.messages.push(ChatMessage {
+                        role: Role::Assistant,
+
+                        kind: MessageKind::Text("".into()),
+                        rating: None,
+                        at: SystemTime::now(),
+                    });
+                    self.scroller.update(cx, |s, cx| s.append(1, cx));
+                }
+                let Some(last) = chat.messages.last_mut() else { return };
+                let MessageKind::Text(t) = &mut last.kind else { return };
+                *t = format!("{t}{text}").into();
+                let last_ix = chat.messages.len() - 1;
+                self.scroller.update(cx, |s, cx| s.remeasure_items(last_ix..last_ix + 1, cx));
+            },
+            AgentEvent::ToolCallStart { ix, name, detail } => {
+                chat.messages.push(ChatMessage {
+                    role: Role::Assistant,
+                    kind: MessageKind::Tool(ToolCall {
+                        name,
+                        detail,
+                        output: "".into(),
+                        status: ToolStatus::Running,
+                        expanded: false,
+                    }),
+                    rating: None,
+                    at: SystemTime::now(),
+                });
+                let _ = ix;
+                self.scroller.update(cx, |s, cx| s.append(1, cx));
+            },
+            AgentEvent::ToolCallDelta { ix, output } => {
+                let _ = (ix, output);
+            },
+            AgentEvent::ToolCallEnd { ix, ok } => {
+                let _ = ix;
+                let status = if ok { ToolStatus::Done } else { ToolStatus::Failed };
+                if let Some(m) = chat.messages.iter_mut().rev().find(|m| matches!(m.kind, MessageKind::Tool(_)))
+                    && let MessageKind::Tool(t) = &mut m.kind
+                {
+                    t.status = status;
+                }
+            },
+            AgentEvent::Diff { path, added, removed, hunks } => {
+                chat.messages.push(ChatMessage {
+                    role: Role::Assistant,
+                    kind: MessageKind::Diff(crate::model::DiffCard { path, added, removed, hunks, expanded: false, applied: None }),
+                    rating: None,
+                    at: SystemTime::now(),
+                });
+                self.scroller.update(cx, |s, cx| s.append(1, cx));
+            },
+            AgentEvent::Done => {},
+            AgentEvent::Error(msg) => {
+                chat.messages.push(ChatMessage {
+                    role: Role::Assistant,
+                    kind: MessageKind::Text(format!("**Error:** {msg}").into()),
+                    rating: None,
+                    at: SystemTime::now(),
+                });
+                self.scroller.update(cx, |s, cx| s.append(1, cx));
+            },
+        }
+        cx.notify();
+    }
+
+    /// Mark the reply finished.
+    pub(crate) fn finish_reply(&mut self, chat_ix: usize, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[chat_ix];
+        chat.running = false;
+        chat.failed_flag = false;
+        chat.started_at = None;
+        if chat_ix != self.active {
+            chat.unread = true;
+        }
+        self.scroller.update(cx, |s, cx| s.remeasure(cx));
+        cx.notify();
+    }
+}
+
+/// Drain the backend event stream into `tx` on a blocking thread.
+fn pump_stream(stream: crate::backend::ReplyStream, tx: std::sync::mpsc::Sender<AgentEvent>) {
+    use futures::StreamExt;
+    let stream = stream.events;
+    futures::executor::block_on(async move {
+        let mut stream = std::pin::pin!(stream);
+        while let Some(e) = stream.next().await {
+            if tx.send(e).is_err() {
+                break;
+            }
+        }
+    });
+}

@@ -1,7 +1,9 @@
 mod backend;
+mod backend_run;
 mod chat_ops;
 mod model;
 mod palette;
+mod send;
 mod simulate;
 
 mod persist;
