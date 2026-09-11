@@ -1,6 +1,6 @@
 use std::time::{Instant, SystemTime};
 
-use gpui_kit::SharedString;
+use gpui_kit::{SharedString, Task};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ToolStatus {
@@ -76,9 +76,9 @@ pub enum AgentStatus {
     Running,
     Done,
     Failed,
+    Cancelled,
 }
 
-#[derive(Clone)]
 pub struct Agent {
     pub name: SharedString,
     pub lane: SharedString,
@@ -87,6 +87,7 @@ pub struct Agent {
     pub steps_done: usize,
     pub steps_total: usize,
     pub elapsed_secs: u64,
+    pub task: Option<Task<()>>,
 }
 
 impl Agent {
@@ -99,6 +100,7 @@ impl Agent {
             steps_done: 0,
             steps_total,
             elapsed_secs: 0,
+            task: None,
         }
     }
 }

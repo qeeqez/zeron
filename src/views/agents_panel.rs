@@ -9,7 +9,7 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     pub fn render_agents_panel(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let cards = self.agents.iter().map(|a| agent_card(a, cx)).collect::<Vec<_>>();
+        let cards = self.agents.iter().enumerate().map(|(ix, a)| agent_card(ix, a, cx)).collect::<Vec<_>>();
 
         div()
             .w(px(280.))
@@ -47,11 +47,12 @@ impl Workspace {
     }
 }
 
-fn agent_card(agent: &Agent, cx: &mut App) -> AnyElement {
+fn agent_card(ix: usize, agent: &Agent, cx: &mut Context<Workspace>) -> AnyElement {
     let (icon, color) = match agent.status {
         AgentStatus::Running => (IconName::LoaderCircle, cx.theme().info),
         AgentStatus::Done => (IconName::CircleCheck, cx.theme().success),
         AgentStatus::Failed => (IconName::CircleX, cx.theme().danger),
+        AgentStatus::Cancelled => (IconName::CircleMinus, cx.theme().muted_foreground),
     };
     div()
         .flex()
@@ -71,7 +72,17 @@ fn agent_card(agent: &Agent, cx: &mut App) -> AnyElement {
                 .child(div().text_color(color).child(icon))
                 .child(agent.name.clone())
                 .child(div().flex_1())
-                .child(div().text_xs().text_color(cx.theme().muted_foreground).child(format!("{}s", agent.elapsed_secs))),
+                .child(div().text_xs().text_color(cx.theme().muted_foreground).child(format!("{}s", agent.elapsed_secs)))
+                .when(agent.status == AgentStatus::Running, |d| {
+                    d.child(
+                        div()
+                            .id(("cancel-agent", ix))
+                            .cursor_pointer()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(IconName::CircleX)
+                            .on_click(cx.listener(move |this, _, _, cx| this.cancel_agent(ix, cx))),
+                    )
+                }),
         )
         .child(
             div()

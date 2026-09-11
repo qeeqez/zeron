@@ -64,13 +64,13 @@ impl Workspace {
         self.agents.push(Agent::new(name, lane, steps_total));
         let ix = self.agents.len() - 1;
         cx.notify();
-        cx.spawn(async move |this, cx| {
+        let task = cx.spawn(async move |this, cx| {
             for step in 1..=steps_total {
                 cx.background_executor().timer(Duration::from_millis(700)).await;
                 let _ = this.update(cx, |this, cx| this.advance_agent(ix, step, cx));
             }
-        })
-        .detach();
+        });
+        self.agents[ix].task = Some(task);
     }
 
     fn advance_agent(&mut self, ix: usize, step: usize, cx: &mut Context<Self>) {

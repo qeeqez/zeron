@@ -133,7 +133,12 @@ fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, pinned: bool, menu: PopupMen
     .item(PopupMenuItem::new("Rename").icon(IconName::Pencil).on_click(move |_, window, cx| {
         ws_rename.update(cx, |this, cx| this.open_rename(ix, window, cx));
     }))
-    .separator()
+    .item(PopupMenuItem::new("Export").icon(IconName::Share).on_click({
+        let ws = ws.clone();
+        move |_, _, cx| {
+            ws.update(cx, |this, cx| this.export_chat(ix, cx));
+        }
+    }))
     .item(PopupMenuItem::new("Delete").icon(IconName::Delete).on_click({
         let ws = ws.clone();
         move |_, _, cx| {

@@ -2,11 +2,10 @@ use std::time::Duration;
 
 use gpui_kit::component::command::CommandState;
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
-
 use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::*;
 
-use crate::model::{Agent, Chat, ChatMessage, MessageKind, Role};
+use crate::model::{Agent, AgentStatus, Chat, ChatMessage, MessageKind, Role};
 use crate::simulate::simulate_reply;
 
 pub struct Workspace {
@@ -228,5 +227,37 @@ impl Workspace {
             MessageKind::Diff(d) => format!("{} (+{} -{})\n{}", d.path, d.added, d.removed, d.hunks),
         };
         cx.write_to_clipboard(ClipboardItem::new_string(text));
+    }
+
+    pub fn cancel_agent(&mut self, ix: usize, cx: &mut Context<Self>) {
+        let Some(agent) = self.agents.get_mut(ix) else { return };
+        if agent.status != AgentStatus::Running {
+            return;
+        }
+        if let Some(task) = agent.task.take() {
+            drop(task); // non-detached Task cancels on drop
+        }
+        agent.status = AgentStatus::Cancelled;
+        agent.step = "cancelled".into();
+        cx.notify();
+    }
+
+    /// Export chat `ix` as markdown to the clipboard.
+    pub fn export_chat(&self, ix: usize, cx: &mut Context<Self>) {
+        let Some(chat) = self.chats.get(ix) else { return };
+        let mut out = format!("# {}\n\n", chat.title);
+        for msg in &chat.messages {
+            let role = match msg.role {
+                Role::User => "User",
+                Role::Assistant => "Assistant",
+            };
+            let body = match &msg.kind {
+                MessageKind::Text(t) => t.to_string(),
+                MessageKind::Tool(t) => format!("`{} {}`\n```\n{}\n```", t.name, t.detail, t.output),
+                MessageKind::Diff(d) => format!("`{}` +{} -{}\n```diff\n{}\n```", d.path, d.added, d.removed, d.hunks),
+            };
+            out.push_str(&format!("## {role}\n\n{body}\n\n"));
+        }
+        cx.write_to_clipboard(ClipboardItem::new_string(out));
     }
 }
