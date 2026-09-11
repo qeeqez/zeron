@@ -188,14 +188,40 @@ fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, pinned: bool, menu: PopupMen
 }
 
 pub fn settings_body() -> impl IntoElement {
-    div().flex().flex_col().gap_2().p_4().child(div().text_sm().child("Theme")).child(
-        div()
-            .flex()
-            .gap_2()
-            .child(theme_button("Light", ThemeMode::Light))
-            .child(theme_button("Dark", ThemeMode::Dark)),
-    )
+    div()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .p_4()
+        .child(div().text_sm().child("Theme"))
+        .child(
+            div()
+                .flex()
+                .gap_2()
+                .child(theme_button("Light", ThemeMode::Light))
+                .child(theme_button("Dark", ThemeMode::Dark)),
+        )
+        .child(div().text_sm().pt_2().child("Shortcuts"))
+        .child(div().flex().flex_col().gap_1().text_xs().children(SHORTCUTS.iter().map(|(key, desc)| {
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(div().w(px(140.)).child(*key))
+                .child(div().text_color(hsla(0.0, 0.0, 0.55, 1.0)).child(*desc))
+        })))
 }
+
+const SHORTCUTS: [(&str, &str); 8] = [
+    ("Cmd+N", "New chat"),
+    ("Cmd+B", "Toggle sidebar"),
+    ("Cmd+J", "Toggle agents panel"),
+    ("Cmd+K", "Command palette"),
+    ("Cmd+W", "Close window"),
+    ("Cmd+,", "Settings"),
+    ("Cmd+Shift+Backspace", "Delete chat"),
+    ("Cmd+1..9", "Switch to chat N"),
+];
 
 fn theme_button(label: &'static str, mode: ThemeMode) -> impl IntoElement {
     Button::new(SharedString::from(label)).outline().label(label).on_click(move |_, _, cx| {

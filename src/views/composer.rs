@@ -104,6 +104,12 @@ impl Workspace {
                             div()
                                 .text_xs()
                                 .text_color(cx.theme().muted_foreground)
+                                .child(format!("~{} tok", self.token_estimate())),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
                                 .child(format!("{} chars", self.composer.read(cx).value().len())),
                         ),
                 ),
