@@ -18,6 +18,7 @@ impl Workspace {
         let empty = chat.messages.is_empty();
         let messages: Rc<Vec<ChatMessage>> = Rc::new(chat.messages.clone());
         let running = chat.running;
+        let failed = chat.failed_flag;
         let title = chat.title.clone();
         let ws = cx.entity();
         let ws_empty = cx.entity();
@@ -25,13 +26,15 @@ impl Workspace {
 
         let running_agents = self.running_agents();
         let panel_open = self.agents_panel_open;
-
         let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, _window, cx| {
             messages
                 .get(ix)
                 .map(|msg| render_message(ix, msg, &ws, cx))
                 .unwrap_or_else(|| div().into_any_element())
-        });
+        })
+        .jump_button(true)
+        .with_jump_button_label("Jump to latest");
+
         let header = div()
             .flex()
             .items_center()
@@ -87,6 +90,24 @@ impl Workspace {
                         .text_color(cx.theme().muted_foreground)
                         .child(IconName::LoaderCircle)
                         .child(format!("Working… {elapsed}s")),
+                )
+            })
+            .when(failed && !running, |d| {
+                let ws_retry = ws_empty.clone();
+                d.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .px_4()
+                        .py_1()
+                        .text_xs()
+                        .text_color(cx.theme().danger)
+                        .child(IconName::TriangleAlert)
+                        .child("Reply failed")
+                        .child(div().id("retry-failed").cursor_pointer().underline().child("Retry").on_click(move |_, _, cx| {
+                            ws_retry.update(cx, |this, cx| this.retry_last(cx));
+                        })),
                 )
             })
             .child(self.render_composer(cx))
