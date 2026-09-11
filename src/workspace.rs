@@ -41,11 +41,10 @@ impl Workspace {
             }
         })
         .detach();
-
-        cx.subscribe_in(&composer, window, |this, _composer, event: &InputEvent, window, cx| {
-            if matches!(event, InputEvent::PressEnter { shift: false, .. }) {
-                this.send(window, cx);
-            }
+        cx.subscribe_in(&composer, window, |this, _composer, event: &InputEvent, window, cx| match event {
+            InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
+            InputEvent::Change => cx.notify(),
+            _ => {},
         })
         .detach();
 

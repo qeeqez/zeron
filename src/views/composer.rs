@@ -68,7 +68,21 @@ impl Workspace {
                         .child(div().flex_1().child(Textarea::new(&self.composer).appearance(false)))
                         .child(send_button),
                 )
-                .child(div().flex().items_center().gap_2().child(model_picker).child(mode_picker)),
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(model_picker)
+                        .child(mode_picker)
+                        .child(div().flex_1())
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(format!("{} chars", self.composer.read(cx).value().len())),
+                        ),
+                ),
         )
     }
 }

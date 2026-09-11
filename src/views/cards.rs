@@ -151,11 +151,18 @@ fn diff_actions(ix: usize, ws: &Entity<Workspace>, cx: &mut App) -> Div {
         )
 }
 
-pub fn message_footer(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> Div {
+pub struct MsgCtx {
+    pub ix: usize,
+    pub is_last: bool,
+}
+
+pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> Div {
+    let MsgCtx { ix, is_last } = mc;
     let role = msg.role;
     let rating = msg.rating;
     let ws_copy = ws.clone();
     let ws_retry = ws.clone();
+    let ws_regen = ws.clone();
     let ws_up = ws.clone();
     let ws_down = ws.clone();
     let muted = hsla(0.0, 0.0, 0.55, 1.0);
@@ -184,6 +191,13 @@ pub fn message_footer(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, cx: 
                         ws_retry.update(cx, |this, cx| this.retry_last(cx));
                     }),
             )
+            .when(is_last, |d| {
+                d.child(div().id(("regen", ix)).cursor_pointer().text_xs().text_color(muted).child("Regenerate").on_click(
+                    move |_, _, cx| {
+                        ws_regen.update(cx, |this, cx| this.retry_last(cx));
+                    },
+                ))
+            })
             .child(
                 div()
                     .id(("up", ix))

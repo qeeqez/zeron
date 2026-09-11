@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use crate::model::{ChatMessage, MessageKind, Role};
+use crate::views::cards::{MsgCtx, message_footer, render_diff, render_tool_call};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
@@ -10,8 +12,6 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::model::{ChatMessage, MessageKind, Role};
-use crate::views::cards::{message_footer, render_diff, render_tool_call};
 use crate::workspace::Workspace;
 
 impl Workspace {
@@ -29,10 +29,12 @@ impl Workspace {
 
         let running_agents = self.running_agents();
         let panel_open = self.agents_panel_open;
+
+        let msg_count = messages.len();
         let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, _window, cx| {
             messages
                 .get(ix)
-                .map(|msg| render_message(ix, msg, &ws, cx))
+                .map(|msg| render_message(MsgCtx { ix, is_last: ix == msg_count - 1 }, msg, &ws, cx))
                 .unwrap_or_else(|| div().into_any_element())
         })
         .jump_button(true)
@@ -127,9 +129,10 @@ impl Workspace {
     }
 }
 
-fn render_message(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {
+fn render_message(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {
+    let MsgCtx { ix, .. } = mc;
     match &msg.kind {
-        MessageKind::Text(_) => render_text(ix, msg, ws, cx),
+        MessageKind::Text(_) => render_text(mc, msg, ws, cx),
         MessageKind::Tool(tool) => render_tool_call(ix, tool, ws.clone(), cx).into_any_element(),
         MessageKind::Diff(diff) => render_diff(ix, diff, ws.clone(), cx).into_any_element(),
     }
@@ -177,7 +180,8 @@ fn render_empty_state(ws: Entity<Workspace>, cx: &mut App) -> impl IntoElement {
         })))
 }
 
-fn render_text(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {
+fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {
+    let MsgCtx { ix, .. } = mc;
     let MessageKind::Text(text) = &msg.kind else { unreachable!() };
     let role = msg.role;
     let alignment = match role {
@@ -212,6 +216,6 @@ fn render_text(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut Ap
             ),
         );
     }
-    message = message.footer(MessageFooter::new().child(message_footer(ix, msg, ws, cx)));
+    message = message.footer(MessageFooter::new().child(message_footer(mc, msg, ws, cx)));
     message.into_any_element()
 }
