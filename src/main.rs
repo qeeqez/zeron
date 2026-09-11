@@ -1,40 +1,44 @@
-use gpui::{App, Bounds, Context, SharedString, Window, WindowBounds, WindowOptions, div, prelude::*, px, rgb, size};
-use gpui_platform::application;
+use gpui_kit::component::Root;
+use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::prelude::*;
+use gpui_kit::*;
 
-struct HelloWorld {
-    text: SharedString,
+struct Counter {
+    count: i32,
 }
 
-impl Render for HelloWorld {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+impl Render for Counter {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
             .gap_3()
-            .bg(rgb(0x505050))
-            .size(px(500.0))
+            .size_full()
             .justify_center()
             .items_center()
-            .shadow_lg()
-            .border_1()
-            .border_color(rgb(0x0000ff))
             .text_xl()
-            .text_color(rgb(0xffffff))
-            .child(format!("Hello, {}!", self.text))
+            .child(format!("Count: {}", self.count))
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .child(Button::new("decrement").label("-").on_click(cx.listener(|this, _, _, _| this.count -= 1)))
+                    .child(Button::new("increment").primary().label("+").on_click(cx.listener(|this, _, _, _| this.count += 1)))
+                    .child(Button::new("reset").danger().label("Reset").on_click(cx.listener(|this, _, _, _| this.count = 0))),
+            )
     }
 }
 
 fn main() {
-    application().run(|cx: &mut App| {
-        let bounds = Bounds::centered(None, size(px(500.), px(500.0)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                ..Default::default()
-            },
-            |_, cx| cx.new(|_| HelloWorld { text: "World".into() }),
-        )
-        .unwrap();
-        cx.activate(true);
+    gpui_kit::application().run(|cx| {
+        gpui_kit::init(cx);
+        cx.spawn(async move |cx| {
+            cx.open_window(WindowOptions::default(), |window, cx| {
+                let view = cx.new(|_| Counter { count: 0 });
+                cx.new(|cx| Root::new(view, window, cx))
+            })
+            .expect("failed to open window");
+        })
+        .detach();
     });
 }

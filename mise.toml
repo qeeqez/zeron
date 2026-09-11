@@ -15,24 +15,7 @@ description = "Set up the local development environment"
 run = [
   "lefthook install",
   "cargo fetch --locked",
-  { task = "fix:gpui-apple" },
 ]
-
-[tasks."fix:gpui-apple"]
-description = "Work around gpui-apple build script expecting ../gpui-unofficial sibling dir (upstream packaging bug)"
-run = '''
-cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-gpui_version=$(awk '/name = "gpui-unofficial"/{getline; gsub(/"/, "", $3); print $3; exit}' Cargo.lock)
-[ -n "$gpui_version" ] || exit 0
-for index_dir in "$cargo_home"/registry/src/*/; do
-  target="$index_dir/gpui-unofficial-$gpui_version"
-  if [ ! -d "$target" ]; then
-    crate=$(find "$cargo_home"/registry/cache -name "gpui-unofficial-$gpui_version.crate" | head -1)
-    [ -n "$crate" ] && tar -xzf "$crate" -C "$index_dir"
-  fi
-  [ -d "$target" ] && ln -sfn "gpui-unofficial-$gpui_version" "$index_dir/gpui-unofficial"
-done
-'''
 
 [tasks.fmt]
 description = "Format the whole project"
@@ -53,10 +36,7 @@ run = "sloc-guard check"
 
 [tasks.build]
 description = "Build the project"
-run = [
-  { task = "fix:gpui-apple" },
-  "cargo build --locked",
-]
+run = "cargo build --locked"
 
 [tasks.test]
 description = "Run tests"
