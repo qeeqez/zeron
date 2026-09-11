@@ -2,14 +2,14 @@ use std::time::{Instant, SystemTime};
 
 use gpui_kit::{SharedString, Task};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ToolStatus {
     Running,
     Done,
     Failed,
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolCall {
     pub name: SharedString,
     pub detail: SharedString,
@@ -17,7 +17,8 @@ pub struct ToolCall {
     pub status: ToolStatus,
     pub expanded: bool,
 }
-#[derive(Clone)]
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct DiffCard {
     pub path: SharedString,
     pub added: usize,
@@ -27,14 +28,14 @@ pub struct DiffCard {
     pub applied: Option<bool>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum MessageKind {
     Text(SharedString),
     Tool(ToolCall),
     Diff(DiffCard),
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChatMessage {
     pub role: Role,
     pub kind: MessageKind,
@@ -42,7 +43,7 @@ pub struct ChatMessage {
     pub at: SystemTime,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Role {
     User,
     Assistant,

@@ -1,0 +1,67 @@
+use std::fs;
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
+
+use crate::model::{Chat, ChatMessage};
+
+#[derive(Serialize, Deserialize)]
+struct StoredChat {
+    title: String,
+    messages: Vec<ChatMessage>,
+    pinned: bool,
+    archived: bool,
+    draft: String,
+}
+
+fn chats_dir() -> PathBuf {
+    dirs_home().join(".rixl/rixlcode/chats")
+}
+
+fn dirs_home() -> PathBuf {
+    std::env::var("HOME").map_or_else(|_| PathBuf::from("/tmp"), PathBuf::from)
+}
+
+/// Save all chats to disk (atomic tmp+rename per file).
+pub fn save_chats(chats: &[Chat]) {
+    let dir = chats_dir();
+    let _ = fs::create_dir_all(&dir);
+    for (ix, chat) in chats.iter().enumerate() {
+        let stored = StoredChat {
+            title: chat.title.to_string(),
+            messages: chat.messages.clone(),
+            pinned: chat.pinned,
+            archived: chat.archived,
+            draft: chat.draft.clone(),
+        };
+        let tmp = dir.join(format!("{ix}.json.tmp"));
+        let dst = dir.join(format!("{ix}.json"));
+        if let Ok(json) = serde_json::to_string_pretty(&stored) {
+            let _ = fs::write(&tmp, json);
+            let _ = fs::rename(&tmp, &dst);
+        }
+    }
+}
+
+/// Load chats from disk; returns empty vec on any error.
+pub fn load_chats() -> Vec<Chat> {
+    let dir = chats_dir();
+    let Ok(entries) = fs::read_dir(&dir) else { return Vec::new() };
+    let mut chats: Vec<Chat> = entries
+        .filter_map(|e| {
+            let path = e.ok()?.path();
+            if path.extension()?.to_str()? != "json" {
+                return None;
+            }
+            let stored: StoredChat = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+            let mut chat = Chat::new(stored.title);
+            chat.messages = stored.messages;
+            chat.pinned = stored.pinned;
+            chat.archived = stored.archived;
+            chat.draft = stored.draft;
+            Some(chat)
+        })
+        .collect();
+    chats.sort_by_key(|c| c.created_at);
+    chats
+}

@@ -2,6 +2,8 @@ mod chat_ops;
 mod model;
 mod palette;
 mod simulate;
+
+mod persist;
 mod views;
 mod workspace;
 

@@ -78,9 +78,18 @@ impl Workspace {
             chat_search,
             chat_search_open: false,
         };
-        this.new_chat(cx);
+        let loaded = crate::persist::load_chats();
+        if loaded.is_empty() {
+            this.new_chat(cx);
+        } else {
+            this.chats = loaded;
+        }
         this.start_ticker(cx);
         this
+    }
+
+    fn save(&self) {
+        crate::persist::save_chats(&self.chats);
     }
 
     /// Re-render once a second while any chat is running so the elapsed
@@ -108,6 +117,7 @@ impl Workspace {
             s.reset(0, cx);
         });
         cx.notify();
+        self.save();
     }
 
     pub fn select_chat(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -127,6 +137,7 @@ impl Workspace {
             s.reset(count, cx);
         });
         cx.notify();
+        self.save();
     }
 
     pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -149,6 +160,7 @@ impl Workspace {
             chat.pinned = !chat.pinned;
         }
         cx.notify();
+        self.save();
     }
 
     pub fn delete_chat(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -166,6 +178,7 @@ impl Workspace {
             s.reset(count, cx);
         });
         cx.notify();
+        self.save();
     }
 
     pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
@@ -210,6 +223,7 @@ impl Workspace {
             s.append(1, cx);
         });
         cx.notify();
+        self.save();
         simulate_reply(self, cx);
     }
 
