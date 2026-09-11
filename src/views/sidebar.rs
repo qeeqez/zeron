@@ -34,7 +34,25 @@ impl Workspace {
                             .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
                     ),
             )
-            .child(Input::new(&self.search).prefix(IconName::Search).appearance(true));
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().flex_1().child(Input::new(&self.search).prefix(IconName::Search).appearance(true)))
+                    .when(!self.search.read(cx).value().is_empty(), |d| {
+                        d.child(
+                            div()
+                                .id("search-clear")
+                                .cursor_pointer()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(IconName::X)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.search.update(cx, |s, cx| s.set_value("", window, cx));
+                                })),
+                        )
+                    }),
+            );
 
         let new_chat = SidebarMenuItem::new("New chat")
             .icon(IconName::Plus)

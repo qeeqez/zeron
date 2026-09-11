@@ -73,11 +73,15 @@ impl Workspace {
             .child(Button::new("chat-menu").ghost().icon(IconName::Ellipsis).dropdown_menu(move |menu, _window, _cx| {
                 let ws_rename = ws_menu.clone();
                 let ws_export = ws_menu.clone();
+                let ws_copy = ws_menu.clone();
                 menu.item(PopupMenuItem::new("Rename").icon(IconName::Pencil).on_click(move |_, window, cx| {
                     ws_rename.update(cx, |this, cx| this.rename_active(window, cx));
                 }))
                 .item(PopupMenuItem::new("Export").icon(IconName::Share).on_click(move |_, _, cx| {
                     ws_export.update(cx, |this, cx| this.export_active(cx));
+                }))
+                .item(PopupMenuItem::new("Copy transcript").icon(IconName::Copy).on_click(move |_, _, cx| {
+                    ws_copy.update(cx, |this, cx| this.copy_transcript(cx));
                 }))
             }));
 

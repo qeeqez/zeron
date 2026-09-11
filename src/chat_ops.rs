@@ -148,3 +148,20 @@ impl Workspace {
         self.export_chat(ix, cx);
     }
 }
+
+impl Workspace {
+    /// Copy the active chat's text messages to the clipboard.
+    pub fn copy_transcript(&mut self, cx: &mut Context<Self>) {
+        let chat = &self.chats[self.active];
+        let text = chat
+            .messages
+            .iter()
+            .filter_map(|m| match &m.kind {
+                MessageKind::Text(t) => Some(format!("{}: {}", if m.role == Role::User { "You" } else { "Rixl" }, t)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+    }
+}
