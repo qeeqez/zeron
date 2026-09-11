@@ -125,9 +125,13 @@ fn chat_row(chat: &crate::model::Chat, ix: usize, active: usize, cx: &mut Contex
 
 fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, pinned: bool, menu: PopupMenu) -> PopupMenu {
     let ws_pin = ws.clone();
+    let ws_rename = ws.clone();
     let pin_label = if pinned { "Unpin" } else { "Pin" };
     menu.item(PopupMenuItem::new(pin_label).icon(IconName::Star).on_click(move |_, _, cx| {
         ws_pin.update(cx, |this, cx| this.toggle_pin(ix, cx));
+    }))
+    .item(PopupMenuItem::new("Rename").icon(IconName::Pencil).on_click(move |_, window, cx| {
+        ws_rename.update(cx, |this, cx| this.open_rename(ix, window, cx));
     }))
     .separator()
     .item(PopupMenuItem::new("Delete").icon(IconName::Delete).on_click({

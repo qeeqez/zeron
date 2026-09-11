@@ -1,6 +1,8 @@
 use std::time::Duration;
 
+use gpui_kit::component::command::CommandState;
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
+
 use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::*;
 
@@ -18,6 +20,9 @@ pub struct Workspace {
     pub scroller: Entity<MessageScrollerState>,
     pub model: SharedString,
     pub mode: SharedString,
+    pub palette: Entity<CommandState>,
+    pub rename: Entity<InputState>,
+    pub renaming: Option<usize>,
 }
 
 impl Workspace {
@@ -45,6 +50,8 @@ impl Workspace {
         })
         .detach();
 
+        let palette = cx.new(|cx| CommandState::new(window, cx));
+        let rename = cx.new(|cx| InputState::new(window, cx).placeholder("Chat title"));
         let mut this = Self {
             chats: Vec::new(),
             active: 0,
@@ -56,6 +63,9 @@ impl Workspace {
             scroller,
             model: "gpt-5-codex".into(),
             mode: "Agent".into(),
+            palette,
+            rename,
+            renaming: None,
         };
         this.new_chat(cx);
         this.start_ticker(cx);

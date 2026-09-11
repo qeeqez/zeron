@@ -1,22 +1,25 @@
 mod model;
+mod palette;
 mod simulate;
 mod views;
 mod workspace;
 
 use gpui_kit::component::Root;
 use gpui_kit::component::status_bar::StatusBar;
-use gpui_kit::component::theme::ActiveTheme;
+
+use gpui_kit::component::theme::{ActiveTheme, Theme, ThemeMode};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use workspace::Workspace;
 
-actions!(workspace, [NewChat, ToggleSidebar, ToggleAgents]);
+actions!(workspace, [NewChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark]);
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ws_new = cx.entity();
         let ws_side = cx.entity();
         let ws_agents = cx.entity();
+        let ws_palette = cx.entity();
         div()
             .key_context("workspace")
             .on_action(move |_: &NewChat, _, cx| {
@@ -27,6 +30,15 @@ impl Render for Workspace {
             })
             .on_action(move |_: &ToggleAgents, _, cx| {
                 ws_agents.update(cx, |this, cx| this.toggle_agents_panel(cx));
+            })
+            .on_action(move |_: &OpenPalette, window, cx| {
+                ws_palette.update(cx, |this, cx| this.open_palette(window, cx));
+            })
+            .on_action(move |_: &ThemeLight, window, cx| {
+                Theme::change(ThemeMode::Light, Some(window), cx);
+            })
+            .on_action(move |_: &ThemeDark, window, cx| {
+                Theme::change(ThemeMode::Dark, Some(window), cx);
             })
             .flex()
             .flex_col()
@@ -55,6 +67,7 @@ fn main() {
             KeyBinding::new("cmd-n", NewChat, Some("workspace")),
             KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
             KeyBinding::new("cmd-j", ToggleAgents, Some("workspace")),
+            KeyBinding::new("cmd-k", OpenPalette, Some("workspace")),
         ]);
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
