@@ -11,6 +11,7 @@ use crate::workspace::Workspace;
 
 const MODELS: [&str; 3] = ["gpt-5-codex", "gpt-5", "gpt-5-mini"];
 const MODES: [&str; 3] = ["Agent", "Plan", "Ask"];
+const SLASH_COMMANDS: [&str; 6] = ["clear", "compact", "export", "help", "model", "rename"];
 
 struct PickerSpec {
     id: &'static str,
@@ -52,6 +53,14 @@ impl Workspace {
             ws: ws.clone(),
             set: |this, v| this.mode = v.into(),
         });
+        let composer_text = self.composer.read(cx).value().to_string();
+        let slash_open = composer_text.starts_with('/');
+        let slash_query = composer_text.trim_start_matches('/').to_lowercase();
+        let slash_items: Vec<AnyElement> = SLASH_COMMANDS
+            .iter()
+            .filter(|c| slash_query.is_empty() || c.to_lowercase().contains(&slash_query))
+            .map(|cmd| slash_item(cmd, &ws, cx).into_any_element())
+            .collect();
 
         div().p_3().border_t_1().border_color(cx.theme().border).child(
             div()
@@ -63,6 +72,18 @@ impl Workspace {
                 .border_1()
                 .border_color(cx.theme().border)
                 .bg(cx.theme().input)
+                .when(slash_open && !slash_items.is_empty(), |d| {
+                    d.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_0p5()
+                            .pb_1()
+                            .border_b_1()
+                            .border_color(cx.theme().border)
+                            .children(slash_items),
+                    )
+                })
                 .child(
                     div()
                         .flex()
@@ -107,9 +128,34 @@ fn picker(spec: PickerSpec) -> impl IntoElement {
         })
 }
 
+fn apply_slash(ws: &Entity<Workspace>, cmd: &str, window: &mut Window, cx: &mut App) {
+    ws.update(cx, |this, cx| {
+        this.composer.update(cx, |s, cx| {
+            s.set_value(format!("/{cmd} "), window, cx);
+        });
+    });
+}
+
 fn apply_pick(ws: &Entity<Workspace>, set: fn(&mut Workspace, &'static str), opt: &'static str, cx: &mut App) {
     ws.update(cx, |this, cx| {
         set(this, opt);
         cx.notify();
     });
+}
+
+fn slash_item(cmd: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
+    let ws = ws.clone();
+    let cmd_str = cmd.to_string();
+    div()
+        .id(SharedString::from(format!("slash-{cmd}")))
+        .cursor_pointer()
+        .px_2()
+        .py_1()
+        .rounded_md()
+        .text_sm()
+        .hover(|d| d.bg(cx.theme().accent))
+        .child(format!("/{cmd}"))
+        .on_click(move |_, window, cx| {
+            apply_slash(&ws, &cmd_str, window, cx);
+        })
 }
