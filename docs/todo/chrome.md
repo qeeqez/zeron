@@ -8,8 +8,8 @@
 
 ## Todo
 
-- [ ] Custom title bar: traffic-light-safe, chat title, window controls
-- [ ] Toast notifications on agent completion (gpui-component notification)
-- [ ] Global shortcuts: Cmd+W close, Cmd+, settings
+- [x] Custom title bar: traffic-light-safe, chat title, window controls
+- [x] Toast notifications on agent completion (gpui-component notification)
+- [x] Global shortcuts: Cmd+W close, Cmd+, settings
 - [ ] macOS native menu bar (native_menu component)
 - [ ] Window min size + sensible default size

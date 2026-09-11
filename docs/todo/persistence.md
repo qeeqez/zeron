@@ -8,9 +8,9 @@ Chat history on disk.
 
 ## Todo
 
-- [ ] Store chats as JSON under `~/.rixl/rixlcode/chats/<id>.json`
-- [ ] Load history into sidebar on launch
-- [ ] Resume chat restores messages + composer draft
-- [ ] Atomic writes (tmp + rename)
-- [ ] Retention/archive policy
-- [ ] Migration versioning on the file format
+- [x] Store chats as JSON under `~/.rixl/rixlcode/chats/<id>.json`
+- [x] Load history into sidebar on launch
+- [x] Resume chat restores messages + composer draft
+- [x] Atomic writes (tmp + rename)
+- [x] Retention/archive policy
+- [x] Migration versioning on the file format

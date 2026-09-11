@@ -7,8 +7,8 @@
 
 ## Todo
 
-- [ ] Theme: system option
-- [ ] Model defaults, reasoning effort default
-- [ ] Notification toggles
-- [ ] Keyboard shortcut reference pane
-- [ ] Persist settings to `~/.rixl/rixlcode/settings.json`
+- [x] Theme: system option
+- [x] Model defaults, reasoning effort default
+- [x] Notification toggles
+- [x] Keyboard shortcut reference pane
+- [x] Persist settings to `~/.rixl/rixlcode/settings.json`

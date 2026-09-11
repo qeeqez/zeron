@@ -24,5 +24,5 @@ Main conversation surface.
 ## Todo
 
 - [ ] Code blocks with syntax highlight + copy button
-- [ ] Word-wrap toggle for long lines
+- [x] Word-wrap toggle for long lines
 - [ ] Message search within chat
