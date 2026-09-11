@@ -62,6 +62,7 @@ fn cancel_rename(ws: &Entity<Workspace>, cx: &mut App) -> bool {
 fn palette_items() -> Vec<CommandItem> {
     vec![
         CommandItem::new().label("New Chat").action(Box::new(crate::NewChat)),
+        CommandItem::new().label("Delete Chat").action(Box::new(crate::DeleteChat)),
         CommandItem::new().label("Toggle Sidebar").action(Box::new(crate::ToggleSidebar)),
         CommandItem::new().label("Toggle Agents Panel").action(Box::new(crate::ToggleAgents)),
         CommandItem::new().label("Switch to Light Theme").action(Box::new(crate::ThemeLight)),
