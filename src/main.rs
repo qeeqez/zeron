@@ -1,3 +1,4 @@
+mod backend;
 mod chat_ops;
 mod model;
 mod palette;

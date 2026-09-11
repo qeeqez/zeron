@@ -11,5 +11,5 @@
 - [x] Custom title bar: traffic-light-safe, chat title, window controls
 - [x] Toast notifications on agent completion (gpui-component notification)
 - [x] Global shortcuts: Cmd+W close, Cmd+, settings
-- [ ] macOS native menu bar (native_menu component)
+- [x] macOS native menu bar (native_menu component)
 - [x] Window min size + sensible default size

@@ -28,6 +28,9 @@ pub struct Workspace {
     pub notify_on_done: bool,
     pub word_wrap: bool,
     pub font_size: u8,
+
+    #[allow(dead_code)] // exercised once a real transport lands
+    pub backend: std::sync::Arc<dyn crate::backend::AgentBackend>,
 }
 
 impl Workspace {
@@ -85,6 +88,7 @@ impl Workspace {
             notify_on_done: settings.notify_on_done,
             word_wrap: settings.word_wrap,
             font_size: settings.font_size,
+            backend: std::sync::Arc::new(crate::backend::SimBackend),
         };
         let loaded = crate::persist::load_chats();
         if loaded.is_empty() {
