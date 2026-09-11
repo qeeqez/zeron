@@ -11,13 +11,25 @@ pub enum ToolStatus {
 pub struct ToolCall {
     pub name: SharedString,
     pub detail: SharedString,
+    pub output: SharedString,
     pub status: ToolStatus,
+    pub expanded: bool,
+}
+
+#[derive(Clone)]
+pub struct DiffCard {
+    pub path: SharedString,
+    pub added: usize,
+    pub removed: usize,
+    pub hunks: SharedString,
+    pub expanded: bool,
 }
 
 #[derive(Clone)]
 pub enum MessageKind {
     Text(SharedString),
     Tool(ToolCall),
+    Diff(DiffCard),
 }
 
 #[derive(Clone)]

@@ -4,12 +4,12 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::message::{Message, MessageAlignment, MessageContent, MessageHeader};
 use gpui_kit::component::message_scroller::MessageScroller;
 use gpui_kit::component::text::TextView;
-
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::model::{ChatMessage, MessageKind, Role, ToolCall, ToolStatus};
+use crate::model::{ChatMessage, MessageKind, Role};
+use crate::views::cards::{render_diff, render_tool_call};
 use crate::workspace::Workspace;
 
 impl Workspace {
@@ -18,11 +18,12 @@ impl Workspace {
         let empty = chat.messages.is_empty();
         let messages: Rc<Vec<ChatMessage>> = Rc::new(chat.messages.clone());
         let running = chat.running;
+        let ws = cx.entity();
 
-        let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, window, cx| {
+        let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, _window, cx| {
             messages
                 .get(ix)
-                .map(|msg| render_message(ix, msg, window, cx))
+                .map(|msg| render_message(ix, msg, &ws, cx))
                 .unwrap_or_else(|| div().into_any_element())
         });
 
@@ -55,10 +56,11 @@ impl Workspace {
     }
 }
 
-fn render_message(ix: usize, msg: &ChatMessage, _window: &mut Window, cx: &mut App) -> AnyElement {
+fn render_message(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {
     match &msg.kind {
         MessageKind::Text(text) => render_text(ix, msg.role, text, cx),
-        MessageKind::Tool(tool) => render_tool_call(tool, cx).into_any_element(),
+        MessageKind::Tool(tool) => render_tool_call(ix, tool, ws.clone(), cx).into_any_element(),
+        MessageKind::Diff(diff) => render_diff(ix, diff, ws.clone(), cx).into_any_element(),
     }
 }
 
@@ -124,27 +126,4 @@ fn render_text(ix: usize, role: Role, text: &SharedString, cx: &mut App) -> AnyE
         );
     }
     message.into_any_element()
-}
-
-fn render_tool_call(tool: &ToolCall, cx: &mut App) -> impl IntoElement {
-    let (icon, status_color) = match tool.status {
-        ToolStatus::Running => (IconName::LoaderCircle, cx.theme().info),
-        ToolStatus::Done => (IconName::CircleCheck, cx.theme().success),
-        ToolStatus::Failed => (IconName::CircleX, cx.theme().danger),
-    };
-    div()
-        .flex()
-        .items_center()
-        .gap_2()
-        .px_3()
-        .py_2()
-        .rounded_md()
-        .border_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().muted)
-        .text_sm()
-        .child(div().text_color(status_color).child(icon))
-        .child(IconName::SquareTerminal)
-        .child(tool.name.clone())
-        .child(div().text_color(cx.theme().muted_foreground).child(tool.detail.clone()))
 }

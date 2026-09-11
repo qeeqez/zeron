@@ -2,14 +2,17 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gpui_kit::*;
 
-use crate::model::{ChatMessage, MessageKind, Role, ToolCall, ToolStatus};
+use crate::model::{ChatMessage, DiffCard, MessageKind, Role, ToolCall, ToolStatus};
 use crate::workspace::Workspace;
 
 const REPLY_OK: &str = "Done. The build is **green** — `0 warnings`, all checks passed.\n\n- `cargo build --locked` finished in 3.6s\n- clippy: clean\n- nextest: 0 tests";
 const REPLY_FAIL: &str = "The command **failed** — see the tool output above.\n\n```\nerror[E0308]: mismatched types\n```";
+const TOOL_OUTPUT: &str =
+    "$ cargo build --locked\n   Compiling rixlcode v0.1.0\n    Finished `dev` profile [optimized + debuginfo] target(s) in 3.68s";
 
-/// Simulated agent reply: a tool call that runs, then a streamed text answer.
-/// Replaced by the real backend event stream later (docs/todo/backend.md).
+/// Simulated agent reply: a tool call that runs, a diff card, then a
+/// streamed text answer. Replaced by the real backend event stream later
+/// (docs/todo/backend.md).
 pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
     let chat_ix = this.active;
     this.chats[chat_ix].messages.push(ChatMessage {
@@ -17,7 +20,9 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
         kind: MessageKind::Tool(ToolCall {
             name: "shell".into(),
             detail: "cargo build --locked".into(),
+            output: "".into(),
             status: ToolStatus::Running,
+            expanded: false,
         }),
     });
     this.scroller.update(cx, |s, cx| {
@@ -50,10 +55,23 @@ impl Workspace {
             && let MessageKind::Tool(tool) = &mut last.kind
         {
             tool.status = if failed { ToolStatus::Failed } else { ToolStatus::Done };
+            tool.output = TOOL_OUTPUT.into();
+        }
+        if !failed {
+            chat.messages.push(ChatMessage {
+                role: Role::Assistant,
+                kind: MessageKind::Diff(DiffCard {
+                    path: "src/main.rs".into(),
+                    added: 24,
+                    removed: 6,
+                    hunks: "@@ -10,6 +10,24 @@\n fn main() {\n-    println!(\"old\");\n+    gpui_kit::application().run(|cx| {\n+        gpui_kit::init(cx);\n+    });\n }".into(),
+                    expanded: false,
+                }),
+            });
         }
         chat.messages.push(ChatMessage { role: Role::Assistant, kind: MessageKind::Text("".into()) });
         self.scroller.update(cx, |s, cx| {
-            s.append(1, cx);
+            s.append(if failed { 1 } else { 2 }, cx);
         });
         cx.notify();
     }
