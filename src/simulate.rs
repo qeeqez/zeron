@@ -52,7 +52,9 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
         let _ = this.update_in(cx, |this, window, cx| {
             this.finish_stream(chat_ix, cx);
             let title = this.chats[chat_ix].title.clone();
-            window.push_notification(Notification::success(format!("{title} — reply complete")), cx);
+            if this.notify_on_done {
+                window.push_notification(Notification::success(format!("{title} — reply complete")), cx);
+            }
         });
     });
     this.chats[chat_ix].reply_task = Some(task);

@@ -6,7 +6,6 @@ use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarMenuItem, SidebarToggleButton};
 
-use gpui_kit::component::WindowExt;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::theme::{ActiveTheme, Theme, ThemeMode};
 use gpui_kit::prelude::*;
@@ -95,28 +94,31 @@ impl Workspace {
 
         let actions = SidebarGroup::new("").child(new_chat);
 
-        let footer =
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(IconName::CircleUser)
-                .child("Local")
-                .child(div().flex_1())
-                .child(
-                    div()
-                        .id("clear-chats")
-                        .cursor_pointer()
-                        .child(IconName::Trash)
-                        .on_click(cx.listener(|this, _, _, cx| this.clear_all_chats(cx))),
-                )
-                .child(div().id("settings-btn").cursor_pointer().child(IconName::Settings).on_click(cx.listener(
-                    |_this, _, window, cx| {
-                        window.open_sheet(cx, |sheet, _window, _cx| sheet.title("Settings").child(settings_body()));
-                    },
-                )));
+        let footer = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .text_sm()
+            .text_color(cx.theme().muted_foreground)
+            .child(IconName::CircleUser)
+            .child("Local")
+            .child(div().flex_1())
+            .child(
+                div()
+                    .id("clear-chats")
+                    .cursor_pointer()
+                    .child(IconName::Trash)
+                    .on_click(cx.listener(|this, _, _, cx| this.clear_all_chats(cx))),
+            )
+            .child(
+                div()
+                    .id("settings-btn")
+                    .cursor_pointer()
+                    .child(IconName::Settings)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_settings(window, cx);
+                    })),
+            );
 
         div()
             .id("sidebar-wrap")
@@ -193,7 +195,7 @@ fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, pinned: bool, menu: PopupMen
     }))
 }
 
-pub fn settings_body() -> impl IntoElement {
+pub fn settings_body(notify: bool, ws: Entity<Workspace>, _cx: &mut App) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -206,6 +208,28 @@ pub fn settings_body() -> impl IntoElement {
                 .gap_2()
                 .child(theme_button("Light", ThemeMode::Light))
                 .child(theme_button("Dark", ThemeMode::Dark)),
+        )
+        .child(div().text_sm().pt_2().child("Notifications"))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .text_xs()
+                .child("Notify on reply complete")
+                .child(div().flex_1())
+                .child(
+                    div()
+                        .id("toggle-notify")
+                        .cursor_pointer()
+                        .child(if notify { IconName::Check } else { IconName::X })
+                        .on_click(move |_, _, cx| {
+                            ws.update(cx, |this, cx| {
+                                this.notify_on_done = !this.notify_on_done;
+                                cx.notify();
+                            });
+                        }),
+                ),
         )
         .child(div().text_sm().pt_2().child("Shortcuts"))
         .child(div().flex().flex_col().gap_1().text_xs().children(SHORTCUTS.iter().map(|(key, desc)| {

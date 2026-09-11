@@ -26,6 +26,7 @@ pub struct Workspace {
     pub renaming: Option<usize>,
     pub chat_search: Entity<InputState>,
     pub chat_search_open: bool,
+    pub notify_on_done: bool,
 }
 
 impl Workspace {
@@ -77,6 +78,7 @@ impl Workspace {
             renaming: None,
             chat_search,
             chat_search_open: false,
+            notify_on_done: true,
         };
         let loaded = crate::persist::load_chats();
         if loaded.is_empty() {
@@ -142,7 +144,11 @@ impl Workspace {
     }
 
     pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        window.open_sheet(cx, |sheet, _window, _cx| sheet.title("Settings").child(crate::views::settings_body()));
+        let ws = cx.entity();
+        window.open_sheet(cx, move |sheet, _window, cx| {
+            let notify = ws.read(cx).notify_on_done;
+            sheet.title("Settings").child(crate::views::settings_body(notify, ws.clone(), cx))
+        });
     }
 
     pub fn open_chat_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
