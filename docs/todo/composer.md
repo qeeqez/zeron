@@ -16,5 +16,5 @@ Bottom input area.
 - [x] Slash-command menu on `/` (filtered list)
 - [x] @-mention file picker
 - [x] Attachment chips (images/files) + attach button
-- [ ] Token/context usage meter
+- [x] Token/context usage meter
 - [x] Draft preserved per chat

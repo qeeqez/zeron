@@ -12,4 +12,4 @@
 - [x] Toast notifications on agent completion (gpui-component notification)
 - [x] Global shortcuts: Cmd+W close, Cmd+, settings
 - [ ] macOS native menu bar (native_menu component)
-- [ ] Window min size + sensible default size
+- [x] Window min size + sensible default size

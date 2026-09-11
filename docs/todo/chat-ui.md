@@ -23,6 +23,6 @@ Main conversation surface.
 
 ## Todo
 
-- [ ] Code blocks with syntax highlight + copy button
+- [x] Code blocks with syntax highlight + copy button
 - [x] Word-wrap toggle for long lines
 - [x] Message search within chat

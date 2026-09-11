@@ -20,7 +20,7 @@ actions!(
     workspace,
     [
         NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6,
-        Chat7, Chat8, Chat9, CloseWindow, OpenSettings, SearchChat
+        Chat7, Chat8, Chat9, CloseWindow, OpenSettings, SearchChat, QuitApp, CopyTranscript
     ]
 );
 
@@ -79,6 +79,15 @@ impl Render for Workspace {
                     ws.update(cx, |this, cx| this.open_chat_search(window, cx));
                 }
             })
+            .on_action(|_: &QuitApp, _window, cx| {
+                cx.quit();
+            })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &CopyTranscript, _window, cx| {
+                    ws.update(cx, |this, cx| this.copy_transcript(cx));
+                }
+            })
             .flex()
             .flex_col()
             .size_full()
@@ -123,6 +132,33 @@ chat_ix!(Chat1 => 0, Chat2 => 1, Chat3 => 2, Chat4 => 3, Chat5 => 4, Chat6 => 5,
 fn main() {
     gpui_kit::application().run(|cx| {
         gpui_kit::init(cx);
+        cx.set_menus([
+            gpui_kit::Menu::new("Rixl Code").items([
+                gpui_kit::MenuItem::action("About Rixl Code", gpui_kit::NoAction),
+                gpui_kit::MenuItem::separator(),
+                gpui_kit::MenuItem::action("Settings…", OpenSettings),
+                gpui_kit::MenuItem::separator(),
+                gpui_kit::MenuItem::action("Quit Rixl Code", QuitApp),
+            ]),
+            gpui_kit::Menu::new("File").items([
+                gpui_kit::MenuItem::action("New Chat", NewChat),
+                gpui_kit::MenuItem::action("Close Window", CloseWindow),
+            ]),
+            gpui_kit::Menu::new("Edit").items([
+                gpui_kit::MenuItem::os_action("Cut", gpui_kit::NoAction, gpui_kit::OsAction::Cut),
+                gpui_kit::MenuItem::os_action("Copy", gpui_kit::NoAction, gpui_kit::OsAction::Copy),
+                gpui_kit::MenuItem::os_action("Paste", gpui_kit::NoAction, gpui_kit::OsAction::Paste),
+                gpui_kit::MenuItem::os_action("Select All", gpui_kit::NoAction, gpui_kit::OsAction::SelectAll),
+                gpui_kit::MenuItem::separator(),
+                gpui_kit::MenuItem::action("Copy Transcript", CopyTranscript),
+            ]),
+            gpui_kit::Menu::new("View").items([
+                gpui_kit::MenuItem::action("Toggle Sidebar", ToggleSidebar),
+                gpui_kit::MenuItem::action("Toggle Agents", ToggleAgents),
+                gpui_kit::MenuItem::separator(),
+                gpui_kit::MenuItem::action("Command Palette", OpenPalette),
+            ]),
+        ]);
         cx.bind_keys([
             KeyBinding::new("cmd-n", NewChat, Some("workspace")),
             KeyBinding::new("cmd-shift-backspace", DeleteChat, Some("workspace")),
