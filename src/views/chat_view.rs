@@ -22,6 +22,7 @@ impl Workspace {
         let running = chat.running;
         let failed = chat.failed_flag;
         let title = chat.title.clone();
+        let pinned = chat.pinned;
         let ws = cx.entity();
         let ws_empty = cx.entity();
         let ws_menu = cx.entity();
@@ -74,7 +75,12 @@ impl Workspace {
                 let ws_rename = ws_menu.clone();
                 let ws_export = ws_menu.clone();
                 let ws_copy = ws_menu.clone();
-                menu.item(PopupMenuItem::new("Rename").icon(IconName::Pencil).on_click(move |_, window, cx| {
+                let ws_pin = ws_menu.clone();
+                let pin_label = if pinned { "Unpin" } else { "Pin" };
+                menu.item(PopupMenuItem::new(pin_label).icon(IconName::Star).on_click(move |_, _, cx| {
+                    ws_pin.update(cx, |this, cx| this.toggle_pin(this.active, cx));
+                }))
+                .item(PopupMenuItem::new("Rename").icon(IconName::Pencil).on_click(move |_, window, cx| {
                     ws_rename.update(cx, |this, cx| this.rename_active(window, cx));
                 }))
                 .item(PopupMenuItem::new("Export").icon(IconName::Share).on_click(move |_, _, cx| {

@@ -13,11 +13,12 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use workspace::Workspace;
 
-actions!(workspace, [NewChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark]);
+actions!(workspace, [NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark]);
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ws_new = cx.entity();
+        let ws_del = cx.entity();
         let ws_side = cx.entity();
         let ws_agents = cx.entity();
         let ws_palette = cx.entity();
@@ -25,6 +26,9 @@ impl Render for Workspace {
             .key_context("workspace")
             .on_action(move |_: &NewChat, _, cx| {
                 ws_new.update(cx, |this, cx| this.new_chat(cx));
+            })
+            .on_action(move |_: &DeleteChat, _, cx| {
+                ws_del.update(cx, |this, cx| this.delete_chat(this.active, cx));
             })
             .on_action(move |_: &ToggleSidebar, _, cx| {
                 ws_side.update(cx, |this, cx| this.toggle_sidebar(cx));
@@ -70,6 +74,7 @@ fn main() {
         gpui_kit::init(cx);
         cx.bind_keys([
             KeyBinding::new("cmd-n", NewChat, Some("workspace")),
+            KeyBinding::new("cmd-shift-backspace", DeleteChat, Some("workspace")),
             KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
             KeyBinding::new("cmd-j", ToggleAgents, Some("workspace")),
             KeyBinding::new("cmd-k", OpenPalette, Some("workspace")),
