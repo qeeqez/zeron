@@ -104,6 +104,7 @@ impl Workspace {
         // Save current draft, restore target's.
         self.chats[self.active].draft = self.composer.read(cx).value().to_string();
         self.active = index;
+        self.chats[index].unread = false;
         let draft = self.chats[index].draft.clone();
         self.composer.update(cx, |s, cx| {
             s.set_value(draft, window, cx);

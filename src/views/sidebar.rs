@@ -139,11 +139,20 @@ impl Workspace {
 fn chat_row(chat: &crate::model::Chat, ix: usize, active: usize, cx: &mut Context<Workspace>) -> SidebarMenuItem {
     let running = chat.running;
     let pinned = chat.pinned;
+    let unread = chat.unread;
     let ws = cx.entity();
     SidebarMenuItem::new(chat.title.clone())
         .active(ix == active)
         .icon(if pinned { IconName::StarFill } else { IconName::FileText })
-        .suffix(move |_window, _cx| if running { IconName::LoaderCircle.into_any_element() } else { div().into_any_element() })
+        .suffix(move |_window, _cx| {
+            if running {
+                IconName::LoaderCircle.into_any_element()
+            } else if unread {
+                div().w_2().h_2().rounded_full().bg(hsla(0.0, 0.0, 0.55, 1.0)).into_any_element()
+            } else {
+                div().into_any_element()
+            }
+        })
         .context_menu(move |menu, _window, _cx| chat_row_menu(&ws, ix, pinned, menu))
         .on_click(cx.listener(move |this, _, window, cx| this.select_chat(ix, window, cx)))
 }

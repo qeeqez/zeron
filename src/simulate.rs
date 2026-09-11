@@ -148,6 +148,9 @@ impl Workspace {
         chat.running = false;
         chat.failed_flag = false;
         chat.started_at = None;
+        if chat_ix != self.active {
+            chat.unread = true;
+        }
         self.scroller.update(cx, |s, cx| {
             s.remeasure(cx);
         });
