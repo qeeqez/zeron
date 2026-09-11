@@ -90,6 +90,7 @@ impl Workspace {
 
     fn save(&self) {
         crate::persist::save_chats(&self.chats);
+        crate::persist::enforce_retention(&self.chats);
     }
 
     /// Re-render once a second while any chat is running so the elapsed

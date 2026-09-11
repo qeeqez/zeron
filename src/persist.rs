@@ -54,6 +54,7 @@ pub fn load_chats() -> Vec<Chat> {
                 return None;
             }
             let stored: StoredChat = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+
             let mut chat = Chat::new(stored.title);
             chat.messages = stored.messages;
             chat.pinned = stored.pinned;
@@ -64,4 +65,16 @@ pub fn load_chats() -> Vec<Chat> {
         .collect();
     chats.sort_by_key(|c| c.created_at);
     chats
+}
+
+/// Keep at most `MAX_CHATS` files; delete oldest beyond that.
+pub fn enforce_retention(chats: &[Chat]) {
+    const MAX_CHATS: usize = 50;
+    if chats.len() <= MAX_CHATS {
+        return;
+    }
+    let dir = chats_dir();
+    for ix in MAX_CHATS..chats.len() {
+        let _ = fs::remove_file(dir.join(format!("{ix}.json")));
+    }
 }
