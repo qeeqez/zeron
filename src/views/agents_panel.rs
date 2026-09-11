@@ -31,7 +31,26 @@ impl Workspace {
                     .text_sm()
                     .font_bold()
                     .child(IconName::Bot)
-                    .child("Agents"),
+                    .child("Agents")
+                    .child(div().flex_1())
+                    .child(
+                        div()
+                            .id("stop-all")
+                            .cursor_pointer()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Stop all")
+                            .on_click(cx.listener(|this, _, _, cx| this.stop_all_agents(cx))),
+                    )
+                    .child(
+                        div()
+                            .id("clear-done")
+                            .cursor_pointer()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Clear")
+                            .on_click(cx.listener(|this, _, _, cx| this.clear_finished_agents(cx))),
+                    ),
             )
             .child(
                 div()

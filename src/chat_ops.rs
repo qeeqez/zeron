@@ -93,3 +93,38 @@ impl Workspace {
         cx.write_to_clipboard(ClipboardItem::new_string(out));
     }
 }
+
+impl Workspace {
+    pub fn stop_all_agents(&mut self, cx: &mut Context<Self>) {
+        for agent in &mut self.agents {
+            if agent.status != AgentStatus::Running {
+                continue;
+            }
+            if let Some(task) = agent.task.take() {
+                drop(task);
+            }
+            agent.status = AgentStatus::Cancelled;
+            agent.step = "cancelled".into();
+        }
+        cx.notify();
+    }
+
+    pub fn clear_finished_agents(&mut self, cx: &mut Context<Self>) {
+        self.agents.retain(|a| a.status == AgentStatus::Running);
+        cx.notify();
+    }
+
+    /// Rough token estimate: chars/4 across all messages.
+    pub fn token_estimate(&self) -> usize {
+        self.chats
+            .iter()
+            .flat_map(|c| &c.messages)
+            .map(|m| match &m.kind {
+                MessageKind::Text(t) => t.len(),
+                MessageKind::Tool(t) => t.output.len(),
+                MessageKind::Diff(d) => d.hunks.len(),
+            })
+            .sum::<usize>()
+            / 4
+    }
+}

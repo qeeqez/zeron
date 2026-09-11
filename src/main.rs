@@ -56,7 +56,11 @@ impl Render for Workspace {
             .child(
                 StatusBar::new()
                     .left(div().text_xs().child(format!("{} · {} · rixlcode", self.model, self.mode)))
-                    .right(div().text_xs().text_color(cx.theme().muted_foreground).child(format!("{} chats", self.chats.len()))),
+                    .right(div().text_xs().text_color(cx.theme().muted_foreground).child(format!(
+                        "{} chats · ~{} tok",
+                        self.chats.len(),
+                        self.token_estimate()
+                    ))),
             )
     }
 }
