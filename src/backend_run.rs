@@ -50,7 +50,10 @@ impl Workspace {
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         match ev {
             AgentEvent::TextDelta(text) => {
-                let needs_new = !matches!(chat.messages.last(), Some(m) if matches!(m.kind, MessageKind::Text(_)));
+                // Must be an assistant Text message — the last message right
+                // after send is the user's own text.
+                let needs_new =
+                    !matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant && matches!(m.kind, MessageKind::Text(_)));
                 if needs_new {
                     chat.messages.push(ChatMessage {
                         role: Role::Assistant,
