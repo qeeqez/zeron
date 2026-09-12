@@ -1,3 +1,4 @@
+mod agents;
 mod backend;
 mod backend_parse;
 mod backend_run;

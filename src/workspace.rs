@@ -12,6 +12,8 @@ pub struct Workspace {
     pub active: usize,
     pub sidebar_collapsed: bool,
     pub agents: Vec<Agent>,
+    /// Monotonic id source for agents — survives `clear_finished_agents`.
+    pub next_agent_id: u64,
     pub agents_panel_open: bool,
     pub sidebar_width: f32,
     pub resizing_sidebar: bool,
@@ -85,8 +87,9 @@ impl Workspace {
             active: 0,
             sidebar_collapsed: settings.sidebar_collapsed,
             sidebar_width: settings.sidebar_width,
-            resizing_sidebar: false,
             agents: Vec::new(),
+            next_agent_id: 0,
+            resizing_sidebar: false,
             agents_panel_open: false,
             composer,
             search,
@@ -159,49 +162,6 @@ impl Workspace {
         if self.chats.iter().any(|c| c.running) {
             cx.notify();
         }
-    }
-
-    pub fn new_chat(&mut self, cx: &mut Context<Self>) {
-        self.chats.push(Chat::new("New chat"));
-        self.active = self.chats.len() - 1;
-        self.recall_ix = None;
-        self.scroller.update(cx, |s, cx| {
-            s.reset(0, cx);
-        });
-        let composer = self.composer.clone();
-        cx.spawn(async move |this, cx| {
-            let _ = this.update_in(cx, |_this, window, cx| {
-                composer.update(cx, |s, cx| s.focus(window, cx));
-                window.set_window_title("Rixl Code — New chat");
-            });
-        })
-        .detach();
-        cx.notify();
-        self.save();
-    }
-
-    pub fn select_chat(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if index >= self.chats.len() || index == self.active {
-            return;
-        }
-        // Save current draft, restore target's.
-        self.chats[self.active].draft = self.composer.read(cx).value().to_string();
-        self.active = index;
-        self.recall_ix = None;
-        self.chats[index].unread = false;
-        let draft = self.chats[index].draft.clone();
-        self.composer.update(cx, |s, cx| {
-            s.set_value(draft, window, cx);
-            s.focus(window, cx);
-        });
-        let count = self.chats[index].messages.len();
-        self.scroller.update(cx, |s, cx| {
-            s.reset(count, cx);
-        });
-        window.set_window_title(&format!("Rixl Code — {}", self.chats[index].title));
-        cx.notify();
-        self.save();
-        self.save_settings();
     }
 
     pub fn toggle_backend(&mut self, cx: &mut Context<Self>) {

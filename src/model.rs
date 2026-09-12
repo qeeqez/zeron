@@ -116,6 +116,8 @@ impl std::fmt::Display for AgentStatus {
 }
 
 pub struct Agent {
+    /// Stable identity — positions shift when finished agents are cleared.
+    pub id: u64,
     pub name: SharedString,
     pub lane: SharedString,
     pub status: AgentStatus,
@@ -129,8 +131,9 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn new(name: impl Into<SharedString>, lane: impl Into<SharedString>, steps_total: usize) -> Self {
+    pub fn new(id: u64, name: impl Into<SharedString>, lane: impl Into<SharedString>, steps_total: usize) -> Self {
         Self {
+            id,
             name: name.into(),
             lane: lane.into(),
             status: AgentStatus::Running,

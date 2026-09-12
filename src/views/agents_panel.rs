@@ -9,20 +9,9 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     pub fn render_agents_panel(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let running: Vec<AnyElement> = self
-            .agents
-            .iter()
-            .enumerate()
-            .filter(|(_, a)| a.status == AgentStatus::Running)
-            .map(|(ix, a)| agent_card(ix, a, cx))
-            .collect();
-        let finished: Vec<AnyElement> = self
-            .agents
-            .iter()
-            .enumerate()
-            .filter(|(_, a)| a.status != AgentStatus::Running)
-            .map(|(ix, a)| agent_card(ix, a, cx))
-            .collect();
+        let running: Vec<AnyElement> = self.agents.iter().filter(|a| a.status == AgentStatus::Running).map(|a| agent_card(a, cx)).collect();
+        let finished: Vec<AnyElement> =
+            self.agents.iter().filter(|a| a.status != AgentStatus::Running).map(|a| agent_card(a, cx)).collect();
 
         div()
             .w(px(280.))
@@ -100,13 +89,14 @@ impl Workspace {
     }
 }
 
-fn agent_card(ix: usize, agent: &Agent, cx: &mut Context<Workspace>) -> AnyElement {
+fn agent_card(agent: &Agent, cx: &mut Context<Workspace>) -> AnyElement {
     let (icon, color) = match agent.status {
         AgentStatus::Running => (IconName::LoaderCircle, cx.theme().info),
         AgentStatus::Done => (IconName::CircleCheck, cx.theme().success),
         AgentStatus::Failed => (IconName::CircleX, cx.theme().danger),
         AgentStatus::Cancelled => (IconName::CircleMinus, cx.theme().muted_foreground),
     };
+    let id = agent.id;
     div()
         .flex()
         .flex_col()
@@ -129,20 +119,20 @@ fn agent_card(ix: usize, agent: &Agent, cx: &mut Context<Workspace>) -> AnyEleme
                 .when(agent.status == AgentStatus::Running, |d| {
                     d.child(
                         div()
-                            .id(("cancel-agent", ix))
+                            .id(("cancel-agent", id))
                             .cursor_pointer()
                             .text_color(cx.theme().muted_foreground)
                             .child(IconName::CircleX)
-                            .on_click(cx.listener(move |this, _, _, cx| this.cancel_agent(ix, cx))),
+                            .on_click(cx.listener(move |this, _, _, cx| this.cancel_agent(id, cx))),
                     )
                 })
                 .child(
                     div()
-                        .id(("expand-agent", ix))
+                        .id(("expand-agent", id))
                         .cursor_pointer()
                         .text_color(cx.theme().muted_foreground)
                         .child(if agent.expanded { IconName::ChevronDown } else { IconName::ChevronRight })
-                        .on_click(cx.listener(move |this, _, _, cx| this.toggle_agent_expand(ix, cx))),
+                        .on_click(cx.listener(move |this, _, _, cx| this.toggle_agent_expand(id, cx))),
                 ),
         )
         .child(

@@ -1,7 +1,51 @@
 use gpui_kit::*;
 
-use crate::model::{AgentStatus, Chat, MessageKind, Role};
+use crate::model::{Chat, MessageKind, Role};
 use crate::workspace::Workspace;
+impl Workspace {
+    pub fn new_chat(&mut self, cx: &mut Context<Self>) {
+        self.chats.push(Chat::new("New chat"));
+        self.active = self.chats.len() - 1;
+        self.recall_ix = None;
+        self.scroller.update(cx, |s, cx| {
+            s.reset(0, cx);
+        });
+        let composer = self.composer.clone();
+        cx.spawn(async move |this, cx| {
+            let _ = this.update_in(cx, |_this, window, cx| {
+                composer.update(cx, |s, cx| s.focus(window, cx));
+                window.set_window_title("Rixl Code — New chat");
+            });
+        })
+        .detach();
+        cx.notify();
+        self.save();
+    }
+
+    pub fn select_chat(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if index >= self.chats.len() || index == self.active {
+            return;
+        }
+        // Save current draft, restore target's.
+        self.chats[self.active].draft = self.composer.read(cx).value().to_string();
+        self.active = index;
+        self.recall_ix = None;
+        self.chats[index].unread = false;
+        let draft = self.chats[index].draft.clone();
+        self.composer.update(cx, |s, cx| {
+            s.set_value(draft, window, cx);
+            s.focus(window, cx);
+        });
+        let count = self.chats[index].messages.len();
+        self.scroller.update(cx, |s, cx| {
+            s.reset(count, cx);
+        });
+        window.set_window_title(&format!("Rixl Code — {}", self.chats[index].title));
+        cx.notify();
+        self.save();
+        self.save_settings();
+    }
+}
 
 impl Workspace {
     /// Stop the in-flight reply stream for the active chat. Dropping the
@@ -30,26 +74,6 @@ impl Workspace {
         });
         cx.notify();
         self.save();
-    }
-
-    pub fn cancel_agent(&mut self, ix: usize, cx: &mut Context<Self>) {
-        let Some(agent) = self.agents.get_mut(ix) else { return };
-        if agent.status != AgentStatus::Running {
-            return;
-        }
-        if let Some(task) = agent.task.take() {
-            drop(task); // non-detached Task cancels on drop
-        }
-        agent.status = AgentStatus::Cancelled;
-        agent.step = "cancelled".into();
-        cx.notify();
-    }
-
-    pub fn toggle_agent_expand(&mut self, ix: usize, cx: &mut Context<Self>) {
-        if let Some(agent) = self.agents.get_mut(ix) {
-            agent.expanded = !agent.expanded;
-        }
-        cx.notify();
     }
 
     pub fn toggle_archive(&mut self, ix: usize, cx: &mut Context<Self>) {
@@ -147,27 +171,7 @@ impl Workspace {
             .count()
     }
 }
-
 impl Workspace {
-    pub fn stop_all_agents(&mut self, cx: &mut Context<Self>) {
-        for agent in &mut self.agents {
-            if agent.status != AgentStatus::Running {
-                continue;
-            }
-            if let Some(task) = agent.task.take() {
-                drop(task);
-            }
-            agent.status = AgentStatus::Cancelled;
-            agent.step = "cancelled".into();
-        }
-        cx.notify();
-    }
-
-    pub fn clear_finished_agents(&mut self, cx: &mut Context<Self>) {
-        self.agents.retain(|a| a.status == AgentStatus::Running);
-        cx.notify();
-    }
-
     /// Rough token estimate: chars/4 across all messages.
     pub fn token_estimate(&self) -> usize {
         self.chats

@@ -60,20 +60,24 @@ impl Workspace {
     /// Spawn a simulated subagent that walks its steps on a timer.
     pub(crate) fn spawn_agent(&mut self, spec: AgentSpec, cx: &mut Context<Self>) {
         let AgentSpec { name, lane, steps_total } = spec;
-        self.agents.push(Agent::new(name, lane, steps_total));
-        let ix = self.agents.len() - 1;
+        let id = self.next_agent_id;
+        self.next_agent_id += 1;
+        self.agents.push(Agent::new(id, name, lane, steps_total));
         cx.notify();
         let task = cx.spawn(async move |this, cx| {
             for step in 1..=steps_total {
                 cx.background_executor().timer(Duration::from_millis(700)).await;
-                let _ = this.update(cx, |this, cx| this.advance_agent(ix, step, cx));
+                let _ = this.update(cx, |this, cx| this.advance_agent(id, step, cx));
             }
         });
+        let ix = self.agents.iter().position(|a| a.id == id).expect("just pushed");
         self.agents[ix].task = Some(task);
     }
 
-    fn advance_agent(&mut self, ix: usize, step: usize, cx: &mut Context<Self>) {
-        let agent = &mut self.agents[ix];
+    /// Advance the agent with stable `id` — positions shift when finished
+    /// agents are cleared, so index-based lookup would hit the wrong agent.
+    fn advance_agent(&mut self, id: u64, step: usize, cx: &mut Context<Self>) {
+        let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) else { return };
         agent.steps_done = step;
         agent.elapsed_secs += 1;
         agent.step = format!("step {step}").into();
