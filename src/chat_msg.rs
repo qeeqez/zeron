@@ -29,6 +29,7 @@ impl Workspace {
             return;
         };
         chat.messages.truncate(ix);
+        self.recall_ix = None;
         self.composer.update(cx, |s, cx| {
             s.set_value(text, window, cx);
             s.focus(window, cx);
@@ -68,6 +69,7 @@ impl Workspace {
             return;
         }
         let next = match self.recall_ix {
+            Some(i) if i >= user_ixs.len() => 0, // stale index — restart from newest
             Some(i) if i + 1 < user_ixs.len() => i + 1,
             Some(_) => return, // already at the oldest
             None => 0,
@@ -104,7 +106,11 @@ impl Workspace {
         }
         let next = cur - 1;
         self.recall_ix = Some(next);
-        let ix = user_ixs[user_ixs.len() - 1 - next];
+        // Stale index after truncation — clamp instead of underflowing.
+        let Some(&ix) = user_ixs.len().checked_sub(1 + next).and_then(|i| user_ixs.get(i)) else {
+            self.recall_ix = None;
+            return;
+        };
         let MessageKind::Text(t) = &chat.messages[ix].kind else { return };
         let text = t.to_string();
         self.composer.update(cx, |s, cx| {

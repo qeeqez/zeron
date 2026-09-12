@@ -56,7 +56,11 @@ impl Workspace {
         .detach();
         cx.subscribe_in(&composer, window, |this, _composer, event: &InputEvent, window, cx| match event {
             InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
-            InputEvent::Change => cx.notify(),
+            // `set_value` suppresses Change, so this only fires on real edits.
+            InputEvent::Change => {
+                this.recall_ix = None;
+                cx.notify();
+            },
             _ => {},
         })
         .detach();
@@ -160,6 +164,7 @@ impl Workspace {
     pub fn new_chat(&mut self, cx: &mut Context<Self>) {
         self.chats.push(Chat::new("New chat"));
         self.active = self.chats.len() - 1;
+        self.recall_ix = None;
         self.scroller.update(cx, |s, cx| {
             s.reset(0, cx);
         });
@@ -182,6 +187,7 @@ impl Workspace {
         // Save current draft, restore target's.
         self.chats[self.active].draft = self.composer.read(cx).value().to_string();
         self.active = index;
+        self.recall_ix = None;
         self.chats[index].unread = false;
         let draft = self.chats[index].draft.clone();
         self.composer.update(cx, |s, cx| {
@@ -244,6 +250,7 @@ impl Workspace {
         } else if index < self.active {
             self.active -= 1;
         }
+        self.recall_ix = None;
         let count = self.chats[self.active].messages.len();
         self.scroller.update(cx, |s, cx| {
             s.reset(count, cx);

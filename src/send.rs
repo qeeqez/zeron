@@ -123,6 +123,7 @@ impl Workspace {
                 let chat = &mut self.chats[self.active];
                 let keep = 4.min(chat.messages.len());
                 chat.messages.drain(..chat.messages.len() - keep);
+                self.recall_ix = None;
                 self.push_note(format!("Compacted — kept the last {keep} messages."), cx);
             },
             "help" => {
