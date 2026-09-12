@@ -69,6 +69,7 @@ impl Workspace {
 
     pub fn open_chat_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.chat_search_open = !self.chat_search_open;
+        self.search_match_ix = 0;
         if self.chat_search_open {
             let input = self.chat_search.clone();
             window.defer(cx, move |window, cx| {
@@ -76,7 +77,6 @@ impl Workspace {
             });
         } else {
             self.chat_search.update(cx, |s, cx| s.set_value("", window, cx));
-            self.search_match_ix = 0;
         }
         let count = self.filtered_count(cx);
         self.scroller.update(cx, |s, cx| s.reset(count, cx));
