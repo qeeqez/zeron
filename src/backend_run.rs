@@ -101,7 +101,7 @@ impl Workspace {
             AgentEvent::Diff { path, added, removed, hunks } => {
                 chat.messages.push(ChatMessage {
                     role: Role::Assistant,
-                    kind: MessageKind::Diff(crate::model::DiffCard { path, added, removed, hunks, expanded: false, applied: None }),
+                    kind: MessageKind::Diff(crate::model::DiffCard { path, added, removed, hunks, expanded: false }),
                     rating: None,
                     at: SystemTime::now(),
                 });

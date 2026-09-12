@@ -93,16 +93,10 @@ fn tool_output_bar(ix: usize, ws: &Entity<Workspace>, cx: &mut App) -> Div {
 }
 
 pub fn render_diff(ix: usize, diff: &DiffCard, ws: Entity<Workspace>, cx: &mut App) -> impl IntoElement {
-    let status = match diff.applied {
-        Some(true) => Some(("Applied", cx.theme().success)),
-        Some(false) => Some(("Rejected", cx.theme().danger)),
-        None => None,
-    };
     let header = card_header(("diff", ix))
         .child(IconName::FileText)
         .child(diff.path.clone())
         .child(div().flex_1())
-        .when_some(status, |d, (label, color)| d.child(div().text_xs().text_color(color).child(label)))
         .child(div().text_color(cx.theme().success).child(format!("+{}", diff.added)))
         .child(div().text_color(cx.theme().danger).child(format!("-{}", diff.removed)))
         .child(div().text_color(cx.theme().muted_foreground).child(chevron(diff.expanded)))
@@ -112,45 +106,7 @@ pub fn render_diff(ix: usize, diff: &DiffCard, ws: Entity<Workspace>, cx: &mut A
     if diff.expanded {
         card = card.child(detail_block(&diff.hunks, cx));
     }
-    if diff.applied.is_none() {
-        card = card.child(diff_actions(ix, &ws, cx));
-    }
     card
-}
-
-fn diff_actions(ix: usize, ws: &Entity<Workspace>, cx: &mut App) -> Div {
-    let ws_apply = ws.clone();
-    let ws_reject = ws.clone();
-    div()
-        .flex()
-        .items_center()
-        .gap_2()
-        .px_3()
-        .py_2()
-        .border_t_1()
-        .border_color(cx.theme().border)
-        .child(
-            div()
-                .id(("apply", ix))
-                .cursor_pointer()
-                .text_xs()
-                .text_color(cx.theme().success)
-                .child("Apply")
-                .on_click(move |_, _, cx| {
-                    ws_apply.update(cx, |this, cx| this.set_diff_applied(ix, true, cx));
-                }),
-        )
-        .child(
-            div()
-                .id(("reject", ix))
-                .cursor_pointer()
-                .text_xs()
-                .text_color(cx.theme().danger)
-                .child("Reject")
-                .on_click(move |_, _, cx| {
-                    ws_reject.update(cx, |this, cx| this.set_diff_applied(ix, false, cx));
-                }),
-        )
 }
 
 pub struct MsgCtx {

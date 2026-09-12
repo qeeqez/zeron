@@ -30,12 +30,19 @@ pub fn render_empty_state(ws: Entity<Workspace>, cx: &mut App) -> impl IntoEleme
                 .text_color(cx.theme().accent_foreground)
                 .text_sm()
                 .child("New chat")
-                .on_click(move |_, _, cx| {
-                    ws.update(cx, |this, cx| this.new_chat(cx));
+                .on_click({
+                    let ws = ws.clone();
+                    move |_, _, cx| {
+                        ws.update(cx, |this, cx| this.new_chat(cx));
+                    }
                 }),
         )
         .child(div().flex().flex_col().gap_2().items_center().children(suggestions.iter().map(|s| {
+            let ws = ws.clone();
+            let prompt = *s;
             div()
+                .id(SharedString::from(format!("suggestion-{prompt}")))
+                .cursor_pointer()
                 .px_4()
                 .py_2()
                 .rounded_lg()
@@ -43,6 +50,13 @@ pub fn render_empty_state(ws: Entity<Workspace>, cx: &mut App) -> impl IntoEleme
                 .border_color(cx.theme().border)
                 .text_sm()
                 .text_color(cx.theme().muted_foreground)
-                .child(*s)
+                .hover(|style| style.bg(cx.theme().secondary))
+                .child(prompt)
+                .on_click(move |_, window, cx| {
+                    ws.update(cx, |this, cx| {
+                        this.composer.update(cx, |s, cx| s.set_value(prompt, window, cx));
+                        this.send(window, cx);
+                    });
+                })
         })))
 }

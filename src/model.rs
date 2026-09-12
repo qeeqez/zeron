@@ -28,7 +28,6 @@ pub struct DiffCard {
     pub removed: usize,
     pub hunks: SharedString,
     pub expanded: bool,
-    pub applied: Option<bool>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]

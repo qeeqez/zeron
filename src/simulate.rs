@@ -116,7 +116,6 @@ impl Workspace {
                     removed: 6,
                     hunks: "@@ -10,6 +10,24 @@\n fn main() {\n-    println!(\"old\");\n+    gpui_kit::application().run(|cx| {\n+        gpui_kit::init(cx);\n+    });\n }".into(),
                     expanded: false,
-                    applied: None,
                 }),
                 rating: None,
                 at: SystemTime::now(),
