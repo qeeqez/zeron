@@ -1,7 +1,5 @@
 use std::time::Duration;
 
-use gpui_kit::component::WindowExt;
-
 use gpui_kit::component::command::CommandState;
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::component::message_scroller::MessageScrollerState;
@@ -177,33 +175,6 @@ impl Workspace {
         });
         cx.notify();
         self.save();
-    }
-
-    pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let ws = cx.entity();
-        window.open_sheet(cx, move |sheet, _window, cx| {
-            let s = ws.read(cx);
-            let view = crate::views::settings::SettingsView {
-                notify: s.notify_on_done,
-                font_size: s.font_size,
-                use_codex: matches!(s.backend.name(), "codex-cli"),
-                ws: ws.clone(),
-            };
-            sheet.title("Settings").child(crate::views::settings_body(view, cx))
-        });
-    }
-
-    pub fn open_chat_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.chat_search_open = !self.chat_search_open;
-        if self.chat_search_open {
-            let input = self.chat_search.clone();
-            window.defer(cx, move |window, cx| {
-                input.update(cx, |s, cx| s.focus(window, cx));
-            });
-        }
-        let count = self.filtered_count(cx);
-        self.scroller.update(cx, |s, cx| s.reset(count, cx));
-        cx.notify();
     }
 
     pub fn toggle_backend(&mut self, cx: &mut Context<Self>) {

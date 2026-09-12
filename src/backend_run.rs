@@ -82,7 +82,12 @@ impl Workspace {
                 self.scroller.update(cx, |s, cx| s.append(1, cx));
             },
             AgentEvent::ToolCallDelta { ix, output } => {
-                let _ = (ix, output);
+                let _ = ix;
+                if let Some(m) = chat.messages.iter_mut().rev().find(|m| matches!(m.kind, MessageKind::Tool(_)))
+                    && let MessageKind::Tool(t) = &mut m.kind
+                {
+                    t.output = format!("{}{}", t.output, output).into();
+                }
             },
             AgentEvent::ToolCallEnd { ix, ok } => {
                 let _ = ix;

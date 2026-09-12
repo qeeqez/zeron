@@ -154,15 +154,13 @@ fn spawn_codex(
     let reader = std::io::BufReader::new(stdout);
     let (mut done, mut emitted) = (false, false);
     for line in reader.lines().map_while(Result::ok) {
-        let Some(e) = parse_codex_line(&line) else { continue };
-        done |= matches!(e, AgentEvent::Done);
-        emitted = true;
-        if tx.send(e).is_err() {
-            if let Some(mut c) = slot.lock().take() {
-                let _ = c.kill();
-                let _ = c.wait();
+        for e in parse_codex_line(&line) {
+            done |= matches!(e, AgentEvent::Done);
+            emitted = true;
+            if tx.send(e).is_err() {
+                kill_slot(slot);
+                return (CodexOutcome::Dead, emitted);
             }
-            return (CodexOutcome::Dead, emitted);
         }
     }
     if done {
@@ -178,22 +176,41 @@ fn spawn_codex(
     (outcome, emitted)
 }
 
-/// Map one `codex exec --json` JSONL line to an `AgentEvent`.
-fn parse_codex_line(line: &str) -> Option<AgentEvent> {
-    let ev = serde_json::from_str::<serde_json::Value>(line).ok()?;
+/// Kill and reap the child in the slot, if any.
+fn kill_slot(slot: &parking_lot::Mutex<Option<std::process::Child>>) {
+    if let Some(mut c) = slot.lock().take() {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+}
+
+/// Map one `codex exec --json` JSONL line to zero or more `AgentEvent`s.
+fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
+    let Ok(ev) = serde_json::from_str::<serde_json::Value>(line) else { return vec![] };
     let item = &ev["item"];
-    match ev["type"].as_str()? {
-        "item.started" if item["type"].as_str() == Some("command_execution") => Some(AgentEvent::ToolCallStart {
+    let Some(kind) = ev["type"].as_str() else { return vec![] };
+    match kind {
+        "item.started" if item["type"].as_str() == Some("command_execution") => vec![AgentEvent::ToolCallStart {
             ix: 0,
             name: "shell".into(),
             detail: item["command"].as_str().unwrap_or("").into(),
-        }),
-        "item.completed" => match item["type"].as_str()? {
-            "command_execution" => Some(AgentEvent::ToolCallEnd { ix: 0, ok: item["exit_code"].as_i64() == Some(0) }),
-            "agent_message" => Some(AgentEvent::TextDelta(item["text"].as_str().unwrap_or("").into())),
-            _ => None,
+        }],
+        "item.completed" => match item["type"].as_str() {
+            Some("command_execution") => {
+                let mut out = Vec::with_capacity(2);
+                let output = item["aggregated_output"].as_str().unwrap_or("");
+                if !output.is_empty() {
+                    out.push(AgentEvent::ToolCallDelta { ix: 0, output: output.into() });
+                }
+                out.push(AgentEvent::ToolCallEnd { ix: 0, ok: item["exit_code"].as_i64() == Some(0) });
+                out
+            },
+            Some("agent_message") => vec![AgentEvent::TextDelta(item["text"].as_str().unwrap_or("").into())],
+            Some("error") => vec![AgentEvent::Error(item["message"].as_str().unwrap_or("codex error").into())],
+            _ => vec![],
         },
-        "turn.completed" => Some(AgentEvent::Done),
-        _ => None,
+        "turn.failed" => vec![AgentEvent::Error(ev["error"]["message"].as_str().unwrap_or("turn failed").into())],
+        "turn.completed" => vec![AgentEvent::Done],
+        _ => vec![],
     }
 }

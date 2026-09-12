@@ -20,13 +20,10 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use workspace::Workspace;
 
-actions!(
-    workspace,
-    [
-        NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6,
-        Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats,
-    ]
-);
+actions!([
+    NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7,
+    Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey,
+]);
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -98,6 +95,12 @@ impl Render for Workspace {
                 let ws = cx.entity();
                 move |_: &CopyTranscript, _window, cx| {
                     ws.update(cx, |this, cx| this.copy_transcript(cx));
+                }
+            })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &EscapeKey, window, cx| {
+                    ws.update(cx, |this, cx| this.escape(window, cx));
                 }
             })
             .flex()
@@ -173,6 +176,7 @@ fn main() {
             ]),
         ]);
         cx.bind_keys([
+            KeyBinding::new("escape", EscapeKey, Some("workspace")),
             KeyBinding::new("cmd-n", NewChat, Some("workspace")),
             KeyBinding::new("cmd-shift-backspace", DeleteChat, Some("workspace")),
             KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),

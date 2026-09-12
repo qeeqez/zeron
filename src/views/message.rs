@@ -37,6 +37,7 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
         .when(role == Role::Assistant, |d| d.bg(cx.theme().secondary).text_color(cx.theme().foreground))
         .child(if role == Role::Assistant {
             TextView::markdown(("md", ix), text.clone())
+                .selectable(true)
                 .code_block_actions(|block, _window, _cx| {
                     let code = block.code().to_string();
                     div()
