@@ -198,10 +198,10 @@ fn main() {
                 WindowOptions {
                     window_min_size: Some(Size { width: px(800.), height: px(600.) }),
                     window_background: gpui_kit::WindowBackgroundAppearance::Blurred,
-                    // Real macOS titlebar: native title, drag, double-click zoom.
+                    // Traffic lights float over the sidebar; title hidden, top strip draggable.
                     titlebar: Some(gpui_kit::TitlebarOptions {
                         title: Some("Rixl Code".into()),
-                        appears_transparent: false,
+                        appears_transparent: true,
                         traffic_light_position: None,
                     }),
                     ..Default::default()

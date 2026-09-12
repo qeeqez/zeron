@@ -19,6 +19,8 @@ impl Workspace {
             .flex()
             .flex_col()
             .gap_2()
+            // Clear the floating traffic lights.
+            .pt(px(28.))
             .child(
                 div()
                     .flex()
