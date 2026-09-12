@@ -85,7 +85,11 @@ impl Workspace {
     /// Cmd+Shift+Down: cycle forward through user messages (newest first).
     /// Past the newest, the composer clears.
     pub fn recall_next(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(cur) = self.recall_ix else { return };
+        let Some(cur) = self.recall_ix else {
+            // Not cycling — just clear the composer.
+            self.composer.update(cx, |s, cx| s.set_value("", window, cx));
+            return;
+        };
         let chat = &self.chats[self.active];
         let user_ixs: Vec<usize> = chat
             .messages
