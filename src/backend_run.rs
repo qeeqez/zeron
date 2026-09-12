@@ -10,22 +10,11 @@ use crate::workspace::Workspace;
 
 /// Drive a real `AgentBackend` reply: spawn the backend, pump its event
 /// stream on a thread, and apply events on the UI thread via a channel.
-pub fn run_backend(this: &mut Workspace, cx: &mut Context<Workspace>) {
+pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspace>) {
     let chat_ix = this.active;
-    let prompt = this.chats[chat_ix]
-        .messages
-        .iter()
-        .rev()
-        .find(|m| m.role == Role::User)
-        .map(|m| match &m.kind {
-            MessageKind::Text(t) => t.to_string(),
-            _ => String::new(),
-        })
-        .unwrap_or_default();
     let model = this.model.to_string();
     let mode = this.mode.to_string();
-    let stream = this.backend.send(&prompt, &model, &mode);
-
+    let stream = this.backend.send(prompt, &model, &mode);
     let (tx, rx) = std::sync::mpsc::channel::<AgentEvent>();
     std::thread::spawn(move || pump_stream(stream, tx));
 

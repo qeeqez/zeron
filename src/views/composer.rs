@@ -10,19 +10,8 @@ use gpui_kit::*;
 use crate::views::{apply_pick, attachment_chips, mention_item, slash_item};
 use crate::workspace::Workspace;
 
-const MODELS: [&str; 3] = ["gpt-5-codex", "gpt-5", "gpt-5-mini"];
 const MODES: [&str; 3] = ["Agent", "Plan", "Ask"];
 const SLASH_COMMANDS: [&str; 6] = ["clear", "compact", "export", "help", "model", "rename"];
-const MENTION_FILES: [&str; 8] = [
-    "src/main.rs",
-    "src/workspace.rs",
-    "src/model.rs",
-    "src/views/chat_view.rs",
-    "src/views/sidebar.rs",
-    "src/views/composer.rs",
-    "Cargo.toml",
-    "mise.toml",
-];
 
 struct PickerSpec {
     id: &'static str,
@@ -53,7 +42,7 @@ impl Workspace {
         let model_picker = picker(PickerSpec {
             id: "model",
             current: self.model.clone(),
-            options: &MODELS,
+            options: &crate::model::MODELS,
             ws: ws.clone(),
             set: |this, v| {
                 this.model = v.into();
@@ -73,9 +62,11 @@ impl Workspace {
         let composer_text = self.composer.read(cx).value().to_string();
         let mention_open = composer_text.contains('@');
         let mention_query = composer_text.rsplit('@').next().unwrap_or("").to_lowercase();
-        let mention_items: Vec<AnyElement> = MENTION_FILES
+        let mention_items: Vec<AnyElement> = self
+            .project_files
             .iter()
             .filter(|f| mention_query.is_empty() || f.to_lowercase().contains(&mention_query))
+            .take(8)
             .map(|f| mention_item(f, &ws, cx).into_any_element())
             .collect();
         let slash_open = composer_text.starts_with('/');

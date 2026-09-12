@@ -97,13 +97,28 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Attach a file to the active chat (simulated picker).
+    /// Open the native file picker and attach the chosen files.
     pub fn attach_file(&mut self, cx: &mut Context<Self>) {
-        let names = ["README.md", "src/main.rs", "Cargo.toml", "docs/spec.md", "tests/integration.rs"];
+        let rx = cx.prompt_for_paths(gpui_kit::PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: true,
+            prompt: Some("Attach files".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(Some(paths))) = rx.await else { return };
+            let _ = this.update(cx, |this, cx| this.add_attachments(paths, cx));
+        })
+        .detach();
+    }
+
+    /// Append unique file paths to the active chat's attachments.
+    fn add_attachments(&mut self, paths: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
         let chat = &mut self.chats[self.active];
-        let next = names.iter().find(|n| !chat.attachments.iter().any(|a| a.as_str() == **n));
-        if let Some(name) = next {
-            chat.attachments.push((*name).into());
+        for name in paths.iter().map(|p| p.to_string_lossy().into_owned()) {
+            if !chat.attachments.iter().any(|a| a.as_str() == name) {
+                chat.attachments.push(name.into());
+            }
         }
         cx.notify();
     }

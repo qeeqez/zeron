@@ -23,7 +23,7 @@ pub fn slash_item(cmd: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoE
         })
 }
 
-pub fn mention_item(file: &&str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
+pub fn mention_item(file: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
     let ws = ws.clone();
     let path = file.to_string();
     div()
