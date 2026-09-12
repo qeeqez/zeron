@@ -143,7 +143,12 @@ fn spawn_codex(
     tx: &std::sync::mpsc::Sender<AgentEvent>,
 ) -> (CodexOutcome, bool) {
     let mut cmd = std::process::Command::new("codex");
-    cmd.args(["exec", "--json", "--skip-git-repo-check", "-m", model, prompt])
+    let mut args = vec!["exec", "--json", "--skip-git-repo-check"];
+    if model != "default" {
+        args.extend(["-m", model]);
+    }
+    args.push(prompt);
+    cmd.args(&args)
         .current_dir(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());

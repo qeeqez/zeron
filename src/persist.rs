@@ -101,7 +101,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            model: "gpt-5-codex".into(),
+            model: "default".into(),
             mode: "Agent".into(),
             notify_on_done: true,
             word_wrap: true,

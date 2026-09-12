@@ -3,7 +3,7 @@ use std::time::{Instant, SystemTime};
 use gpui_kit::{SharedString, Task};
 
 /// Model ids offered in the picker and `/model`.
-pub const MODELS: [&str; 3] = ["gpt-5-codex", "gpt-5", "gpt-5-mini"];
+pub const MODELS: [&str; 4] = ["default", "gpt-5-codex", "gpt-5", "gpt-5-mini"];
 
 #[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ToolStatus {
