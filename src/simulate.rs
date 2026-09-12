@@ -153,7 +153,7 @@ impl Workspace {
     fn finish_stream(&mut self, chat_ix: usize, cx: &mut Context<Self>) {
         let chat = &mut self.chats[chat_ix];
         chat.running = false;
-        chat.failed_flag = false;
+        // failed_flag survives so the retry banner stays until next send.
         chat.started_at = None;
         if chat_ix != self.active {
             chat.unread = true;

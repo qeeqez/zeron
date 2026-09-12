@@ -131,11 +131,11 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Mark the reply finished.
+    /// Mark the reply finished. `failed_flag` survives so the retry banner
+    /// stays visible until the next send/retry clears it.
     pub(crate) fn finish_reply(&mut self, chat_ix: usize, cx: &mut Context<Self>) {
         let chat = &mut self.chats[chat_ix];
         chat.running = false;
-        chat.failed_flag = false;
         chat.started_at = None;
         if chat_ix != self.active {
             chat.unread = true;

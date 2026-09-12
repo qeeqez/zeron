@@ -38,6 +38,7 @@ impl Workspace {
             at: SystemTime::now(),
         });
         chat.running = true;
+        chat.failed_flag = false;
         chat.started_at = Some(std::time::Instant::now());
         self.recall_ix = None;
         chat.attachments.clear();
@@ -62,6 +63,7 @@ impl Workspace {
             chat.messages.pop();
         }
         chat.running = true;
+        chat.failed_flag = false;
         chat.started_at = Some(std::time::Instant::now());
         let count = chat.messages.len();
         self.scroller.update(cx, |s, cx| {
