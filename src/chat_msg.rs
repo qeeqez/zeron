@@ -82,6 +82,33 @@ impl Workspace {
         });
     }
 
+    /// Cmd+Shift+Down: cycle forward through user messages (newest first).
+    /// Past the newest, the composer clears.
+    pub fn recall_next(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(cur) = self.recall_ix else { return };
+        let chat = &self.chats[self.active];
+        let user_ixs: Vec<usize> = chat
+            .messages
+            .iter()
+            .enumerate()
+            .filter_map(|(i, m)| (m.role == Role::User && matches!(m.kind, MessageKind::Text(_))).then_some(i))
+            .collect();
+        if cur == 0 {
+            self.recall_ix = None;
+            self.composer.update(cx, |s, cx| s.set_value("", window, cx));
+            return;
+        }
+        let next = cur - 1;
+        self.recall_ix = Some(next);
+        let ix = user_ixs[user_ixs.len() - 1 - next];
+        let MessageKind::Text(t) = &chat.messages[ix].kind else { return };
+        let text = t.to_string();
+        self.composer.update(cx, |s, cx| {
+            s.set_value(text, window, cx);
+            s.focus(window, cx);
+        });
+    }
+
     pub fn copy_message(&self, ix: usize, cx: &mut Context<Self>) {
         let Some(msg) = self.chats[self.active].messages.get(ix) else { return };
         let text = match &msg.kind {

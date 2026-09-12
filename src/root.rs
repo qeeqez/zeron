@@ -1,16 +1,15 @@
 //! The `Render` impl for `Workspace` plus the window-open helper.
 
+use crate::workspace::Workspace;
+use crate::{
+    Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EscapeKey,
+    NewChat, NewWindow, OpenPalette, OpenSettings, QuitApp, RecallLast, RecallNext, RecallPrev, RevealChats, SearchChat, ShortcutsHelp,
+    ThemeDark, ThemeLight, ToggleAgents, ToggleSidebar,
+};
 use gpui_kit::component::Root;
 use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-
-use crate::workspace::Workspace;
-use crate::{
-    Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EscapeKey,
-    NewChat, NewWindow, OpenPalette, OpenSettings, QuitApp, RecallLast, RecallPrev, RevealChats, SearchChat, ShortcutsHelp, ThemeDark,
-    ThemeLight, ToggleAgents, ToggleSidebar,
-};
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -112,6 +111,12 @@ impl Render for Workspace {
                 let ws = cx.entity();
                 move |_: &RecallPrev, window, cx| {
                     ws.update(cx, |this, cx| this.recall_prev(window, cx));
+                }
+            })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &RecallNext, window, cx| {
+                    ws.update(cx, |this, cx| this.recall_next(window, cx));
                 }
             })
             .h_full()
