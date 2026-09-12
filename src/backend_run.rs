@@ -11,7 +11,7 @@ use crate::workspace::Workspace;
 /// Drive a real `AgentBackend` reply: spawn the backend, pump its event
 /// stream on a thread, and apply events on the UI thread via a channel.
 pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspace>) {
-    let chat_ix = this.active;
+    let chat_id = this.chats[this.active].id;
     let model = this.model.to_string();
     let mode = this.mode.to_string();
     let stream = this.backend.send(prompt, &model, &mode);
@@ -29,23 +29,25 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
             };
             let done = matches!(e, AgentEvent::Done | AgentEvent::Error(_));
-            let _ = this.update(cx, |this, cx| this.apply_event(chat_ix, e, cx));
+            let _ = this.update(cx, |this, cx| this.apply_event(chat_id, e, cx));
             if done {
                 break 'outer;
             }
         }
         let _ = this.update_in(cx, |this, window, cx| {
-            this.finish_reply(chat_ix, cx);
-            this.notify_done(chat_ix, window, cx);
+            this.finish_reply(chat_id, cx);
+            this.notify_done(chat_id, window, cx);
         });
     });
-    this.chats[chat_ix].reply_task = Some(task);
+    if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
+        chat.reply_task = Some(task);
+    }
 }
-
 impl Workspace {
-    /// Apply one backend event to the chat.
-    fn apply_event(&mut self, chat_ix: usize, ev: AgentEvent, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[chat_ix];
+    /// Apply one backend event to the chat identified by `chat_id`.
+    /// Chat may have been deleted — events for it are dropped.
+    fn apply_event(&mut self, chat_id: u64, ev: AgentEvent, cx: &mut Context<Self>) {
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         match ev {
             AgentEvent::TextDelta(text) => {
                 let needs_new = !matches!(chat.messages.last(), Some(m) if matches!(m.kind, MessageKind::Text(_)));
@@ -133,11 +135,12 @@ impl Workspace {
 
     /// Mark the reply finished. `failed_flag` survives so the retry banner
     /// stays visible until the next send/retry clears it.
-    pub(crate) fn finish_reply(&mut self, chat_ix: usize, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[chat_ix];
+    pub(crate) fn finish_reply(&mut self, chat_id: u64, cx: &mut Context<Self>) {
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.running = false;
         chat.started_at = None;
-        if chat_ix != self.active {
+        if !is_active {
             chat.unread = true;
         }
         cx.notify();
@@ -159,8 +162,9 @@ fn pump_stream(stream: crate::backend::ReplyStream, tx: std::sync::mpsc::Sender<
 impl Workspace {
     /// In-app toast always; system notification + dock bounce when the
     /// window is inactive so the user notices a finished reply.
-    pub(crate) fn notify_done(&mut self, chat_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
-        let title = self.chats[chat_ix].title.clone();
+    pub(crate) fn notify_done(&mut self, chat_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
+        let title = chat.title.clone();
         if !self.notify_on_done {
             return;
         }
@@ -168,7 +172,7 @@ impl Workspace {
         if !window.is_window_active() {
             window.request_attention();
             cx.show_system_notification(gpui_kit::SystemNotification {
-                tag: format!("reply-{chat_ix}").into(),
+                tag: format!("reply-{chat_id}").into(),
                 title: "Rixl Code".into(),
                 body: format!("{title} — reply complete").into(),
                 actions: vec![],

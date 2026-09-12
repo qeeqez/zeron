@@ -64,8 +64,9 @@ pub fn save_chats(chats: &[Chat]) {
     }
 }
 
-/// Load chats from disk; returns empty vec on any error.
-pub fn load_chats() -> Vec<Chat> {
+/// Load chats from disk; returns empty vec on any error. Each chat gets a
+/// fresh id from `next_id` so reply tasks can target chats stably.
+pub fn load_chats(next_id: &mut u64) -> Vec<Chat> {
     let dir = chats_dir();
     let Ok(entries) = fs::read_dir(&dir) else { return Vec::new() };
     let mut chats: Vec<Chat> = entries
@@ -78,7 +79,8 @@ pub fn load_chats() -> Vec<Chat> {
             if stored.v != 1 {
                 return None;
             }
-            let mut chat = Chat::new(stored.title);
+            let mut chat = Chat::new(*next_id, stored.title);
+            *next_id += 1;
             chat.messages = stored.messages;
             chat.pinned = stored.pinned;
             chat.archived = stored.archived;

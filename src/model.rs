@@ -62,6 +62,9 @@ pub enum Role {
 }
 
 pub struct Chat {
+    /// Stable identity — positions shift on delete, so reply tasks must
+    /// not capture indices.
+    pub id: u64,
     pub title: SharedString,
     pub messages: Vec<ChatMessage>,
     pub running: bool,
@@ -77,8 +80,9 @@ pub struct Chat {
 }
 
 impl Chat {
-    pub fn new(title: impl Into<SharedString>) -> Self {
+    pub fn new(id: u64, title: impl Into<SharedString>) -> Self {
         Self {
+            id,
             title: title.into(),
             messages: Vec::new(),
             running: false,

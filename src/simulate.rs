@@ -20,22 +20,24 @@ pub(crate) struct AgentSpec {
 /// streamed text answer. Replaced by the real backend event stream later
 /// (docs/todo/backend.md).
 pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
-    let chat_ix = this.active;
+    let chat_id = this.chats[this.active].id;
     this.spawn_agent(AgentSpec { name: "explorer", lane: "rixl/explore", steps_total: 4 }, cx);
     this.spawn_agent(AgentSpec { name: "reviewer", lane: "rixl/review", steps_total: 3 }, cx);
-    this.chats[chat_ix].messages.push(ChatMessage {
-        role: Role::Assistant,
-        kind: MessageKind::Tool(ToolCall {
-            name: "shell".into(),
-            detail: "cargo build --locked".into(),
-            output: "".into(),
-            status: ToolStatus::Running,
-            expanded: false,
-        }),
-        rating: None,
-        usage: None,
-        at: SystemTime::now(),
-    });
+    if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
+        chat.messages.push(ChatMessage {
+            role: Role::Assistant,
+            kind: MessageKind::Tool(ToolCall {
+                name: "shell".into(),
+                detail: "cargo build --locked".into(),
+                output: "".into(),
+                status: ToolStatus::Running,
+                expanded: false,
+            }),
+            rating: None,
+            usage: None,
+            at: SystemTime::now(),
+        });
+    }
     this.scroller.update(cx, |s, cx| {
         s.append(1, cx);
     });
@@ -43,17 +45,19 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
 
     let task = cx.spawn(async move |this, cx| {
         cx.background_executor().timer(Duration::from_millis(900)).await;
-        let _ = this.update(cx, |this, cx| this.begin_stream(chat_ix, cx));
+        let _ = this.update(cx, |this, cx| this.begin_stream(chat_id, cx));
         for _ in 0..12 {
             cx.background_executor().timer(Duration::from_millis(80)).await;
-            let _ = this.update(cx, |this, cx| this.stream_chunk(chat_ix, cx));
+            let _ = this.update(cx, |this, cx| this.stream_chunk(chat_id, cx));
         }
         let _ = this.update_in(cx, |this, window, cx| {
-            this.finish_stream(chat_ix, cx);
-            this.notify_done(chat_ix, window, cx);
+            this.finish_stream(chat_id, cx);
+            this.notify_done(chat_id, window, cx);
         });
     });
-    this.chats[chat_ix].reply_task = Some(task);
+    if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
+        chat.reply_task = Some(task);
+    }
 }
 
 impl Workspace {
@@ -102,9 +106,9 @@ impl Workspace {
         SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos() % 4 == 0).unwrap_or(false)
     }
 
-    fn begin_stream(&mut self, chat_ix: usize, cx: &mut Context<Self>) {
+    fn begin_stream(&mut self, chat_id: u64, cx: &mut Context<Self>) {
         let failed = Self::reply_failed();
-        let chat = &mut self.chats[chat_ix];
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.failed_flag = failed;
         if let Some(last) = chat.messages.last_mut()
             && let MessageKind::Tool(tool) = &mut last.kind
@@ -140,8 +144,8 @@ impl Workspace {
         cx.notify();
     }
 
-    fn stream_chunk(&mut self, chat_ix: usize, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[chat_ix];
+    fn stream_chunk(&mut self, chat_id: u64, cx: &mut Context<Self>) {
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         let Some(last) = chat.messages.last_mut() else { return };
         let MessageKind::Text(text) = &mut last.kind else { return };
         let full: &str = if chat.failed_flag { REPLY_FAIL } else { REPLY_OK };
@@ -154,12 +158,13 @@ impl Workspace {
         cx.notify();
     }
 
-    fn finish_stream(&mut self, chat_ix: usize, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[chat_ix];
+    fn finish_stream(&mut self, chat_id: u64, cx: &mut Context<Self>) {
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.running = false;
         // failed_flag survives so the retry banner stays until next send.
         chat.started_at = None;
-        if chat_ix != self.active {
+        if !is_active {
             chat.unread = true;
         }
         self.scroller.update(cx, |s, cx| {

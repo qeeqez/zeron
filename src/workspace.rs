@@ -14,6 +14,8 @@ pub struct Workspace {
     pub agents: Vec<Agent>,
     /// Monotonic id source for agents — survives `clear_finished_agents`.
     pub next_agent_id: u64,
+    /// Monotonic id source for chats — survives deletions.
+    pub next_chat_id: u64,
     pub agents_panel_open: bool,
     pub sidebar_width: f32,
     pub resizing_sidebar: bool,
@@ -89,6 +91,7 @@ impl Workspace {
             sidebar_width: settings.sidebar_width,
             agents: Vec::new(),
             next_agent_id: 0,
+            next_chat_id: 0,
             resizing_sidebar: false,
             agents_panel_open: false,
             composer,
@@ -113,7 +116,7 @@ impl Workspace {
             font_size: settings.font_size,
             project_files: crate::files::scan_project_files(),
         };
-        let loaded = crate::persist::load_chats();
+        let loaded = crate::persist::load_chats(&mut this.next_chat_id);
         if loaded.is_empty() {
             this.new_chat(cx);
         } else {

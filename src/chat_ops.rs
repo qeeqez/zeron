@@ -4,7 +4,9 @@ use crate::model::{Chat, MessageKind, Role};
 use crate::workspace::Workspace;
 impl Workspace {
     pub fn new_chat(&mut self, cx: &mut Context<Self>) {
-        self.chats.push(Chat::new("New chat"));
+        let id = self.next_chat_id;
+        self.next_chat_id += 1;
+        self.chats.push(Chat::new(id, "New chat"));
         self.active = self.chats.len() - 1;
         self.recall_ix = None;
         self.scroller.update(cx, |s, cx| {
@@ -64,7 +66,9 @@ impl Workspace {
     /// Duplicate chat `ix` (title + messages) as a new chat and select it.
     pub fn duplicate_chat(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(src) = self.chats.get(ix) else { return };
-        let mut copy = Chat::new(format!("{} (copy)", src.title));
+        let id = self.next_chat_id;
+        self.next_chat_id += 1;
+        let mut copy = Chat::new(id, format!("{} (copy)", src.title));
         copy.messages = src.messages.clone();
         copy.draft = src.draft.clone();
         self.chats.push(copy);
