@@ -105,7 +105,7 @@ impl Default for Settings {
             mode: "Agent".into(),
             notify_on_done: true,
             word_wrap: true,
-            use_codex_cli: false,
+            use_codex_cli: true,
             font_size: 14,
             window_bounds: None,
             sidebar_width: 255.0,
