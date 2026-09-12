@@ -94,7 +94,7 @@ impl Workspace {
                 std::sync::Arc::new(crate::backend::SimBackend)
             },
             font_size: settings.font_size,
-            project_files: scan_project_files(),
+            project_files: crate::files::scan_project_files(),
         };
         let loaded = crate::persist::load_chats();
         if loaded.is_empty() {
@@ -216,10 +216,28 @@ impl Workspace {
         self.save();
     }
 
-    pub fn delete_chat(&mut self, index: usize, cx: &mut Context<Self>) {
+    pub fn delete_chat(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         if self.chats.len() <= 1 || index >= self.chats.len() {
             return;
         }
+        let title = self.chats[index].title.clone();
+        let rx = window.prompt(
+            gpui_kit::PromptLevel::Warning,
+            &format!("Delete “{title}”?"),
+            Some("This cannot be undone."),
+            &[gpui_kit::PromptButton::ok("Delete"), gpui_kit::PromptButton::cancel("Cancel")],
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            if rx.await != Ok(0) {
+                return;
+            }
+            let _ = this.update(cx, |this, cx| this.delete_chat_now(index, cx));
+        })
+        .detach();
+    }
+
+    fn delete_chat_now(&mut self, index: usize, cx: &mut Context<Self>) {
         self.chats.remove(index);
         if self.active >= self.chats.len() {
             self.active = self.chats.len() - 1;
@@ -247,33 +265,4 @@ impl Workspace {
     pub fn running_agents(&self) -> usize {
         self.agents.iter().filter(|a| a.status == crate::model::AgentStatus::Running).count()
     }
-}
-
-/// Walk the working directory for @-mention candidates (files only,
-/// depth ≤ 4, skips build/VCS dirs, capped at 500 entries).
-fn scan_project_files() -> Vec<SharedString> {
-    const SKIP: [&str; 6] = ["target", ".git", "node_modules", ".idea", ".sloc-guard", "dist"];
-    let root = std::env::current_dir().unwrap_or_default();
-    let mut out = Vec::new();
-    let mut stack = vec![(root.clone(), 0usize)];
-    while let Some((dir, depth)) = stack.pop() {
-        if depth > 4 || out.len() >= 500 {
-            continue;
-        }
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') || SKIP.contains(&name.as_str()) {
-                continue;
-            }
-            if path.is_dir() {
-                stack.push((path, depth + 1));
-            } else if let Ok(rel) = path.strip_prefix(&root) {
-                out.push(SharedString::from(rel.to_string_lossy().into_owned()));
-            }
-        }
-    }
-    out.sort();
-    out
 }

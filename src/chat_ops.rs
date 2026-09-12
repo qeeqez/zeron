@@ -112,23 +112,8 @@ impl Workspace {
         .detach();
     }
 
-    /// Append unique file paths to the active chat's attachments.
-    fn add_attachments(&mut self, paths: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[self.active];
-        for name in paths.iter().map(|p| p.to_string_lossy().into_owned()) {
-            if !chat.attachments.iter().any(|a| a.as_str() == name) {
-                chat.attachments.push(name.into());
-            }
-        }
-        cx.notify();
-    }
-
-    pub fn remove_attachment(&mut self, ix: usize, cx: &mut Context<Self>) {
-        self.chats[self.active].attachments.remove(ix);
-        cx.notify();
-    }
-    /// Export chat `ix` as markdown to the clipboard.
-    pub fn export_chat(&self, ix: usize, cx: &mut Context<Self>) {
+    /// Export chat `ix` as markdown via the native save dialog.
+    pub fn export_chat(&mut self, ix: usize, cx: &mut Context<Self>) {
         let Some(chat) = self.chats.get(ix) else { return };
         let mut out = format!("# {}\n\n", chat.title);
         for msg in &chat.messages {
@@ -143,7 +128,31 @@ impl Workspace {
             };
             out.push_str(&format!("## {role}\n\n{body}\n\n"));
         }
-        cx.write_to_clipboard(ClipboardItem::new_string(out));
+        let name = format!("{}.md", chat.title.replace(['/', '\\'], "-"));
+        let home = std::env::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+        let rx = cx.prompt_for_new_path(&home, Some(&name));
+        cx.spawn(async move |_this, _cx| {
+            if let Ok(Ok(Some(path))) = rx.await {
+                std::fs::write(path, out).ok();
+            }
+        })
+        .detach();
+    }
+
+    /// Append unique file paths to the active chat's attachments.
+    fn add_attachments(&mut self, paths: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[self.active];
+        for name in paths.iter().map(|p| p.to_string_lossy().into_owned()) {
+            if !chat.attachments.iter().any(|a| a.as_str() == name) {
+                chat.attachments.push(name.into());
+            }
+        }
+        cx.notify();
+    }
+
+    pub fn remove_attachment(&mut self, ix: usize, cx: &mut Context<Self>) {
+        self.chats[self.active].attachments.remove(ix);
+        cx.notify();
     }
 }
 
@@ -204,19 +213,34 @@ impl Workspace {
 }
 
 impl Workspace {
-    /// Delete every chat and start a fresh one.
-    pub fn clear_all_chats(&mut self, cx: &mut Context<Self>) {
-        self.chats.clear();
-        self.new_chat(cx);
-    }
-}
-
-impl Workspace {
     pub fn rename_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let ix = self.active;
         self.open_rename(ix, window, cx);
     }
 
+    /// Delete every chat and start a fresh one (native confirm).
+    pub fn clear_all_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let rx = window.prompt(
+            gpui_kit::PromptLevel::Warning,
+            "Delete all chats?",
+            Some("Every conversation will be removed. This cannot be undone."),
+            &[gpui_kit::PromptButton::ok("Delete All"), gpui_kit::PromptButton::cancel("Cancel")],
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            if rx.await != Ok(0) {
+                return;
+            }
+            let _ = this.update(cx, |this, cx| {
+                this.chats.clear();
+                this.new_chat(cx);
+            });
+        })
+        .detach();
+    }
+}
+
+impl Workspace {
     pub fn export_active(&mut self, cx: &mut Context<Self>) {
         let ix = self.active;
         self.export_chat(ix, cx);

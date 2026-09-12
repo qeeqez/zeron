@@ -132,6 +132,7 @@ impl Workspace {
             .flex_col()
             .flex_1()
             .h_full()
+            .bg(cx.theme().background)
             .child(header)
             .when(self.chat_search_open, |d| {
                 d.child(

@@ -1,7 +1,5 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use gpui_kit::component::WindowExt;
-use gpui_kit::component::notification::Notification;
 use gpui_kit::*;
 
 use crate::model::{Agent, AgentStatus, ChatMessage, DiffCard, MessageKind, Role, ToolCall, ToolStatus};
@@ -51,10 +49,7 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
         }
         let _ = this.update_in(cx, |this, window, cx| {
             this.finish_stream(chat_ix, cx);
-            let title = this.chats[chat_ix].title.clone();
-            if this.notify_on_done {
-                window.push_notification(Notification::success(format!("{title} — reply complete")), cx);
-            }
+            this.notify_done(chat_ix, window, cx);
         });
     });
     this.chats[chat_ix].reply_task = Some(task);

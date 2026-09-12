@@ -102,7 +102,7 @@ impl Workspace {
         let Some(body) = text.strip_prefix('/') else { return false };
         let (cmd, arg) = body.split_once(' ').map_or((body, ""), |(c, a)| (c, a.trim()));
         match cmd {
-            "clear" => self.clear_all_chats(cx),
+            "clear" => self.clear_all_chats(window, cx),
             "export" => self.export_active(cx),
             "rename" => self.rename_active(window, cx),
             "model" => {

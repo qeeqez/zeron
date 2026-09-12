@@ -15,7 +15,7 @@ struct StoredChat {
     draft: String,
 }
 
-fn chats_dir() -> PathBuf {
+pub(crate) fn chats_dir() -> PathBuf {
     dirs_home().join(".rixl/rixlcode/chats")
 }
 

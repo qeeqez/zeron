@@ -107,7 +107,7 @@ impl Workspace {
                     .id("clear-chats")
                     .cursor_pointer()
                     .child(IconName::Trash)
-                    .on_click(cx.listener(|this, _, _, cx| this.clear_all_chats(cx))),
+                    .on_click(cx.listener(|this, _, window, cx| this.clear_all_chats(window, cx))),
             )
             .child(
                 div()
@@ -122,7 +122,7 @@ impl Workspace {
         div()
             .id("sidebar-wrap")
             .h_full()
-            .bg(cx.theme().sidebar)
+            .bg(cx.theme().sidebar.opacity(0.6))
             .border_r_1()
             .border_color(cx.theme().sidebar_border)
             .child(
@@ -182,8 +182,8 @@ fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, pinned: bool, menu: PopupMen
     }))
     .item(PopupMenuItem::new("Delete").icon(IconName::Delete).on_click({
         let ws = ws.clone();
-        move |_, _, cx| {
-            ws.update(cx, |this, cx| this.delete_chat(ix, cx));
+        move |_, window, cx| {
+            ws.update(cx, |this, cx| this.delete_chat(ix, window, cx));
         }
     }))
     .item(PopupMenuItem::new("Archive").icon(IconName::Archive).on_click({

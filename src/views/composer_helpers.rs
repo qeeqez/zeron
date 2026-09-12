@@ -44,8 +44,13 @@ pub fn attachment_chips(chat: &Chat, ws: &Entity<Workspace>, cx: &mut App) -> Ve
     chat.attachments
         .iter()
         .enumerate()
-        .map(|(ix, name)| {
+        .map(|(ix, path)| {
             let ws = ws.clone();
+            let full = path.to_string();
+            let name = std::path::Path::new(&full)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or(full.clone());
             div()
                 .id(ix)
                 .flex()
@@ -57,7 +62,13 @@ pub fn attachment_chips(chat: &Chat, ws: &Entity<Workspace>, cx: &mut App) -> Ve
                 .bg(cx.theme().secondary)
                 .text_xs()
                 .child(IconName::FileText)
-                .child(name.clone())
+                .child(
+                    div()
+                        .id(("reveal-attach", ix))
+                        .cursor_pointer()
+                        .child(name)
+                        .on_click(move |_, _, cx| cx.reveal_path(std::path::Path::new(&full))),
+                )
                 .child(
                     div()
                         .id(("remove-attach", ix))

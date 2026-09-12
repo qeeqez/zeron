@@ -1,6 +1,7 @@
 mod backend;
 mod backend_run;
 mod chat_ops;
+mod files;
 mod model;
 mod palette;
 mod send;
@@ -23,13 +24,15 @@ actions!(
     workspace,
     [
         NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6,
-        Chat7, Chat8, Chat9, CloseWindow, OpenSettings, SearchChat, QuitApp, CopyTranscript
+        Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats,
     ]
 );
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let title = self.chats[self.active].title.clone();
+        window.set_window_title(&format!("{title} — Rixl Code"));
+        window.set_window_edited(!self.composer.read(cx).value().is_empty());
         let ws_new = cx.entity();
         let ws_del = cx.entity();
         let ws_side = cx.entity();
@@ -40,8 +43,8 @@ impl Render for Workspace {
             .on_action(move |_: &NewChat, _, cx| {
                 ws_new.update(cx, |this, cx| this.new_chat(cx));
             })
-            .on_action(move |_: &DeleteChat, _, cx| {
-                ws_del.update(cx, |this, cx| this.delete_chat(this.active, cx));
+            .on_action(move |_: &DeleteChat, window, cx| {
+                ws_del.update(cx, |this, cx| this.delete_chat(this.active, window, cx));
             })
             .on_action(chat_switch::<Chat1>(cx))
             .on_action(chat_switch::<Chat2>(cx))
@@ -84,6 +87,12 @@ impl Render for Workspace {
             })
             .on_action(|_: &QuitApp, _window, cx| {
                 cx.quit();
+            })
+            .on_action(|_: &EmojiPalette, window, _cx| {
+                window.show_character_palette();
+            })
+            .on_action(|_: &RevealChats, _window, cx| {
+                cx.reveal_path(&crate::persist::chats_dir());
             })
             .on_action({
                 let ws = cx.entity();
@@ -145,6 +154,8 @@ fn main() {
             ]),
             gpui_kit::Menu::new("File").items([
                 gpui_kit::MenuItem::action("New Chat", NewChat),
+                gpui_kit::MenuItem::action("Reveal Chats Folder", RevealChats),
+                gpui_kit::MenuItem::separator(),
                 gpui_kit::MenuItem::action("Close Window", CloseWindow),
             ]),
             gpui_kit::Menu::new("Edit").items([
@@ -153,6 +164,7 @@ fn main() {
                 gpui_kit::MenuItem::os_action("Paste", gpui_kit::NoAction, gpui_kit::OsAction::Paste),
                 gpui_kit::MenuItem::os_action("Select All", gpui_kit::NoAction, gpui_kit::OsAction::SelectAll),
                 gpui_kit::MenuItem::separator(),
+                gpui_kit::MenuItem::action("Emoji & Symbols", EmojiPalette),
                 gpui_kit::MenuItem::action("Copy Transcript", CopyTranscript),
             ]),
             gpui_kit::Menu::new("View").items([
@@ -183,10 +195,14 @@ fn main() {
             cx.open_window(
                 WindowOptions {
                     window_min_size: Some(Size { width: px(800.), height: px(600.) }),
+                    window_background: gpui_kit::WindowBackgroundAppearance::Blurred,
                     ..TitleBar::window_options()
                 },
                 |window, cx| {
                     let view = cx.new(|cx| Workspace::new(window, cx));
+                    let ws = view.clone();
+                    let handle = window.window_handle();
+                    window.on_window_should_close(cx, move |window, cx| confirm_close(&ws, handle, window, cx));
                     cx.new(|cx| Root::new(view, window, cx))
                 },
             )
@@ -194,4 +210,25 @@ fn main() {
         })
         .detach();
     });
+}
+
+/// Native confirm when closing while a reply is generating.
+fn confirm_close(ws: &Entity<Workspace>, handle: AnyWindowHandle, window: &mut Window, cx: &mut App) -> bool {
+    if !ws.read(cx).chats.iter().any(|c| c.running) {
+        return true;
+    }
+    let rx = window.prompt(
+        gpui_kit::PromptLevel::Warning,
+        "A reply is still generating",
+        Some("Closing now will stop it."),
+        &[gpui_kit::PromptButton::ok("Close"), gpui_kit::PromptButton::cancel("Cancel")],
+        cx,
+    );
+    cx.spawn(async move |cx| {
+        if rx.await == Ok(0) {
+            let _ = handle.update(cx, |_, window, _cx| window.remove_window());
+        }
+    })
+    .detach();
+    false
 }

@@ -36,10 +36,7 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
         }
         let _ = this.update_in(cx, |this, window, cx| {
             this.finish_reply(chat_ix, cx);
-            let title = this.chats[chat_ix].title.clone();
-            if this.notify_on_done {
-                window.push_notification(Notification::success(format!("{title} — reply complete")), cx);
-            }
+            this.notify_done(chat_ix, window, cx);
         });
     });
     this.chats[chat_ix].reply_task = Some(task);
@@ -145,4 +142,25 @@ fn pump_stream(stream: crate::backend::ReplyStream, tx: std::sync::mpsc::Sender<
             }
         }
     });
+}
+
+impl Workspace {
+    /// In-app toast always; system notification + dock bounce when the
+    /// window is inactive so the user notices a finished reply.
+    pub(crate) fn notify_done(&mut self, chat_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let title = self.chats[chat_ix].title.clone();
+        if !self.notify_on_done {
+            return;
+        }
+        window.push_notification(Notification::success(format!("{title} — reply complete")), cx);
+        if !window.is_window_active() {
+            window.request_attention();
+            cx.show_system_notification(gpui_kit::SystemNotification {
+                tag: format!("reply-{chat_ix}").into(),
+                title: "Rixl Code".into(),
+                body: format!("{title} — reply complete").into(),
+                actions: vec![],
+            });
+        }
+    }
 }
