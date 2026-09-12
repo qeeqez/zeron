@@ -54,6 +54,7 @@ impl Workspace {
             }
         }
         cx.notify();
+        self.save();
     }
 
     pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
