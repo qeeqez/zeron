@@ -101,13 +101,17 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
                 } else {
                     menu
                 };
-            menu.item(
-                gpui_kit::component::menu::PopupMenuItem::new("Retry")
-                    .icon(IconName::RotateCcw)
-                    .on_click(move |_, _, cx| {
-                        ws_retry.update(cx, |this, cx| this.retry_last(cx));
-                    }),
-            )
+            if role == Role::Assistant && mc.is_last {
+                menu.item(
+                    gpui_kit::component::menu::PopupMenuItem::new("Retry")
+                        .icon(IconName::RotateCcw)
+                        .on_click(move |_, _, cx| {
+                            ws_retry.update(cx, |this, cx| this.retry_last(cx));
+                        }),
+                )
+            } else {
+                menu
+            }
         })
         .into_any_element()
 }

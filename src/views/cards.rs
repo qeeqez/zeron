@@ -109,6 +109,7 @@ pub fn render_diff(ix: usize, diff: &DiffCard, ws: Entity<Workspace>, cx: &mut A
     card
 }
 
+#[derive(Clone, Copy)]
 pub struct MsgCtx {
     pub ix: usize,
     pub is_last: bool,
