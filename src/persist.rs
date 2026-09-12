@@ -95,6 +95,7 @@ pub struct Settings {
     pub window_bounds: Option<[f32; 4]>,
     pub sidebar_width: f32,
     pub sidebar_collapsed: bool,
+    pub active_chat: usize,
 }
 
 impl Default for Settings {
@@ -109,6 +110,7 @@ impl Default for Settings {
             window_bounds: None,
             sidebar_width: 255.0,
             sidebar_collapsed: false,
+            active_chat: 0,
         }
     }
 }

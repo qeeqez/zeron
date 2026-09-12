@@ -108,6 +108,7 @@ impl Workspace {
             this.new_chat(cx);
         } else {
             this.chats = loaded;
+            this.active = settings.active_chat.min(this.chats.len().saturating_sub(1));
         }
         this.start_ticker(cx);
         this
@@ -131,6 +132,7 @@ impl Workspace {
             window_bounds: prev.window_bounds,
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
+            active_chat: self.active,
         });
     }
 
@@ -188,6 +190,7 @@ impl Workspace {
         });
         cx.notify();
         self.save();
+        self.save_settings();
     }
 
     pub fn toggle_backend(&mut self, cx: &mut Context<Self>) {
