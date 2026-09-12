@@ -5,10 +5,38 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::workspace::Workspace;
+pub struct SettingsPanel {
+    ws: Entity<Workspace>,
+}
+
+impl SettingsPanel {
+    pub fn new(ws: Entity<Workspace>, cx: &mut Context<Self>) -> Self {
+        cx.observe(&ws, |_, _, cx| cx.notify()).detach();
+        Self { ws }
+    }
+}
+
+impl Render for SettingsPanel {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let s = self.ws.read(cx);
+        settings_body(
+            SettingsView {
+                notify: s.notify_on_done,
+                font_size: s.font_size,
+                use_codex: matches!(s.backend.name(), "codex-cli"),
+                word_wrap: s.word_wrap,
+                ws: self.ws.clone(),
+            },
+            cx,
+        )
+    }
+}
+
 pub struct SettingsView {
     pub notify: bool,
     pub font_size: u8,
     pub use_codex: bool,
+    pub word_wrap: bool,
     pub ws: Entity<Workspace>,
 }
 
@@ -88,10 +116,32 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
                     .id("toggle-backend")
                     .cursor_pointer()
                     .child(if s.use_codex { IconName::Check } else { IconName::X })
-                    .on_click(move |_, _, cx| {
-                        ws.update(cx, |this, cx| {
-                            this.toggle_backend(cx);
-                        });
+                    .on_click({
+                        let ws = ws.clone();
+                        move |_, _, cx| {
+                            ws.update(cx, |this, cx| {
+                                this.toggle_backend(cx);
+                            });
+                        }
+                    }),
+            ),
+        )
+        .child(div().text_sm().pt_2().child("Messages"))
+        .child(
+            div().flex().items_center().gap_2().text_xs().child("Word wrap").child(div().flex_1()).child(
+                div()
+                    .id("toggle-wrap")
+                    .cursor_pointer()
+                    .child(if s.word_wrap { IconName::Check } else { IconName::X })
+                    .on_click({
+                        let ws = ws.clone();
+                        move |_, _, cx| {
+                            ws.update(cx, |this, cx| {
+                                this.word_wrap = !this.word_wrap;
+                                this.save_settings();
+                                cx.notify();
+                            });
+                        }
                     }),
             ),
         )
@@ -106,15 +156,17 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
         })))
 }
 
-const SHORTCUTS: [(&str, &str); 8] = [
+const SHORTCUTS: [(&str, &str); 10] = [
     ("Cmd+N", "New chat"),
     ("Cmd+B", "Toggle sidebar"),
     ("Cmd+J", "Toggle agents panel"),
     ("Cmd+K", "Command palette"),
+    ("Cmd+F", "Search in chat"),
     ("Cmd+W", "Close window"),
     ("Cmd+,", "Settings"),
     ("Cmd+Shift+Backspace", "Delete chat"),
     ("Cmd+1..9", "Switch to chat N"),
+    ("Esc", "Stop reply / close search"),
 ];
 
 fn theme_button(label: &'static str, mode: ThemeMode) -> impl IntoElement {

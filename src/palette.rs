@@ -56,14 +56,8 @@ impl Workspace {
     pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let ws = cx.entity();
         window.open_sheet(cx, move |sheet, _window, cx| {
-            let s = ws.read(cx);
-            let view = crate::views::settings::SettingsView {
-                notify: s.notify_on_done,
-                font_size: s.font_size,
-                use_codex: matches!(s.backend.name(), "codex-cli"),
-                ws: ws.clone(),
-            };
-            sheet.title("Settings").child(crate::views::settings_body(view, cx))
+            let panel = cx.new(|cx| crate::views::settings::SettingsPanel::new(ws.clone(), cx));
+            sheet.title("Settings").child(panel)
         });
     }
 
