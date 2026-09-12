@@ -124,11 +124,13 @@ impl Workspace {
         div()
             .id("sidebar-wrap")
             .h_full()
+            .relative()
             .bg(cx.theme().sidebar.opacity(0.6))
             .border_r_1()
             .border_color(cx.theme().sidebar_border)
             .child(
                 Sidebar::new("sidebar")
+                    .w(px(self.sidebar_width))
                     .collapsible(SidebarCollapsible::Icon)
                     .collapsed(collapsed)
                     .header(header)
@@ -136,6 +138,25 @@ impl Workspace {
                     .children(groups)
                     .footer(footer),
             )
+            .when(!collapsed, |d| {
+                d.child(
+                    div()
+                        .id("sidebar-resize")
+                        .absolute()
+                        .top_0()
+                        .right_0()
+                        .bottom_0()
+                        .w(px(5.))
+                        .cursor_col_resize()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _, _, cx| {
+                                this.resizing_sidebar = true;
+                                cx.notify();
+                            }),
+                        ),
+                )
+            })
     }
 }
 

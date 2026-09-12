@@ -12,10 +12,7 @@ mod views;
 mod workspace;
 
 use gpui_kit::component::Root;
-
-use gpui_kit::component::status_bar::StatusBar;
-
-use gpui_kit::component::theme::{ActiveTheme, Theme, ThemeMode};
+use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use workspace::Workspace;
@@ -103,8 +100,24 @@ impl Render for Workspace {
                     ws.update(cx, |this, cx| this.escape(window, cx));
                 }
             })
+            .h_full()
             .flex()
             .flex_col()
+            .on_mouse_move(cx.listener(|this, ev: &gpui_kit::MouseMoveEvent, _, cx| {
+                if this.resizing_sidebar && ev.dragging() {
+                    this.sidebar_width = f32::from(ev.position.x).clamp(180.0, 480.0);
+                    cx.notify();
+                }
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    if this.resizing_sidebar {
+                        this.resizing_sidebar = false;
+                        cx.notify();
+                    }
+                }),
+            )
             .child(
                 div()
                     .flex()
@@ -113,15 +126,6 @@ impl Render for Workspace {
                     .child(self.render_sidebar(window, cx))
                     .child(self.render_chat(window, cx))
                     .when(self.agents_panel_open, |d| d.child(self.render_agents_panel(window, cx))),
-            )
-            .child(
-                StatusBar::new()
-                    .left(div().text_xs().child(format!("{} · {} · rixlcode", self.model, self.mode)))
-                    .right(div().text_xs().text_color(cx.theme().muted_foreground).child(format!(
-                        "{} chats · ~{} tok",
-                        self.chats.len(),
-                        self.token_estimate()
-                    ))),
             )
     }
 }
@@ -143,7 +147,7 @@ macro_rules! chat_ix {
 chat_ix!(Chat1 => 0, Chat2 => 1, Chat3 => 2, Chat4 => 3, Chat5 => 4, Chat6 => 5, Chat7 => 6, Chat8 => 7, Chat9 => 8);
 
 fn main() {
-    gpui_kit::application().run(|cx| {
+    gpui_kit::application().with_assets(gpui_kit::assets::Assets::new("")).run(|cx| {
         gpui_kit::init(cx);
         cx.set_menus([
             gpui_kit::Menu::new("Rixl Code").items([
