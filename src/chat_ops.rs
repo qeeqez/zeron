@@ -4,49 +4,6 @@ use crate::model::{AgentStatus, Chat, MessageKind, Role};
 use crate::workspace::Workspace;
 
 impl Workspace {
-    pub fn rate_message(&mut self, ix: usize, up: bool, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[self.active];
-        if let Some(msg) = chat.messages.get_mut(ix) {
-            msg.rating = if msg.rating == Some(up) { None } else { Some(up) };
-        }
-        self.scroller.update(cx, |s, cx| {
-            s.remeasure_items(ix..ix + 1, cx);
-        });
-        cx.notify();
-        self.save();
-    }
-
-    /// Load message `ix` into the composer and truncate the chat after it,
-    /// so re-sending replaces the original turn.
-    pub fn edit_message(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[self.active];
-        let Some(text) = chat.messages.get(ix).and_then(|m| match &m.kind {
-            MessageKind::Text(t) if m.role == Role::User => Some(t.to_string()),
-            _ => None,
-        }) else {
-            return;
-        };
-        chat.messages.truncate(ix);
-        self.composer.update(cx, |s, cx| {
-            s.set_value(text, window, cx);
-            s.focus(window, cx);
-        });
-        let count = self.chats[self.active].messages.len();
-        self.scroller.update(cx, |s, cx| s.reset(count, cx));
-        cx.notify();
-        self.save();
-    }
-
-    pub fn copy_message(&self, ix: usize, cx: &mut Context<Self>) {
-        let Some(msg) = self.chats[self.active].messages.get(ix) else { return };
-        let text = match &msg.kind {
-            MessageKind::Text(t) => t.to_string(),
-            MessageKind::Tool(t) => format!("{}: {}\n{}", t.name, t.detail, t.output),
-            MessageKind::Diff(d) => format!("{} (+{} -{})\n{}", d.path, d.added, d.removed, d.hunks),
-        };
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
-    }
-
     /// Stop the in-flight reply stream for the active chat.
     pub fn stop_reply(&mut self, cx: &mut Context<Self>) {
         let chat = &mut self.chats[self.active];

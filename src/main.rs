@@ -1,6 +1,7 @@
 mod backend;
 mod backend_parse;
 mod backend_run;
+mod chat_msg;
 mod chat_ops;
 mod files;
 mod model;
@@ -21,7 +22,7 @@ use workspace::Workspace;
 actions!([
     NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7,
     Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp,
-    NewWindow,
+    NewWindow, RecallLast,
 ]);
 
 impl Render for Workspace {
@@ -114,6 +115,12 @@ impl Render for Workspace {
                 })
                 .detach();
             })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &RecallLast, window, cx| {
+                    ws.update(cx, |this, cx| this.recall_last(window, cx));
+                }
+            })
             .h_full()
             .flex()
             .flex_col()
@@ -185,7 +192,6 @@ fn main() {
                 gpui_kit::MenuItem::os_action("Select All", gpui_kit::NoAction, gpui_kit::OsAction::SelectAll),
                 gpui_kit::MenuItem::separator(),
                 gpui_kit::MenuItem::action("Emoji & Symbols", EmojiPalette),
-                gpui_kit::MenuItem::action("Copy Transcript", CopyTranscript),
             ]),
             gpui_kit::Menu::new("View").items([
                 gpui_kit::MenuItem::action("Toggle Sidebar", ToggleSidebar),
@@ -198,7 +204,7 @@ fn main() {
             KeyBinding::new("cmd-n", NewChat, Some("workspace")),
             KeyBinding::new("cmd-shift-n", NewWindow, Some("workspace")),
             KeyBinding::new("cmd-,", OpenSettings, Some("workspace")),
-            KeyBinding::new("cmd-/", ShortcutsHelp, Some("workspace")),
+            KeyBinding::new("cmd-up", RecallLast, Some("workspace")),
             KeyBinding::new("cmd-shift-backspace", DeleteChat, Some("workspace")),
             KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
             KeyBinding::new("cmd-j", ToggleAgents, Some("workspace")),
