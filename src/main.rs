@@ -46,6 +46,8 @@ fn main() {
                 gpui_kit::MenuItem::os_action("Paste", gpui_kit::NoAction, gpui_kit::OsAction::Paste),
                 gpui_kit::MenuItem::os_action("Select All", gpui_kit::NoAction, gpui_kit::OsAction::SelectAll),
                 gpui_kit::MenuItem::separator(),
+                gpui_kit::MenuItem::action("Copy Transcript", CopyTranscript),
+                gpui_kit::MenuItem::separator(),
                 gpui_kit::MenuItem::action("Emoji & Symbols", EmojiPalette),
             ]),
             gpui_kit::Menu::new("View").items([
