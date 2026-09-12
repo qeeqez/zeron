@@ -164,6 +164,7 @@ impl Workspace {
         cx.spawn(async move |this, cx| {
             let _ = this.update_in(cx, |_this, window, cx| {
                 composer.update(cx, |s, cx| s.focus(window, cx));
+                window.set_window_title("Rixl Code — New chat");
             });
         })
         .detach();
