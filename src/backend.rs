@@ -2,10 +2,7 @@ use std::pin::Pin;
 
 use gpui_kit::SharedString;
 
-use crate::model::{ChatMessage, Role};
-
 /// Events streamed from an agent backend into a chat.
-#[allow(dead_code)] // exercised once a real transport lands
 #[derive(Clone, Debug)]
 pub enum AgentEvent {
     /// Incremental text for the in-flight assistant message.
@@ -24,21 +21,16 @@ pub enum AgentEvent {
     Error(SharedString),
 }
 
-#[allow(dead_code)] // exercised once a real transport lands
 pub struct ReplyStream {
-    /// The user message that triggered this turn.
-    pub prompt: ChatMessage,
     /// Events as they arrive.
     pub events: Pin<Box<dyn futures::Stream<Item = AgentEvent> + Send>>,
 }
 
 /// Pluggable agent backend. Implementations live behind `dyn` so the UI
-#[allow(dead_code)] // exercised once a real transport lands
+/// can swap transports without touching chat state.
 pub trait AgentBackend: Send + Sync {
     /// Human-readable name for the status bar.
     fn name(&self) -> &'static str;
-    /// Available model ids for the picker.
-    fn models(&self) -> &'static [&'static str];
     /// Start a reply turn. The returned stream yields events until
     /// `Done`/`Error` or cancellation.
     fn send(&self, prompt: &str, model: &str, mode: &str) -> ReplyStream;
@@ -46,7 +38,7 @@ pub trait AgentBackend: Send + Sync {
     fn cancel(&self);
 }
 
-#[allow(dead_code)] // exercised once a real transport lands
+/// Simulated backend: emits a canned event stream (tool call, diff, text).
 pub struct SimBackend;
 
 impl AgentBackend for SimBackend {
@@ -54,17 +46,7 @@ impl AgentBackend for SimBackend {
         "sim"
     }
 
-    fn models(&self) -> &'static [&'static str] {
-        &["gpt-5-codex", "gpt-5", "gpt-5-mini"]
-    }
-
-    fn send(&self, prompt: &str, _model: &str, _mode: &str) -> ReplyStream {
-        let prompt = ChatMessage {
-            role: Role::User,
-            kind: crate::model::MessageKind::Text(prompt.into()),
-            rating: None,
-            at: std::time::SystemTime::now(),
-        };
+    fn send(&self, _prompt: &str, _model: &str, _mode: &str) -> ReplyStream {
         let events = futures::stream::iter([
             AgentEvent::ToolCallStart { ix: 0, name: "cargo build".into(), detail: "--locked".into() },
             AgentEvent::ToolCallDelta { ix: 0, output: "   Compiling rixlcode v0.1.0\n".into() },
@@ -78,7 +60,7 @@ impl AgentBackend for SimBackend {
             AgentEvent::TextDelta("Done. The build is **green** — `0 warnings`, all checks passed.\n\n- `cargo build --locked` finished in 3.6s\n- clippy: clean\n- nextest: 0 tests".into()),
             AgentEvent::Done,
         ]);
-        ReplyStream { prompt, events: Box::pin(events) }
+        ReplyStream { events: Box::pin(events) }
     }
 
     fn cancel(&self) {}
@@ -100,17 +82,7 @@ impl AgentBackend for CodexCliBackend {
         "codex-cli"
     }
 
-    fn models(&self) -> &'static [&'static str] {
-        &["gpt-5-codex", "gpt-5", "gpt-5-mini"]
-    }
-
     fn send(&self, prompt: &str, model: &str, _mode: &str) -> ReplyStream {
-        let prompt_msg = ChatMessage {
-            role: Role::User,
-            kind: crate::model::MessageKind::Text(prompt.into()),
-            rating: None,
-            at: std::time::SystemTime::now(),
-        };
         let (tx, rx) = std::sync::mpsc::channel();
         let slot = self.child.clone();
         let (prompt, model) = (prompt.to_string(), model.to_string());
@@ -120,7 +92,7 @@ impl AgentBackend for CodexCliBackend {
             Err(std::sync::mpsc::TryRecvError::Empty) => std::task::Poll::Pending,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => std::task::Poll::Ready(None),
         });
-        ReplyStream { prompt: prompt_msg, events: Box::pin(stream) }
+        ReplyStream { events: Box::pin(stream) }
     }
 
     fn cancel(&self) {
