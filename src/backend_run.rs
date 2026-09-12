@@ -139,8 +139,8 @@ impl Workspace {
         if chat_ix != self.active {
             chat.unread = true;
         }
-        self.scroller.update(cx, |s, cx| s.remeasure(cx));
         cx.notify();
+        self.save();
     }
 }
 

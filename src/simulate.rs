@@ -162,5 +162,6 @@ impl Workspace {
             s.remeasure(cx);
         });
         cx.notify();
+        self.save();
     }
 }
