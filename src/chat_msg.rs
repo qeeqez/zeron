@@ -19,8 +19,12 @@ impl Workspace {
     }
 
     /// Load message `ix` into the composer and truncate the chat after it,
-    /// so re-sending replaces the original turn.
+    /// so re-sending replaces the original turn. Stops any in-flight reply
+    /// first — its events would otherwise append to the truncated chat.
     pub fn edit_message(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if self.chats[self.active].running {
+            self.stop_reply(cx);
+        }
         let chat = &mut self.chats[self.active];
         let Some(text) = chat.messages.get(ix).and_then(|m| match &m.kind {
             MessageKind::Text(t) if m.role == Role::User => Some(t.to_string()),
