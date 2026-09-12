@@ -146,12 +146,13 @@ impl Workspace {
     }
 
     pub fn remove_attachment(&mut self, ix: usize, cx: &mut Context<Self>) {
-        self.chats[self.active].attachments.remove(ix);
+        let attachments = &mut self.chats[self.active].attachments;
+        if ix < attachments.len() {
+            attachments.remove(ix);
+        }
         cx.notify();
     }
-}
 
-impl Workspace {
     pub(crate) fn filtered_count(&self, cx: &App) -> usize {
         let query = self.chat_search.read(cx).value().to_string().to_lowercase();
         if !self.chat_search_open || query.is_empty() {
