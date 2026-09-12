@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::theme::ActiveTheme;
@@ -142,20 +142,22 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
                 }),
         )
         .when(role == Role::Assistant, |d| {
-            d.child(
-                div()
-                    .id(("retry", ix))
-                    .cursor_pointer()
-                    .invisible()
-                    .group_hover(group.clone(), |style| style.visible())
-                    .text_color(muted)
-                    .child(IconName::RotateCcw)
-                    .on_click(move |_, _, cx| {
-                        ws_retry.update(cx, |this, cx| this.retry_last(cx));
-                    }),
-            )
-            .when(is_last, |d| {
+            // retry_last re-runs the final turn — only meaningful on the
+            // last message, so the icon is gated to it.
+            d.when(is_last, |d| {
                 d.child(
+                    div()
+                        .id(("retry", ix))
+                        .cursor_pointer()
+                        .invisible()
+                        .group_hover(group.clone(), |style| style.visible())
+                        .text_color(muted)
+                        .child(IconName::RotateCcw)
+                        .on_click(move |_, _, cx| {
+                            ws_retry.update(cx, |this, cx| this.retry_last(cx));
+                        }),
+                )
+                .child(
                     div()
                         .id(("regen", ix))
                         .cursor_pointer()
@@ -200,8 +202,5 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
 }
 
 fn format_time(at: SystemTime) -> String {
-    let secs = at.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let h = (secs / 3600) % 24;
-    let m = (secs / 60) % 60;
-    format!("{h:02}:{m:02}")
+    chrono::DateTime::<chrono::Local>::from(at).format("%H:%M").to_string()
 }
