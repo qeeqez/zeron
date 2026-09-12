@@ -57,6 +57,7 @@ impl Workspace {
         chat.running = false;
         chat.started_at = None;
         cx.notify();
+        self.save();
     }
 
     /// Duplicate chat `ix` (title + messages) as a new chat.
