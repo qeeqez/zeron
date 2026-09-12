@@ -3,8 +3,14 @@ use gpui_kit::*;
 use crate::workspace::Workspace;
 
 /// Prompt before closing while a reply is running; persist bounds first.
+/// Also stashes the composer text into the active chat's draft so unsent
+/// input survives the close.
 pub fn confirm_close(ws: &Entity<Workspace>, handle: AnyWindowHandle, window: &mut Window, cx: &mut App) -> bool {
     save_window_bounds(window);
+    ws.update(cx, |this, cx| {
+        this.chats[this.active].draft = this.composer.read(cx).value().to_string();
+        this.save();
+    });
     if !ws.read(cx).chats.iter().any(|c| c.running) {
         return true;
     }
