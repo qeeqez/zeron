@@ -12,7 +12,7 @@ mod views;
 mod workspace;
 
 use gpui_kit::component::Root;
-use gpui_kit::component::TitleBar;
+
 use gpui_kit::component::status_bar::StatusBar;
 
 use gpui_kit::component::theme::{ActiveTheme, Theme, ThemeMode};
@@ -102,8 +102,6 @@ impl Render for Workspace {
             })
             .flex()
             .flex_col()
-            .size_full()
-            .child(TitleBar::new().child(div().flex_1().text_center().text_sm().child(title.clone())))
             .child(
                 div()
                     .flex()
@@ -196,7 +194,13 @@ fn main() {
                 WindowOptions {
                     window_min_size: Some(Size { width: px(800.), height: px(600.) }),
                     window_background: gpui_kit::WindowBackgroundAppearance::Blurred,
-                    ..TitleBar::window_options()
+                    // Real macOS titlebar: native title, drag, double-click zoom.
+                    titlebar: Some(gpui_kit::TitlebarOptions {
+                        title: Some("Rixl Code".into()),
+                        appears_transparent: false,
+                        traffic_light_position: None,
+                    }),
+                    ..Default::default()
                 },
                 |window, cx| {
                     let view = cx.new(|cx| Workspace::new(window, cx));
