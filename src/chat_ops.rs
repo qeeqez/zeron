@@ -13,6 +13,7 @@ impl Workspace {
             s.remeasure_items(ix..ix + 1, cx);
         });
         cx.notify();
+        self.save();
     }
 
     /// Load message `ix` into the composer and truncate the chat after it,
