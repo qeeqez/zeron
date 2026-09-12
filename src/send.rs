@@ -33,6 +33,7 @@ impl Workspace {
             role: Role::User,
             kind: MessageKind::Text(text.into()),
             rating: None,
+            usage: None,
             at: SystemTime::now(),
         });
         chat.running = true;
@@ -137,6 +138,7 @@ impl Workspace {
             role: Role::Assistant,
             kind: MessageKind::Text(text.into()),
             rating: None,
+            usage: None,
             at: SystemTime::now(),
         });
         self.scroller.update(cx, |s, cx| s.append(1, cx));

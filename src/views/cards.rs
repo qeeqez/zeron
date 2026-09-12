@@ -195,6 +195,7 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
             )
         })
         .child(div().flex_1())
+        .when_some(msg.usage, |d, u| d.child(div().text_xs().text_color(muted).child(format!("{} in · {} out", u.input, u.output))))
         .child(div().text_xs().text_color(muted).child(format_time(msg.at)))
 }
 

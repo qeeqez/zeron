@@ -43,6 +43,16 @@ pub struct ChatMessage {
     pub kind: MessageKind,
     pub rating: Option<bool>,
     pub at: SystemTime,
+    /// Token usage reported by the backend for this reply.
+    #[serde(default)]
+    pub usage: Option<Usage>,
+}
+
+/// Token counts from a completed backend turn.
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct Usage {
+    pub input: u64,
+    pub output: u64,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

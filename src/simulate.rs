@@ -33,6 +33,7 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
             expanded: false,
         }),
         rating: None,
+        usage: None,
         at: SystemTime::now(),
     });
     this.scroller.update(cx, |s, cx| {
@@ -118,6 +119,7 @@ impl Workspace {
                     expanded: false,
                 }),
                 rating: None,
+                usage: None,
                 at: SystemTime::now(),
             });
         }
@@ -125,6 +127,7 @@ impl Workspace {
             role: Role::Assistant,
             kind: MessageKind::Text("".into()),
             rating: None,
+            usage: None,
             at: SystemTime::now(),
         });
         self.scroller.update(cx, |s, cx| {

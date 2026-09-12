@@ -55,6 +55,7 @@ impl Workspace {
 
                         kind: MessageKind::Text("".into()),
                         rating: None,
+                        usage: None,
                         at: SystemTime::now(),
                     });
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
@@ -76,6 +77,7 @@ impl Workspace {
                         expanded: false,
                     }),
                     rating: None,
+                    usage: None,
                     at: SystemTime::now(),
                 });
                 let _ = ix;
@@ -103,9 +105,15 @@ impl Workspace {
                     role: Role::Assistant,
                     kind: MessageKind::Diff(crate::model::DiffCard { path, added, removed, hunks, expanded: false }),
                     rating: None,
+                    usage: None,
                     at: SystemTime::now(),
                 });
                 self.scroller.update(cx, |s, cx| s.append(1, cx));
+            },
+            AgentEvent::Usage { input, output } => {
+                if let Some(m) = chat.messages.iter_mut().rev().find(|m| m.role == Role::Assistant) {
+                    m.usage = Some(crate::model::Usage { input, output });
+                }
             },
             AgentEvent::Done => {},
             AgentEvent::Error(msg) => {
@@ -113,6 +121,7 @@ impl Workspace {
                     role: Role::Assistant,
                     kind: MessageKind::Text(format!("**Error:** {msg}").into()),
                     rating: None,
+                    usage: None,
                     at: SystemTime::now(),
                 });
                 self.scroller.update(cx, |s, cx| s.append(1, cx));
