@@ -150,6 +150,12 @@ impl Workspace {
         let MessageKind::Text(text) = &mut last.kind else { return };
         let full: &str = if chat.failed_flag { REPLY_FAIL } else { REPLY_OK };
         let next_len = (text.len() + full.len() / 12 + 1).min(full.len());
+        // Byte slicing must land on a char boundary — the constants contain '—'.
+        let next_len = if next_len == full.len() {
+            next_len
+        } else {
+            full.char_indices().map(|(i, _)| i).take_while(|&i| i <= next_len).last().unwrap_or(0)
+        };
         *text = full[..next_len].into();
         let last_ix = chat.messages.len() - 1;
         self.scroller.update(cx, |s, cx| {
