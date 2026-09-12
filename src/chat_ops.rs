@@ -173,11 +173,11 @@ impl Workspace {
     }
 }
 impl Workspace {
-    /// Rough token estimate: chars/4 across all messages.
+    /// Rough token estimate: chars/4 across the active chat's messages.
     pub fn token_estimate(&self) -> usize {
-        self.chats
+        self.chats[self.active]
+            .messages
             .iter()
-            .flat_map(|c| &c.messages)
             .map(|m| match &m.kind {
                 MessageKind::Text(t) => t.len(),
                 MessageKind::Tool(t) => t.output.len(),
@@ -186,14 +186,11 @@ impl Workspace {
             .sum::<usize>()
             / 4
     }
-}
 
-impl Workspace {
     pub fn rename_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let ix = self.active;
         self.open_rename(ix, window, cx);
     }
-
     /// Delete every chat and start a fresh one (native confirm).
     pub fn clear_all_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let rx = window.prompt(
