@@ -162,7 +162,7 @@ fn spawn_codex(
     let reader = std::io::BufReader::new(stdout);
     let (mut done, mut emitted) = (false, false);
     for line in reader.lines().map_while(Result::ok) {
-        for e in parse_codex_line(&line) {
+        for e in crate::backend_parse::parse_codex_line(&line) {
             done |= matches!(e, AgentEvent::Done);
             emitted = true;
             if tx.send(e).is_err() {
@@ -190,91 +190,4 @@ fn kill_slot(slot: &parking_lot::Mutex<Option<std::process::Child>>) {
         let _ = c.kill();
         let _ = c.wait();
     }
-}
-
-/// Map one `codex exec --json` JSONL line to zero or more `AgentEvent`s.
-fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
-    let Ok(ev) = serde_json::from_str::<serde_json::Value>(line) else { return vec![] };
-    let item = &ev["item"];
-    let Some(kind) = ev["type"].as_str() else { return vec![] };
-    match kind {
-        "item.started" if item["type"].as_str() == Some("command_execution") => vec![AgentEvent::ToolCallStart {
-            ix: 0,
-            name: "shell".into(),
-            detail: item["command"].as_str().unwrap_or("").into(),
-        }],
-        "item.completed" => match item["type"].as_str() {
-            Some("command_execution") => {
-                let mut out = Vec::with_capacity(2);
-                let output = item["aggregated_output"].as_str().unwrap_or("");
-                if !output.is_empty() {
-                    out.push(AgentEvent::ToolCallDelta { ix: 0, output: output.into() });
-                }
-                out.push(AgentEvent::ToolCallEnd { ix: 0, ok: item["exit_code"].as_i64() == Some(0) });
-                out
-            },
-            Some("agent_message") => vec![AgentEvent::TextDelta(item["text"].as_str().unwrap_or("").into())],
-            Some("file_change") => file_change_events(item),
-            Some("error") => vec![AgentEvent::Error(item["message"].as_str().unwrap_or("codex error").into())],
-            _ => vec![],
-        },
-        "error" => vec![AgentEvent::Error(ev["message"].as_str().unwrap_or("codex error").into())],
-        "turn.failed" => vec![AgentEvent::Error(ev["error"]["message"].as_str().unwrap_or("turn failed").into())],
-        "turn.completed" => {
-            let usage = &ev["usage"];
-            let input = usage["input_tokens"].as_u64().unwrap_or(0);
-            let output = usage["output_tokens"].as_u64().unwrap_or(0);
-            vec![AgentEvent::Usage { input, output }, AgentEvent::Done]
-        },
-        _ => vec![],
-    }
-}
-
-/// Turn a completed `file_change` item into `Diff` cards by asking git for
-/// the working-tree diff of each touched path.
-fn file_change_events(item: &serde_json::Value) -> Vec<AgentEvent> {
-    if item["status"].as_str() != Some("completed") {
-        return vec![];
-    }
-    let Some(changes) = item["changes"].as_array() else { return vec![] };
-    changes.iter().filter_map(|c| c["path"].as_str()).filter_map(diff_for_path).collect()
-}
-
-/// `git diff` for `path` (or `--no-index` for untracked files), capped at
-/// 200 lines so a huge generated file can't flood the chat.
-fn diff_for_path(path: &str) -> Option<AgentEvent> {
-    let tracked = std::process::Command::new("git")
-        .args(["ls-files", "--error-unmatch", "--", path])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    let output = if tracked {
-        std::process::Command::new("git").args(["diff", "--", path]).output().ok()?
-    } else {
-        std::process::Command::new("git")
-            .args(["diff", "--no-index", "--", "/dev/null", path])
-            .output()
-            .ok()?
-    };
-    let text = String::from_utf8_lossy(&output.stdout);
-    if text.trim().is_empty() {
-        return None;
-    }
-    let mut added = 0usize;
-    let mut removed = 0usize;
-    let mut hunks = String::new();
-    let mut kept = 0usize;
-    for line in text.lines() {
-        if line.starts_with('+') && !line.starts_with("+++") {
-            added += 1;
-        } else if line.starts_with('-') && !line.starts_with("---") {
-            removed += 1;
-        }
-        if kept < 200 {
-            hunks.push_str(line);
-            hunks.push('\n');
-            kept += 1;
-        }
-    }
-    Some(AgentEvent::Diff { path: path.into(), added, removed, hunks: hunks.into() })
 }

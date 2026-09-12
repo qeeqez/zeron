@@ -1,13 +1,13 @@
 mod backend;
+mod backend_parse;
 mod backend_run;
 mod chat_ops;
 mod files;
 mod model;
 mod palette;
+mod persist;
 mod send;
 mod simulate;
-
-mod persist;
 mod views;
 mod window;
 mod workspace;
