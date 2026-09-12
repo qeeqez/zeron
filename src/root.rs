@@ -150,11 +150,17 @@ impl Render for Workspace {
     }
 }
 
-/// Build an `on_action` handler that selects chat `A::IX`.
+/// Build an `on_action` handler that selects the chat at sidebar position
+/// `A::IX` — matching the visible order (pinned first, then recency).
 fn chat_switch<A: Action + ChatIx>(cx: &mut Context<Workspace>) -> impl Fn(&A, &mut Window, &mut App) + 'static {
     let ws = cx.entity();
     move |_: &A, window, cx| {
-        ws.update(cx, |this, cx| this.select_chat(A::IX, window, cx));
+        ws.update(cx, |this, cx| {
+            let query = this.search.read(cx).value().to_lowercase();
+            if let Some(&ix) = this.sidebar_order(&query).get(A::IX) {
+                this.select_chat(ix, window, cx);
+            }
+        });
     }
 }
 

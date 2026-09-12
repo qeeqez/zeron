@@ -1,5 +1,3 @@
-use std::time::{Duration, SystemTime};
-
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::input::Input;
@@ -59,28 +57,11 @@ impl Workspace {
             .on_click(cx.listener(|this, _, _, cx| this.new_chat(cx)));
 
         let query = self.search.read(cx).value().to_lowercase();
-        let now = SystemTime::now();
-        let day = Duration::from_secs(86_400);
-        let bucket = |ix: usize| {
-            let chat = &self.chats[ix];
-            if chat.pinned {
-                return 0;
-            }
-            match now.duration_since(chat.created_at) {
-                Ok(d) if d < day => 1,
-                Ok(d) if d < day * 7 => 2,
-                _ => 3,
-            }
-        };
-        let mut order: Vec<usize> = (0..self.chats.len()).collect();
-        order.sort_by_key(|ix| (bucket(*ix), std::cmp::Reverse(self.chats[*ix].created_at)));
-        let filtered: Vec<usize> = order
-            .into_iter()
-            .filter(|ix| !self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query)))
-            .collect();
+        let filtered = self.sidebar_order(&query);
         let archived: Vec<usize> = (0..self.chats.len())
             .filter(|ix| self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query)))
             .collect();
+        let bucket = |ix: usize| self.chat_bucket(ix);
 
         let group_names = ["Pinned", "Today", "Previous 7 Days", "Older"];
         let mut groups: Vec<SidebarGroup<SidebarMenuItem>> = Vec::new();
