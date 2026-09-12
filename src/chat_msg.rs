@@ -41,6 +41,7 @@ impl Workspace {
     }
 
     /// Cmd+Up: load the last user message into the composer (no truncation).
+    /// Seeds the recall cycle so Cmd+Shift+Up continues from here.
     pub fn recall_last(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let chat = &self.chats[self.active];
         let Some(text) = chat.messages.iter().rev().find_map(|m| match &m.kind {
@@ -49,6 +50,7 @@ impl Workspace {
         }) else {
             return;
         };
+        self.recall_ix = Some(0);
         self.composer.update(cx, |s, cx| {
             s.set_value(text, window, cx);
             s.focus(window, cx);
