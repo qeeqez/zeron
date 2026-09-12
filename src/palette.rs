@@ -71,6 +71,9 @@ impl Workspace {
             window.defer(cx, move |window, cx| {
                 input.update(cx, |s, cx| s.focus(window, cx));
             });
+        } else {
+            self.chat_search.update(cx, |s, cx| s.set_value("", window, cx));
+            self.search_match_ix = 0;
         }
         let count = self.filtered_count(cx);
         self.scroller.update(cx, |s, cx| s.reset(count, cx));
