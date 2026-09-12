@@ -144,6 +144,7 @@ fn spawn_codex(
 ) -> (CodexOutcome, bool) {
     let mut cmd = std::process::Command::new("codex");
     cmd.args(["exec", "--json", "--skip-git-repo-check", "-m", model, prompt])
+        .current_dir(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
     let mut child = match cmd.spawn() {
