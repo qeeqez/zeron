@@ -78,6 +78,9 @@ impl Workspace {
             .into_iter()
             .filter(|ix| !self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query)))
             .collect();
+        let archived: Vec<usize> = (0..self.chats.len())
+            .filter(|ix| self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query)))
+            .collect();
 
         let group_names = ["Pinned", "Today", "Previous 7 Days", "Older"];
         let mut groups: Vec<SidebarGroup<SidebarMenuItem>> = Vec::new();
@@ -91,6 +94,10 @@ impl Workspace {
             if !items.is_empty() {
                 groups.push(SidebarGroup::new(*name).children(items));
             }
+        }
+        if !archived.is_empty() {
+            let items: Vec<SidebarMenuItem> = archived.iter().copied().map(|ix| chat_row(&self.chats[ix], ix, self.active, cx)).collect();
+            groups.push(SidebarGroup::new("Archived").children(items));
         }
 
         let actions = SidebarGroup::new("").child(new_chat);
@@ -164,6 +171,7 @@ fn chat_row(chat: &crate::model::Chat, ix: usize, active: usize, cx: &mut Contex
     let running = chat.running;
     let pinned = chat.pinned;
     let unread = chat.unread;
+    let archived = chat.archived;
     let ws = cx.entity();
     SidebarMenuItem::new(chat.title.clone())
         .active(ix == active)
@@ -177,11 +185,18 @@ fn chat_row(chat: &crate::model::Chat, ix: usize, active: usize, cx: &mut Contex
                 div().into_any_element()
             }
         })
-        .context_menu(move |menu, _window, _cx| chat_row_menu(&ws, ix, pinned, menu))
+        .context_menu(move |menu, _window, _cx| chat_row_menu(&ws, ix, RowFlags { pinned, archived }, menu))
         .on_click(cx.listener(move |this, _, window, cx| this.select_chat(ix, window, cx)))
 }
 
-fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, pinned: bool, menu: PopupMenu) -> PopupMenu {
+/// Per-row state the context menu needs.
+struct RowFlags {
+    pinned: bool,
+    archived: bool,
+}
+
+fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, flags: RowFlags, menu: PopupMenu) -> PopupMenu {
+    let RowFlags { pinned, archived } = flags;
     let ws_pin = ws.clone();
     let ws_rename = ws.clone();
     let pin_label = if pinned { "Unpin" } else { "Pin" };
@@ -209,10 +224,14 @@ fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, pinned: bool, menu: PopupMen
             ws.update(cx, |this, cx| this.delete_chat(ix, window, cx));
         }
     }))
-    .item(PopupMenuItem::new("Archive").icon(IconName::Archive).on_click({
-        let ws = ws.clone();
-        move |_, _, cx| {
-            ws.update(cx, |this, cx| this.toggle_archive(ix, cx));
-        }
-    }))
+    .item(
+        PopupMenuItem::new(if archived { "Unarchive" } else { "Archive" })
+            .icon(IconName::Archive)
+            .on_click({
+                let ws = ws.clone();
+                move |_, _, cx| {
+                    ws.update(cx, |this, cx| this.toggle_archive(ix, cx));
+                }
+            }),
+    )
 }
