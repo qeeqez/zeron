@@ -123,7 +123,7 @@ impl Workspace {
             };
             out.push_str(&format!("## {role}\n\n{body}\n\n"));
         }
-        let name = format!("{}.md", chat.title.replace(['/', '\\'], "-"));
+        let name = format!("{}.md", chat.title.replace(['/', '\\', ':', '?', '*', '"', '<', '>', '|'], "-"));
         let home = std::env::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
         let rx = cx.prompt_for_new_path(&home, Some(&name));
         cx.spawn(async move |_this, _cx| {
