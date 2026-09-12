@@ -4,13 +4,13 @@ use crate::model::{AgentStatus, Chat, MessageKind, Role};
 use crate::workspace::Workspace;
 
 impl Workspace {
-    /// Stop the in-flight reply stream for the active chat.
+    /// Stop the in-flight reply stream for the active chat. Dropping the
+    /// task drops the ReplyStream, which kills the backend child process.
     pub fn stop_reply(&mut self, cx: &mut Context<Self>) {
         let chat = &mut self.chats[self.active];
         if let Some(task) = chat.reply_task.take() {
             drop(task); // non-detached Task cancels on drop
         }
-        self.backend.cancel();
         chat.running = false;
         chat.started_at = None;
         cx.notify();

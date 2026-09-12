@@ -1,5 +1,3 @@
-use std::pin::Pin;
-
 use gpui_kit::SharedString;
 
 /// Events streamed from an agent backend into a chat.
@@ -23,9 +21,21 @@ pub enum AgentEvent {
     Error(SharedString),
 }
 
+/// One reply turn's event channel plus the handle that kills its process.
+/// Dropping the stream (task cancel, chat delete, quit) kills the child.
 pub struct ReplyStream {
-    /// Events as they arrive.
-    pub events: Pin<Box<dyn futures::Stream<Item = AgentEvent> + Send>>,
+    /// Events as they arrive; `Err` on recv means the producer is gone.
+    pub events: std::sync::mpsc::Receiver<AgentEvent>,
+    /// Per-turn child slot; `None` for backends without a process.
+    child: Option<std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>>,
+}
+
+impl Drop for ReplyStream {
+    fn drop(&mut self) {
+        if let Some(slot) = &self.child {
+            kill_slot(slot);
+        }
+    }
 }
 
 /// Pluggable agent backend. Implementations live behind `dyn` so the UI
@@ -34,13 +44,9 @@ pub trait AgentBackend: Send + Sync {
     /// Human-readable name for the status bar.
     fn name(&self) -> &'static str;
     /// Start a reply turn. The returned stream yields events until
-    /// `Done`/`Error` or cancellation.
+    /// `Done`/`Error` or cancellation (drop the stream to cancel).
     fn send(&self, prompt: &str, model: &str, mode: &str) -> ReplyStream;
-    /// Cancel the in-flight turn, if any.
-    fn cancel(&self);
 }
-
-/// Simulated backend: emits a canned event stream (tool call, diff, text).
 pub struct SimBackend;
 
 impl AgentBackend for SimBackend {
@@ -49,7 +55,8 @@ impl AgentBackend for SimBackend {
     }
 
     fn send(&self, _prompt: &str, _model: &str, _mode: &str) -> ReplyStream {
-        let events = futures::stream::iter([
+        let (tx, events) = std::sync::mpsc::channel();
+        for e in [
             AgentEvent::ToolCallStart { ix: 0, name: "cargo build".into(), detail: "--locked".into() },
             AgentEvent::ToolCallDelta { ix: 0, output: "   Compiling rixlcode v0.1.0\n".into() },
             AgentEvent::ToolCallEnd { ix: 0, ok: true },
@@ -61,21 +68,18 @@ impl AgentBackend for SimBackend {
             },
             AgentEvent::TextDelta("Done. The build is **green** — `0 warnings`, all checks passed.\n\n- `cargo build --locked` finished in 3.6s\n- clippy: clean\n- nextest: 0 tests".into()),
             AgentEvent::Done,
-        ]);
-        ReplyStream { events: Box::pin(events) }
+        ] {
+            let _ = tx.send(e);
+        }
+        ReplyStream { events, child: None }
     }
-
-    fn cancel(&self) {}
 }
-
 /// Backend that shells out to `codex exec --json`.
-pub struct CodexCliBackend {
-    child: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
-}
+pub struct CodexCliBackend;
 
 impl CodexCliBackend {
     pub fn new() -> Self {
-        Self { child: std::sync::Arc::new(parking_lot::Mutex::new(None)) }
+        Self
     }
 }
 
@@ -86,26 +90,14 @@ impl AgentBackend for CodexCliBackend {
 
     fn send(&self, prompt: &str, model: &str, _mode: &str) -> ReplyStream {
         let (tx, rx) = std::sync::mpsc::channel();
-        let slot = self.child.clone();
+        // Each turn owns its child slot — concurrent chats can't clobber it.
+        let slot = std::sync::Arc::new(parking_lot::Mutex::new(None));
         let (prompt, model) = (prompt.to_string(), model.to_string());
-        std::thread::spawn(move || run_codex(&prompt, &model, &slot, &tx));
-        let stream = futures::stream::poll_fn(move |_| match rx.try_recv() {
-            Ok(e) => std::task::Poll::Ready(Some(e)),
-            Err(std::sync::mpsc::TryRecvError::Empty) => std::task::Poll::Pending,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => std::task::Poll::Ready(None),
-        });
-        ReplyStream { events: Box::pin(stream) }
-    }
-
-    fn cancel(&self) {
-        if let Some(mut child) = self.child.lock().take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
+        let thread_slot = slot.clone();
+        std::thread::spawn(move || run_codex(&prompt, &model, &thread_slot, &tx));
+        ReplyStream { events: rx, child: Some(slot) }
     }
 }
-
-/// Spawn `codex exec`, stream its JSONL events, retry on empty failed exits.
 fn run_codex(
     prompt: &str, model: &str, slot: &std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
     tx: &std::sync::mpsc::Sender<AgentEvent>,

@@ -145,18 +145,15 @@ impl Workspace {
     }
 }
 
-/// Drain the backend event stream into `tx` on a blocking thread.
+/// Drain the backend event channel into `tx` on a blocking thread.
+/// `recv` returns `Err` when the producer exits; dropping `stream` here
+/// kills the child process if the UI side went away first.
 fn pump_stream(stream: crate::backend::ReplyStream, tx: std::sync::mpsc::Sender<AgentEvent>) {
-    use futures::StreamExt;
-    let stream = stream.events;
-    futures::executor::block_on(async move {
-        let mut stream = std::pin::pin!(stream);
-        while let Some(e) = stream.next().await {
-            if tx.send(e).is_err() {
-                break;
-            }
+    while let Ok(e) = stream.events.recv() {
+        if tx.send(e).is_err() {
+            break;
         }
-    });
+    }
 }
 
 impl Workspace {
