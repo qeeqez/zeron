@@ -21,6 +21,7 @@ use workspace::Workspace;
 actions!([
     NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7,
     Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp,
+    NewWindow,
 ]);
 
 impl Render for Workspace {
@@ -107,6 +108,12 @@ impl Render for Workspace {
                     ws.update(cx, |this, cx| this.shortcuts_help(window, cx));
                 }
             })
+            .on_action(|_: &NewWindow, _window, cx| {
+                cx.spawn(async move |cx| {
+                    let _ = open_workspace_window(cx);
+                })
+                .detach();
+            })
             .h_full()
             .flex()
             .flex_col()
@@ -188,8 +195,8 @@ fn main() {
             ]),
         ]);
         cx.bind_keys([
-            KeyBinding::new("escape", EscapeKey, Some("workspace")),
             KeyBinding::new("cmd-n", NewChat, Some("workspace")),
+            KeyBinding::new("cmd-shift-n", NewWindow, Some("workspace")),
             KeyBinding::new("cmd-,", OpenSettings, Some("workspace")),
             KeyBinding::new("cmd-/", ShortcutsHelp, Some("workspace")),
             KeyBinding::new("cmd-shift-backspace", DeleteChat, Some("workspace")),
@@ -209,29 +216,34 @@ fn main() {
             KeyBinding::new("cmd-9", Chat9, Some("workspace")),
         ]);
         cx.spawn(async move |cx| {
-            cx.open_window(
-                WindowOptions {
-                    window_min_size: Some(Size { width: px(800.), height: px(600.) }),
-                    window_bounds: window::saved_window_bounds(),
-                    window_background: gpui_kit::WindowBackgroundAppearance::Blurred,
-                    // Traffic lights float over the sidebar; title hidden, top strip draggable.
-                    titlebar: Some(gpui_kit::TitlebarOptions {
-                        title: Some("Rixl Code".into()),
-                        appears_transparent: true,
-                        traffic_light_position: None,
-                    }),
-                    ..Default::default()
-                },
-                |window, cx| {
-                    let view = cx.new(|cx| Workspace::new(window, cx));
-                    let ws = view.clone();
-                    let handle = window.window_handle();
-                    window.on_window_should_close(cx, move |window, cx| window::confirm_close(&ws, handle, window, cx));
-                    cx.new(|cx| Root::new(view, window, cx))
-                },
-            )
-            .expect("failed to open window");
+            open_workspace_window(cx).expect("failed to open window");
         })
         .detach();
     });
+}
+
+/// Open a workspace window (used at launch and for Cmd+Shift+N).
+fn open_workspace_window(cx: &mut gpui_kit::AsyncApp) -> gpui_kit::Result<()> {
+    cx.open_window(
+        WindowOptions {
+            window_min_size: Some(Size { width: px(800.), height: px(600.) }),
+            window_bounds: window::saved_window_bounds(),
+            window_background: gpui_kit::WindowBackgroundAppearance::Blurred,
+            // Traffic lights float over the sidebar; title hidden, top strip draggable.
+            titlebar: Some(gpui_kit::TitlebarOptions {
+                title: Some("Rixl Code".into()),
+                appears_transparent: true,
+                traffic_light_position: None,
+            }),
+            ..Default::default()
+        },
+        |window, cx| {
+            let view = cx.new(|cx| Workspace::new(window, cx));
+            let ws = view.clone();
+            let handle = window.window_handle();
+            window.on_window_should_close(cx, move |window, cx| window::confirm_close(&ws, handle, window, cx));
+            cx.new(|cx| Root::new(view, window, cx))
+        },
+    )?;
+    Ok(())
 }

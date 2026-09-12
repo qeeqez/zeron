@@ -15,6 +15,27 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Load message `ix` into the composer and truncate the chat after it,
+    /// so re-sending replaces the original turn.
+    pub fn edit_message(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[self.active];
+        let Some(text) = chat.messages.get(ix).and_then(|m| match &m.kind {
+            MessageKind::Text(t) if m.role == Role::User => Some(t.to_string()),
+            _ => None,
+        }) else {
+            return;
+        };
+        chat.messages.truncate(ix);
+        self.composer.update(cx, |s, cx| {
+            s.set_value(text, window, cx);
+            s.focus(window, cx);
+        });
+        let count = self.chats[self.active].messages.len();
+        self.scroller.update(cx, |s, cx| s.reset(count, cx));
+        cx.notify();
+        self.save();
+    }
+
     pub fn copy_message(&self, ix: usize, cx: &mut Context<Self>) {
         let Some(msg) = self.chats[self.active].messages.get(ix) else { return };
         let text = match &msg.kind {

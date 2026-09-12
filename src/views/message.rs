@@ -83,14 +83,25 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
         .context_menu(move |menu, _window, _cx| {
             let ws_copy = ws_menu.clone();
             let ws_retry = ws_menu.clone();
-            menu.item(
+            let ws_edit = ws_menu.clone();
+            let menu = menu.item(
                 gpui_kit::component::menu::PopupMenuItem::new("Copy")
                     .icon(IconName::Copy)
                     .on_click(move |_, _, cx| {
                         ws_copy.update(cx, |this, cx| this.copy_message(ix, cx));
                     }),
-            )
-            .item(
+            );
+            let menu =
+                if role == Role::User {
+                    menu.item(gpui_kit::component::menu::PopupMenuItem::new("Edit").icon(IconName::Pencil).on_click(
+                        move |_, window, cx| {
+                            ws_edit.update(cx, |this, cx| this.edit_message(ix, window, cx));
+                        },
+                    ))
+                } else {
+                    menu
+                };
+            menu.item(
                 gpui_kit::component::menu::PopupMenuItem::new("Retry")
                     .icon(IconName::RotateCcw)
                     .on_click(move |_, _, cx| {
