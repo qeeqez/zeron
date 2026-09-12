@@ -140,7 +140,7 @@ impl Workspace {
     }
 
     /// Append unique file paths to the active chat's attachments.
-    fn add_attachments(&mut self, paths: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
+    pub(crate) fn add_attachments(&mut self, paths: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
         let chat = &mut self.chats[self.active];
         for name in paths.iter().map(|p| p.to_string_lossy().into_owned()) {
             if !chat.attachments.iter().any(|a| a.as_str() == name) {

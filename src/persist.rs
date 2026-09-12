@@ -93,6 +93,8 @@ pub struct Settings {
     pub font_size: u8,
     /// Last window bounds: [x, y, width, height] in pixels.
     pub window_bounds: Option<[f32; 4]>,
+    pub sidebar_width: f32,
+    pub sidebar_collapsed: bool,
 }
 
 impl Default for Settings {
@@ -105,6 +107,8 @@ impl Default for Settings {
             use_codex_cli: false,
             font_size: 14,
             window_bounds: None,
+            sidebar_width: 255.0,
+            sidebar_collapsed: false,
         }
     }
 }

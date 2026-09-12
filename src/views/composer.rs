@@ -77,92 +77,94 @@ impl Workspace {
             .map(|cmd| slash_item(cmd, &ws, cx).into_any_element())
             .collect();
 
-        div().p_3().border_t_1().border_color(cx.theme().border).child(
-            div()
-                .flex()
-                .flex_col()
-                .p_2()
-                .rounded_lg()
-                .border_1()
-                .border_color(cx.theme().border)
-                .bg(cx.theme().input)
-                .when(mention_open && !mention_items.is_empty(), |d| {
-                    d.child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_0p5()
-                            .pb_1()
-                            .border_b_1()
-                            .border_color(cx.theme().border)
-                            .children(mention_items),
-                    )
-                })
-                .p_2()
-                .rounded_lg()
-                .border_1()
-                .border_color(cx.theme().border)
-                .bg(cx.theme().input)
-                .when(!self.chats[self.active].attachments.is_empty(), |d| {
-                    d.child(
-                        div()
-                            .flex()
-                            .flex_wrap()
-                            .gap_1()
-                            .pb_1()
-                            .children(attachment_chips(&self.chats[self.active], &ws, cx)),
-                    )
-                })
-                .when(slash_open && !slash_items.is_empty(), |d| {
-                    d.child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_0p5()
-                            .pb_1()
-                            .border_b_1()
-                            .border_color(cx.theme().border)
-                            .children(slash_items),
-                    )
-                })
-                .child(
-                    div()
-                        .flex()
-                        .items_end()
-                        .gap_2()
-                        .child(
+        div()
+            .p_3()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .on_drop::<ExternalPaths>(cx.listener(|this, paths: &ExternalPaths, _, cx| {
+                this.add_attachments(paths.0.to_vec(), cx);
+            }))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .p_2()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().input)
+                    .when(mention_open && !mention_items.is_empty(), |d| {
+                        d.child(
                             div()
-                                .flex_1()
-                                .text_size(px(f32::from(self.font_size)))
-                                .child(Textarea::new(&self.composer).appearance(false)),
+                                .flex()
+                                .flex_col()
+                                .gap_0p5()
+                                .pb_1()
+                                .border_b_1()
+                                .border_color(cx.theme().border)
+                                .children(mention_items),
                         )
-                        .child(Button::new("attach").ghost().icon(IconName::Paperclip).on_click(cx.listener(|this, _, _, cx| {
-                            this.attach_file(cx);
-                        })))
-                        .child(send_button),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(model_picker)
-                        .child(mode_picker)
-                        .child(div().flex_1())
-                        .child(
+                    })
+                    .when(!self.chats[self.active].attachments.is_empty(), |d| {
+                        d.child(
                             div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(format!("~{} tok", self.token_estimate())),
+                                .flex()
+                                .flex_wrap()
+                                .gap_1()
+                                .pb_1()
+                                .children(attachment_chips(&self.chats[self.active], &ws, cx)),
                         )
-                        .child(
+                    })
+                    .when(slash_open && !slash_items.is_empty(), |d| {
+                        d.child(
                             div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(format!("{} chars", self.composer.read(cx).value().len())),
-                        ),
-                ),
-        )
+                                .flex()
+                                .flex_col()
+                                .gap_0p5()
+                                .pb_1()
+                                .border_b_1()
+                                .border_color(cx.theme().border)
+                                .children(slash_items),
+                        )
+                    })
+                    .child(
+                        div()
+                            .flex()
+                            .items_end()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_size(px(f32::from(self.font_size)))
+                                    .child(Textarea::new(&self.composer).appearance(false)),
+                            )
+                            .child(Button::new("attach").ghost().icon(IconName::Paperclip).on_click(cx.listener(|this, _, _, cx| {
+                                this.attach_file(cx);
+                            })))
+                            .child(send_button),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(model_picker)
+                            .child(mode_picker)
+                            .child(div().flex_1())
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("~{} tok", self.token_estimate())),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("{} chars", self.composer.read(cx).value().len())),
+                            ),
+                    ),
+            )
     }
 }
 

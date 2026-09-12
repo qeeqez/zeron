@@ -77,8 +77,8 @@ impl Workspace {
         let mut this = Self {
             chats: Vec::new(),
             active: 0,
-            sidebar_collapsed: false,
-            sidebar_width: 255.0,
+            sidebar_collapsed: settings.sidebar_collapsed,
+            sidebar_width: settings.sidebar_width,
             resizing_sidebar: false,
             agents: Vec::new(),
             agents_panel_open: false,
@@ -129,6 +129,8 @@ impl Workspace {
             notify_on_done: self.notify_on_done,
             use_codex_cli: matches!(self.backend.name(), "codex-cli"),
             window_bounds: prev.window_bounds,
+            sidebar_width: self.sidebar_width,
+            sidebar_collapsed: self.sidebar_collapsed,
         });
     }
 
@@ -244,6 +246,7 @@ impl Workspace {
 
     pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
         self.sidebar_collapsed = !self.sidebar_collapsed;
+        self.save_settings();
         cx.notify();
     }
 

@@ -1,4 +1,5 @@
 use gpui_kit::assets::IconName;
+use gpui_kit::component::menu::ContextMenuExt;
 use gpui_kit::component::message::{Message, MessageAlignment, MessageContent, MessageFooter, MessageHeader};
 use gpui_kit::component::text::TextView;
 use gpui_kit::component::theme::ActiveTheme;
@@ -75,5 +76,27 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
         );
     }
     message = message.footer(MessageFooter::new().child(message_footer(mc, msg, ws, cx)));
-    div().group(SharedString::from(format!("msg-{ix}"))).child(message).into_any_element()
+    let ws_menu = ws.clone();
+    div()
+        .group(SharedString::from(format!("msg-{ix}")))
+        .child(message)
+        .context_menu(move |menu, _window, _cx| {
+            let ws_copy = ws_menu.clone();
+            let ws_retry = ws_menu.clone();
+            menu.item(
+                gpui_kit::component::menu::PopupMenuItem::new("Copy")
+                    .icon(IconName::Copy)
+                    .on_click(move |_, _, cx| {
+                        ws_copy.update(cx, |this, cx| this.copy_message(ix, cx));
+                    }),
+            )
+            .item(
+                gpui_kit::component::menu::PopupMenuItem::new("Retry")
+                    .icon(IconName::RotateCcw)
+                    .on_click(move |_, _, cx| {
+                        ws_retry.update(cx, |this, cx| this.retry_last(cx));
+                    }),
+            )
+        })
+        .into_any_element()
 }

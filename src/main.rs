@@ -121,6 +121,7 @@ impl Render for Workspace {
                 cx.listener(|this, _, _, cx| {
                     if this.resizing_sidebar {
                         this.resizing_sidebar = false;
+                        this.save_settings();
                         cx.notify();
                     }
                 }),
