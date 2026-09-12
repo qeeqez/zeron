@@ -127,9 +127,20 @@ impl Workspace {
         this
     }
 
-    pub(crate) fn save(&self) {
+    pub(crate) fn save(&mut self) {
+        // Retention: drop oldest non-pinned chats beyond the cap. Storage
+        // order is oldest-first, so retain() hits the oldest first.
+        const MAX_CHATS: usize = 50;
+        if self.chats.len() > MAX_CHATS {
+            let mut drop_left = self.chats.len() - MAX_CHATS;
+            self.chats.retain(|c| {
+                let drop = drop_left > 0 && !c.pinned;
+                drop_left -= usize::from(drop);
+                !drop
+            });
+            self.active = self.active.min(self.chats.len().saturating_sub(1));
+        }
         crate::persist::save_chats(&self.chats);
-        crate::persist::enforce_retention(&self.chats);
     }
 
     pub(crate) fn save_settings(&self) {
