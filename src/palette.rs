@@ -33,8 +33,8 @@ impl Workspace {
                 .title("Rename chat")
                 .overlay_closable(true)
                 .child(Input::new(&input))
-                .on_ok(move |_, _, cx| {
-                    ws_ok.update(cx, |this, cx| this.commit_rename(cx));
+                .on_ok(move |_, window, cx| {
+                    ws_ok.update(cx, |this, cx| this.commit_rename(window, cx));
                     true
                 })
                 .on_cancel({
@@ -44,11 +44,14 @@ impl Workspace {
         });
     }
 
-    pub fn commit_rename(&mut self, cx: &mut Context<Self>) {
+    pub fn commit_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(ix) = self.renaming.take() else { return };
         let title = self.rename.read(cx).value().trim().to_string();
         if !title.is_empty() {
             self.chats[ix].title = title.into();
+            if ix == self.active {
+                window.set_window_title(&format!("Rixl Code — {}", self.chats[ix].title));
+            }
         }
         cx.notify();
     }
