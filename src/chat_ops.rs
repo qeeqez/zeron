@@ -105,6 +105,7 @@ impl Workspace {
             }
         }
         cx.notify();
+        self.save();
     }
 
     /// Open the native file picker and attach the chosen files.
