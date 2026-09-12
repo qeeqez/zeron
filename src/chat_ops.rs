@@ -71,6 +71,7 @@ impl Workspace {
             s.reset(count, cx);
         });
         cx.notify();
+        self.save();
     }
 
     pub fn cancel_agent(&mut self, ix: usize, cx: &mut Context<Self>) {
