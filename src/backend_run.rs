@@ -116,8 +116,14 @@ impl Workspace {
                 self.scroller.update(cx, |s, cx| s.append(1, cx));
             },
             AgentEvent::Usage { input, output } => {
-                if let Some(m) = chat.messages.iter_mut().rev().find(|m| m.role == Role::Assistant) {
-                    m.usage = Some(crate::model::Usage { input, output });
+                // Prefer the text reply; fall back to any assistant message.
+                let ix = chat
+                    .messages
+                    .iter()
+                    .rposition(|m| m.role == Role::Assistant && matches!(m.kind, MessageKind::Text(_)))
+                    .or_else(|| chat.messages.iter().rposition(|m| m.role == Role::Assistant));
+                if let Some(ix) = ix {
+                    chat.messages[ix].usage = Some(crate::model::Usage { input, output });
                 }
             },
             AgentEvent::Done => {},
