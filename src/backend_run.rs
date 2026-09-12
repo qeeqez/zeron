@@ -117,6 +117,7 @@ impl Workspace {
             },
             AgentEvent::Done => {},
             AgentEvent::Error(msg) => {
+                chat.failed_flag = true;
                 chat.messages.push(ChatMessage {
                     role: Role::Assistant,
                     kind: MessageKind::Text(format!("**Error:** {msg}").into()),
