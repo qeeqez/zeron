@@ -113,6 +113,8 @@ impl Workspace {
     }
 
     /// Enter in chat search: jump to next match; Shift+Enter: previous.
+    /// `search_match_ix` is the position within the filtered list, which is
+    /// what the scroller indexes.
     pub fn jump_to_match(&mut self, back: bool, cx: &mut Context<Self>) {
         let matches = self.match_indexes(cx);
         if matches.is_empty() {
@@ -123,9 +125,8 @@ impl Workspace {
         } else {
             (self.search_match_ix + 1) % matches.len()
         };
-        let target = matches[self.search_match_ix];
         self.scroller.update(cx, |s, cx| {
-            s.scroll_to_item(target, cx);
+            s.scroll_to_item(self.search_match_ix, cx);
         });
         cx.notify();
     }
