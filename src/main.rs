@@ -55,7 +55,10 @@ fn main() {
             ]),
         ]);
         cx.bind_keys([
+            KeyBinding::new("escape", EscapeKey, Some("workspace")),
+            KeyBinding::new("cmd-/", ShortcutsHelp, Some("workspace")),
             KeyBinding::new("cmd-n", NewChat, Some("workspace")),
+            KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
             KeyBinding::new("cmd-shift-n", NewWindow, Some("workspace")),
             KeyBinding::new("cmd-,", OpenSettings, Some("workspace")),
             KeyBinding::new("cmd-up", RecallLast, Some("workspace")),

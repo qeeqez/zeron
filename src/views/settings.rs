@@ -156,16 +156,20 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
         })))
 }
 
-pub const SHORTCUTS: [(&str, &str); 10] = [
+pub const SHORTCUTS: [(&str, &str); 14] = [
     ("Cmd+N", "New chat"),
+    ("Cmd+Shift+N", "New window"),
     ("Cmd+B", "Toggle sidebar"),
     ("Cmd+J", "Toggle agents panel"),
     ("Cmd+K", "Command palette"),
     ("Cmd+F", "Search in chat"),
     ("Cmd+W", "Close window"),
     ("Cmd+,", "Settings"),
+    ("Cmd+/", "Keyboard shortcuts"),
     ("Cmd+Shift+Backspace", "Delete chat"),
     ("Cmd+1..9", "Switch to chat N"),
+    ("Cmd+Up", "Recall last message"),
+    ("Cmd+Shift+Up/Down", "Cycle message history"),
     ("Esc", "Stop reply / close search"),
 ];
 
