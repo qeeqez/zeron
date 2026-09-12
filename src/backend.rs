@@ -86,12 +86,12 @@ impl AgentBackend for SimBackend {
 
 /// Backend that shells out to `codex exec --json`.
 pub struct CodexCliBackend {
-    child: parking_lot::Mutex<Option<std::process::Child>>,
+    child: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
 }
 
 impl CodexCliBackend {
     pub fn new() -> Self {
-        Self { child: parking_lot::Mutex::new(None) }
+        Self { child: std::sync::Arc::new(parking_lot::Mutex::new(None)) }
     }
 }
 
@@ -111,26 +111,10 @@ impl AgentBackend for CodexCliBackend {
             rating: None,
             at: std::time::SystemTime::now(),
         };
-        let mut cmd = std::process::Command::new("codex");
-        cmd.args(["exec", "--json", "--skip-git-repo-check", "-m", model, prompt])
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null());
-        let Ok(mut child) = cmd.spawn() else {
-            return ReplyStream {
-                prompt: prompt_msg,
-                events: Box::pin(futures::stream::iter([AgentEvent::Error("codex not found".into())])),
-            };
-        };
-        let stdout = child.stdout.take().expect("piped");
-        *self.child.lock() = Some(child);
         let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            use std::io::BufRead;
-            let reader = std::io::BufReader::new(stdout);
-            for line in reader.lines().map_while(Result::ok) {
-                parse_codex_line(&line).map(|e| tx.send(e).ok());
-            }
-        });
+        let slot = self.child.clone();
+        let (prompt, model) = (prompt.to_string(), model.to_string());
+        std::thread::spawn(move || run_codex(&prompt, &model, &slot, &tx));
         let stream = futures::stream::poll_fn(move |_| match rx.try_recv() {
             Ok(e) => std::task::Poll::Ready(Some(e)),
             Err(std::sync::mpsc::TryRecvError::Empty) => std::task::Poll::Pending,
@@ -142,8 +126,84 @@ impl AgentBackend for CodexCliBackend {
     fn cancel(&self) {
         if let Some(mut child) = self.child.lock().take() {
             let _ = child.kill();
+            let _ = child.wait();
         }
     }
+}
+
+/// Spawn `codex exec`, stream its JSONL events, retry on empty failed exits.
+fn run_codex(
+    prompt: &str, model: &str, slot: &std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
+    tx: &std::sync::mpsc::Sender<AgentEvent>,
+) {
+    let mut emitted = false;
+    for attempt in 0..3u64 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(400 * attempt));
+        }
+        let (outcome, got_events) = spawn_codex(prompt, model, slot, tx);
+        emitted |= got_events;
+        match outcome {
+            CodexOutcome::Done | CodexOutcome::Cancelled | CodexOutcome::Dead => return,
+            CodexOutcome::Failed(err) => {
+                if emitted || attempt == 2 {
+                    tx.send(AgentEvent::Error(err.into())).ok();
+                    return;
+                }
+            },
+        }
+    }
+}
+
+enum CodexOutcome {
+    Done,
+    Cancelled,
+    Dead,
+    Failed(String),
+}
+
+/// One `codex exec` attempt: spawn, read JSONL until EOF, reap, classify.
+/// Returns the outcome plus whether any event was emitted.
+fn spawn_codex(
+    prompt: &str, model: &str, slot: &std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
+    tx: &std::sync::mpsc::Sender<AgentEvent>,
+) -> (CodexOutcome, bool) {
+    let mut cmd = std::process::Command::new("codex");
+    cmd.args(["exec", "--json", "--skip-git-repo-check", "-m", model, prompt])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => return (CodexOutcome::Failed(format!("codex spawn: {e}")), false),
+    };
+    let stdout = child.stdout.take().expect("piped");
+    *slot.lock() = Some(child);
+    use std::io::BufRead;
+    let reader = std::io::BufReader::new(stdout);
+    let (mut done, mut emitted) = (false, false);
+    for line in reader.lines().map_while(Result::ok) {
+        let Some(e) = parse_codex_line(&line) else { continue };
+        done |= matches!(e, AgentEvent::Done);
+        emitted = true;
+        if tx.send(e).is_err() {
+            if let Some(mut c) = slot.lock().take() {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            return (CodexOutcome::Dead, emitted);
+        }
+    }
+    if done {
+        return (CodexOutcome::Done, emitted);
+    }
+    // EOF without turn.completed: killed by cancel() or crashed.
+    let Some(mut child) = slot.lock().take() else { return (CodexOutcome::Cancelled, emitted) };
+    let outcome = match child.wait() {
+        Ok(s) if s.success() => CodexOutcome::Failed("codex exited without completing".into()),
+        Ok(s) => CodexOutcome::Failed(format!("codex exited with {s}")),
+        Err(e) => CodexOutcome::Failed(format!("codex wait: {e}")),
+    };
+    (outcome, emitted)
 }
 
 /// Map one `codex exec --json` JSONL line to an `AgentEvent`.

@@ -42,6 +42,7 @@ impl Workspace {
         if let Some(task) = chat.reply_task.take() {
             drop(task); // non-detached Task cancels on drop
         }
+        self.backend.cancel();
         chat.running = false;
         chat.started_at = None;
         cx.notify();
