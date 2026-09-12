@@ -198,12 +198,13 @@ impl Workspace {
             if rx.await != Ok(0) {
                 return;
             }
-            let _ = this.update(cx, |this, cx| this.delete_chat_now(index, cx));
+            let _ = this.update_in(cx, |this, window, cx| this.delete_chat_now(index, window, cx));
         })
         .detach();
     }
 
-    fn delete_chat_now(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn delete_chat_now(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let was_active = index == self.active;
         self.chats.remove(index);
         if self.active >= self.chats.len() {
             self.active = self.chats.len() - 1;
@@ -211,6 +212,14 @@ impl Workspace {
             self.active -= 1;
         }
         self.recall_ix = None;
+        if was_active {
+            // Composer still holds the deleted chat's draft — restore the
+            // newly-active chat's draft instead.
+            let draft = self.chats[self.active].draft.clone();
+            self.composer.update(cx, |s, cx| {
+                s.set_value(draft, window, cx);
+            });
+        }
         let count = self.chats[self.active].messages.len();
         self.scroller.update(cx, |s, cx| {
             s.reset(count, cx);

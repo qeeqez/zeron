@@ -61,29 +61,25 @@ impl Workspace {
         self.save();
     }
 
-    /// Duplicate chat `ix` (title + messages) as a new chat.
-    pub fn duplicate_chat(&mut self, ix: usize, cx: &mut Context<Self>) {
+    /// Duplicate chat `ix` (title + messages) as a new chat and select it.
+    pub fn duplicate_chat(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(src) = self.chats.get(ix) else { return };
         let mut copy = Chat::new(format!("{} (copy)", src.title));
         copy.messages = src.messages.clone();
+        copy.draft = src.draft.clone();
         self.chats.push(copy);
-        self.active = self.chats.len() - 1;
-        let count = self.chats[self.active].messages.len();
-        self.scroller.update(cx, |s, cx| {
-            s.reset(count, cx);
-        });
-        cx.notify();
-        self.save();
+        let new_ix = self.chats.len() - 1;
+        self.select_chat(new_ix, window, cx);
     }
 
-    pub fn toggle_archive(&mut self, ix: usize, cx: &mut Context<Self>) {
+    pub fn toggle_archive(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(chat) = self.chats.get_mut(ix) {
             chat.archived = !chat.archived;
         }
         // If we archived the active chat, switch to the first non-archived.
         if self.chats[self.active].archived {
             if let Some(next) = self.chats.iter().position(|c| !c.archived) {
-                self.active = next;
+                self.select_chat(next, window, cx);
             } else {
                 self.new_chat(cx);
             }

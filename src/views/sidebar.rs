@@ -208,8 +208,8 @@ fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, flags: RowFlags, menu: Popup
     }))
     .item(PopupMenuItem::new("Duplicate").icon(IconName::Copy).on_click({
         let ws = ws.clone();
-        move |_, _, cx| {
-            ws.update(cx, |this, cx| this.duplicate_chat(ix, cx));
+        move |_, window, cx| {
+            ws.update(cx, |this, cx| this.duplicate_chat(ix, window, cx));
         }
     }))
     .item(PopupMenuItem::new("Export").icon(IconName::Share).on_click({
@@ -229,8 +229,8 @@ fn chat_row_menu(ws: &Entity<Workspace>, ix: usize, flags: RowFlags, menu: Popup
             .icon(IconName::Archive)
             .on_click({
                 let ws = ws.clone();
-                move |_, _, cx| {
-                    ws.update(cx, |this, cx| this.toggle_archive(ix, cx));
+                move |_, window, cx| {
+                    ws.update(cx, |this, cx| this.toggle_archive(ix, window, cx));
                 }
             }),
     )
