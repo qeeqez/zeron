@@ -9,6 +9,7 @@ mod simulate;
 
 mod persist;
 mod views;
+mod window;
 mod workspace;
 
 use gpui_kit::component::Root;
@@ -19,7 +20,7 @@ use workspace::Workspace;
 
 actions!([
     NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7,
-    Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey,
+    Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp,
 ]);
 
 impl Render for Workspace {
@@ -98,6 +99,12 @@ impl Render for Workspace {
                 let ws = cx.entity();
                 move |_: &EscapeKey, window, cx| {
                     ws.update(cx, |this, cx| this.escape(window, cx));
+                }
+            })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &ShortcutsHelp, window, cx| {
+                    ws.update(cx, |this, cx| this.shortcuts_help(window, cx));
                 }
             })
             .h_full()
@@ -182,12 +189,13 @@ fn main() {
         cx.bind_keys([
             KeyBinding::new("escape", EscapeKey, Some("workspace")),
             KeyBinding::new("cmd-n", NewChat, Some("workspace")),
+            KeyBinding::new("cmd-,", OpenSettings, Some("workspace")),
+            KeyBinding::new("cmd-/", ShortcutsHelp, Some("workspace")),
             KeyBinding::new("cmd-shift-backspace", DeleteChat, Some("workspace")),
             KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
             KeyBinding::new("cmd-j", ToggleAgents, Some("workspace")),
             KeyBinding::new("cmd-k", OpenPalette, Some("workspace")),
             KeyBinding::new("cmd-w", CloseWindow, Some("workspace")),
-            KeyBinding::new("cmd-,", OpenSettings, Some("workspace")),
             KeyBinding::new("cmd-f", SearchChat, Some("workspace")),
             KeyBinding::new("cmd-1", Chat1, Some("workspace")),
             KeyBinding::new("cmd-2", Chat2, Some("workspace")),
@@ -203,6 +211,7 @@ fn main() {
             cx.open_window(
                 WindowOptions {
                     window_min_size: Some(Size { width: px(800.), height: px(600.) }),
+                    window_bounds: window::saved_window_bounds(),
                     window_background: gpui_kit::WindowBackgroundAppearance::Blurred,
                     // Traffic lights float over the sidebar; title hidden, top strip draggable.
                     titlebar: Some(gpui_kit::TitlebarOptions {
@@ -216,7 +225,7 @@ fn main() {
                     let view = cx.new(|cx| Workspace::new(window, cx));
                     let ws = view.clone();
                     let handle = window.window_handle();
-                    window.on_window_should_close(cx, move |window, cx| confirm_close(&ws, handle, window, cx));
+                    window.on_window_should_close(cx, move |window, cx| window::confirm_close(&ws, handle, window, cx));
                     cx.new(|cx| Root::new(view, window, cx))
                 },
             )
@@ -224,25 +233,4 @@ fn main() {
         })
         .detach();
     });
-}
-
-/// Native confirm when closing while a reply is generating.
-fn confirm_close(ws: &Entity<Workspace>, handle: AnyWindowHandle, window: &mut Window, cx: &mut App) -> bool {
-    if !ws.read(cx).chats.iter().any(|c| c.running) {
-        return true;
-    }
-    let rx = window.prompt(
-        gpui_kit::PromptLevel::Warning,
-        "A reply is still generating",
-        Some("Closing now will stop it."),
-        &[gpui_kit::PromptButton::ok("Close"), gpui_kit::PromptButton::cancel("Cancel")],
-        cx,
-    );
-    cx.spawn(async move |cx| {
-        if rx.await == Ok(0) {
-            let _ = handle.update(cx, |_, window, _cx| window.remove_window());
-        }
-    })
-    .detach();
-    false
 }

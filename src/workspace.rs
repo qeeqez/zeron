@@ -25,6 +25,7 @@ pub struct Workspace {
     pub renaming: Option<usize>,
     pub chat_search: Entity<InputState>,
     pub chat_search_open: bool,
+    pub search_match_ix: usize,
     pub notify_on_done: bool,
     pub word_wrap: bool,
     pub font_size: u8,
@@ -61,12 +62,15 @@ impl Workspace {
         let palette = cx.new(|cx| CommandState::new(window, cx));
         let rename = cx.new(|cx| InputState::new(window, cx).placeholder("Chat title"));
         let chat_search = cx.new(|cx| InputState::new(window, cx).placeholder("Search in chat"));
-        cx.subscribe_in(&chat_search, window, |this, _s, event: &InputEvent, _window, cx| {
-            if matches!(event, InputEvent::Change) {
+        cx.subscribe_in(&chat_search, window, |this, _s, event: &InputEvent, _window, cx| match event {
+            InputEvent::Change => {
+                this.search_match_ix = 0;
                 let count = this.filtered_count(cx);
                 this.scroller.update(cx, |s, cx| s.reset(count, cx));
                 cx.notify();
-            }
+            },
+            InputEvent::PressEnter { shift, .. } => this.jump_to_match(*shift, cx),
+            _ => {},
         })
         .detach();
         let settings = crate::persist::load_settings();
@@ -88,6 +92,7 @@ impl Workspace {
             renaming: None,
             chat_search,
             chat_search_open: false,
+            search_match_ix: 0,
             notify_on_done: settings.notify_on_done,
             word_wrap: settings.word_wrap,
             backend: if settings.use_codex_cli {
@@ -114,14 +119,16 @@ impl Workspace {
     }
 
     pub(crate) fn save_settings(&self) {
+        // Preserve window bounds saved at close.
+        let prev = crate::persist::load_settings();
         crate::persist::save_settings(&crate::persist::Settings {
             model: self.model.to_string(),
             mode: self.mode.to_string(),
             word_wrap: self.word_wrap,
             font_size: self.font_size,
             notify_on_done: self.notify_on_done,
-
             use_codex_cli: matches!(self.backend.name(), "codex-cli"),
+            window_bounds: prev.window_bounds,
         });
     }
 

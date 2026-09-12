@@ -59,6 +59,7 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
         });
 
     let mut message = Message::new().alignment(alignment).content(MessageContent::new().child(body));
+    // Group for hover-revealed footer actions.
     if role == Role::Assistant {
         message = message.header(
             MessageHeader::new().child(
@@ -74,5 +75,5 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
         );
     }
     message = message.footer(MessageFooter::new().child(message_footer(mc, msg, ws, cx)));
-    message.into_any_element()
+    div().group(SharedString::from(format!("msg-{ix}"))).child(message).into_any_element()
 }

@@ -84,6 +84,62 @@ impl Workspace {
             self.open_chat_search(window, cx);
         }
     }
+
+    /// Indexes of messages matching the chat-search query.
+    fn match_indexes(&self, cx: &App) -> Vec<usize> {
+        let query = self.chat_search.read(cx).value().to_lowercase();
+        if query.is_empty() {
+            return vec![];
+        }
+        self.chats[self.active]
+            .messages
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| {
+                let text = match &m.kind {
+                    crate::model::MessageKind::Text(t) => t.as_str(),
+                    crate::model::MessageKind::Tool(t) => t.name.as_str(),
+                    crate::model::MessageKind::Diff(d) => d.path.as_str(),
+                };
+                text.to_lowercase().contains(&query)
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// Enter in chat search: jump to next match; Shift+Enter: previous.
+    pub fn jump_to_match(&mut self, back: bool, cx: &mut Context<Self>) {
+        let matches = self.match_indexes(cx);
+        if matches.is_empty() {
+            return;
+        }
+        self.search_match_ix = if back {
+            self.search_match_ix.checked_sub(1).unwrap_or(matches.len() - 1)
+        } else {
+            (self.search_match_ix + 1) % matches.len()
+        };
+        let target = matches[self.search_match_ix];
+        self.scroller.update(cx, |s, cx| {
+            s.scroll_to_item(target, cx);
+        });
+        cx.notify();
+    }
+
+    /// Cmd-/: keyboard shortcut cheat sheet.
+    pub fn shortcuts_help(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        window.open_sheet(cx, |sheet, _window, _cx| {
+            sheet.title("Keyboard Shortcuts").child(div().flex().flex_col().gap_1().p_4().text_xs().children(
+                crate::views::settings::SHORTCUTS.iter().map(|(key, desc)| {
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(div().w(px(160.)).font_weight(FontWeight::SEMIBOLD).child(*key))
+                        .child(div().text_color(hsla(0.0, 0.0, 0.55, 1.0)).child(*desc))
+                }),
+            ))
+        });
+    }
 }
 
 fn cancel_rename(ws: &Entity<Workspace>, cx: &mut App) -> bool {

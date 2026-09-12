@@ -91,6 +91,8 @@ pub struct Settings {
     pub word_wrap: bool,
     pub use_codex_cli: bool,
     pub font_size: u8,
+    /// Last window bounds: [x, y, width, height] in pixels.
+    pub window_bounds: Option<[f32; 4]>,
 }
 
 impl Default for Settings {
@@ -101,8 +103,8 @@ impl Default for Settings {
             notify_on_done: true,
             word_wrap: true,
             use_codex_cli: false,
-
             font_size: 14,
+            window_bounds: None,
         }
     }
 }

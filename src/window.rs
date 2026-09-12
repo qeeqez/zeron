@@ -1,0 +1,44 @@
+use gpui_kit::*;
+
+use crate::workspace::Workspace;
+
+/// Prompt before closing while a reply is running; persist bounds first.
+pub fn confirm_close(ws: &Entity<Workspace>, handle: AnyWindowHandle, window: &mut Window, cx: &mut App) -> bool {
+    save_window_bounds(window);
+    if !ws.read(cx).chats.iter().any(|c| c.running) {
+        return true;
+    }
+    let rx = window.prompt(
+        gpui_kit::PromptLevel::Warning,
+        "A reply is still generating",
+        Some("Closing now will stop it."),
+        &[gpui_kit::PromptButton::ok("Close"), gpui_kit::PromptButton::cancel("Cancel")],
+        cx,
+    );
+    cx.spawn(async move |cx| {
+        if rx.await == Ok(0) {
+            let _ = handle.update(cx, |_, window, _cx| window.remove_window());
+        }
+    })
+    .detach();
+    false
+}
+
+/// Persist the current window bounds into settings.
+fn save_window_bounds(window: &Window) {
+    if let gpui_kit::WindowBounds::Windowed(b) = window.window_bounds() {
+        let mut s = crate::persist::load_settings();
+        s.window_bounds = Some([b.origin.x.into(), b.origin.y.into(), b.size.width.into(), b.size.height.into()]);
+        crate::persist::save_settings(&s);
+    }
+}
+
+/// Restore window bounds from settings, if saved.
+pub fn saved_window_bounds() -> Option<gpui_kit::WindowBounds> {
+    crate::persist::load_settings().window_bounds.map(|[x, y, w, h]| {
+        gpui_kit::WindowBounds::Windowed(gpui_kit::Bounds {
+            origin: gpui_kit::point(px(x), px(y)),
+            size: gpui_kit::size(px(w), px(h)),
+        })
+    })
+}

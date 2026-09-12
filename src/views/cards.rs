@@ -168,6 +168,7 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
     let ws_up = ws.clone();
     let ws_down = ws.clone();
     let muted = hsla(0.0, 0.0, 0.55, 1.0);
+    let group = SharedString::from(format!("msg-{ix}"));
     div()
         .flex()
         .items_center()
@@ -176,6 +177,8 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
             div()
                 .id(("copy", ix))
                 .cursor_pointer()
+                .invisible()
+                .group_hover(group.clone(), |style| style.visible())
                 .text_color(muted)
                 .child(IconName::Copy)
                 .on_click(move |_, _, cx| {
@@ -187,6 +190,8 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
                 div()
                     .id(("retry", ix))
                     .cursor_pointer()
+                    .invisible()
+                    .group_hover(group.clone(), |style| style.visible())
                     .text_color(muted)
                     .child(IconName::RotateCcw)
                     .on_click(move |_, _, cx| {
@@ -194,16 +199,26 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
                     }),
             )
             .when(is_last, |d| {
-                d.child(div().id(("regen", ix)).cursor_pointer().text_xs().text_color(muted).child("Regenerate").on_click(
-                    move |_, _, cx| {
-                        ws_regen.update(cx, |this, cx| this.retry_last(cx));
-                    },
-                ))
+                d.child(
+                    div()
+                        .id(("regen", ix))
+                        .cursor_pointer()
+                        .invisible()
+                        .group_hover(group.clone(), |style| style.visible())
+                        .text_xs()
+                        .text_color(muted)
+                        .child("Regenerate")
+                        .on_click(move |_, _, cx| {
+                            ws_regen.update(cx, |this, cx| this.retry_last(cx));
+                        }),
+                )
             })
             .child(
                 div()
                     .id(("up", ix))
                     .cursor_pointer()
+                    .invisible()
+                    .group_hover(group.clone(), |style| style.visible())
                     .child(IconName::ThumbsUp)
                     .text_color(if rating == Some(true) { cx.theme().accent } else { muted })
                     .on_click(move |_, _, cx| {
@@ -214,6 +229,8 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
                 div()
                     .id(("down", ix))
                     .cursor_pointer()
+                    .invisible()
+                    .group_hover(group.clone(), |style| style.visible())
                     .child(IconName::ThumbsDown)
                     .text_color(if rating == Some(false) { cx.theme().accent } else { muted })
                     .on_click(move |_, _, cx| {

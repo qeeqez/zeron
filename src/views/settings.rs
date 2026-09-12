@@ -156,7 +156,7 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
         })))
 }
 
-const SHORTCUTS: [(&str, &str); 10] = [
+pub const SHORTCUTS: [(&str, &str); 10] = [
     ("Cmd+N", "New chat"),
     ("Cmd+B", "Toggle sidebar"),
     ("Cmd+J", "Toggle agents panel"),
