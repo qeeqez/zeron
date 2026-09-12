@@ -23,7 +23,7 @@ pub struct Workspace {
     pub palette: Entity<CommandState>,
     pub rename: Entity<InputState>,
     pub renaming: Option<usize>,
-    /// Index into user messages for Cmd+Shift+Up recall cycling.
+    /// Index into user messages for Cmd+Shift+Up/Down recall cycling.
     pub recall_ix: Option<usize>,
     pub chat_search: Entity<InputState>,
     pub chat_search_open: bool,
