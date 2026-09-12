@@ -23,6 +23,7 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
     let MessageKind::Text(text) = &msg.kind else { unreachable!() };
     let role = msg.role;
     let word_wrap = ws.read(cx).word_wrap;
+    let font_size = ws.read(cx).font_size;
     let alignment = match role {
         Role::User => MessageAlignment::End,
         Role::Assistant => MessageAlignment::Start,
@@ -31,7 +32,7 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
         .px_4()
         .py_2()
         .rounded_lg()
-        .text_sm()
+        .text_size(px(f32::from(font_size)))
         .when(role == Role::User, |d| d.bg(cx.theme().accent).text_color(cx.theme().accent_foreground))
         .when(role == Role::Assistant, |d| d.bg(cx.theme().secondary).text_color(cx.theme().foreground))
         .child(if role == Role::Assistant {

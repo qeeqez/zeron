@@ -147,6 +147,13 @@ impl Workspace {
         self.scroller.update(cx, |s, cx| {
             s.reset(0, cx);
         });
+        let composer = self.composer.clone();
+        cx.spawn(async move |this, cx| {
+            let _ = this.update_in(cx, |_this, window, cx| {
+                composer.update(cx, |s, cx| s.focus(window, cx));
+            });
+        })
+        .detach();
         cx.notify();
         self.save();
     }
@@ -162,6 +169,7 @@ impl Workspace {
         let draft = self.chats[index].draft.clone();
         self.composer.update(cx, |s, cx| {
             s.set_value(draft, window, cx);
+            s.focus(window, cx);
         });
         let count = self.chats[index].messages.len();
         self.scroller.update(cx, |s, cx| {
