@@ -13,6 +13,9 @@ struct StoredChat {
     pinned: bool,
     archived: bool,
     draft: String,
+    /// Missing in early v1 files — fall back to now().
+    #[serde(default = "std::time::SystemTime::now")]
+    created_at: std::time::SystemTime,
 }
 
 pub(crate) fn chats_dir() -> PathBuf {
@@ -23,7 +26,8 @@ fn dirs_home() -> PathBuf {
     std::env::var("HOME").map_or_else(|_| PathBuf::from("/tmp"), PathBuf::from)
 }
 
-/// Save all chats to disk (atomic tmp+rename per file).
+/// Save all chats to disk (atomic tmp+rename per file). Files for chats
+/// that no longer exist are removed so deletions survive restarts.
 pub fn save_chats(chats: &[Chat]) {
     let dir = chats_dir();
     let _ = fs::create_dir_all(&dir);
@@ -35,12 +39,27 @@ pub fn save_chats(chats: &[Chat]) {
             pinned: chat.pinned,
             archived: chat.archived,
             draft: chat.draft.clone(),
+            created_at: chat.created_at,
         };
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
         if let Ok(json) = serde_json::to_string_pretty(&stored) {
             let _ = fs::write(&tmp, json);
             let _ = fs::rename(&tmp, &dst);
+        }
+    }
+    // Remove files beyond the live set — deleted chats must not resurrect.
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for path in entries.flatten().map(|e| e.path()) {
+            let stale = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.parse::<usize>().ok())
+                .is_some_and(|ix| ix >= chats.len())
+                && path.extension().is_some_and(|e| e == "json");
+            if stale {
+                let _ = fs::remove_file(&path);
+            }
         }
     }
 }
@@ -64,6 +83,7 @@ pub fn load_chats() -> Vec<Chat> {
             chat.pinned = stored.pinned;
             chat.archived = stored.archived;
             chat.draft = stored.draft;
+            chat.created_at = stored.created_at;
             Some(chat)
         })
         .collect();
