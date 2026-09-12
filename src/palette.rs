@@ -20,8 +20,8 @@ impl Workspace {
     }
 
     pub fn open_rename(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(title) = self.chats.get(ix).map(|c| c.title.clone()) else { return };
         self.renaming = Some(ix);
-        let title = self.chats[ix].title.clone();
         self.rename.update(cx, |state, cx| {
             state.set_value(title, window, cx);
         });
@@ -47,10 +47,12 @@ impl Workspace {
     pub fn commit_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(ix) = self.renaming.take() else { return };
         let title = self.rename.read(cx).value().trim().to_string();
-        if !title.is_empty() {
-            self.chats[ix].title = title.into();
+        if !title.is_empty()
+            && let Some(chat) = self.chats.get_mut(ix)
+        {
+            chat.title = title.into();
             if ix == self.active {
-                window.set_window_title(&format!("Rixl Code — {}", self.chats[ix].title));
+                window.set_window_title(&format!("Rixl Code — {}", chat.title));
             }
         }
         cx.notify();
