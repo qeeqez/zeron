@@ -188,6 +188,7 @@ impl Workspace {
         self.scroller.update(cx, |s, cx| {
             s.reset(count, cx);
         });
+        window.set_window_title(&format!("Rixl Code — {}", self.chats[index].title));
         cx.notify();
         self.save();
         self.save_settings();
