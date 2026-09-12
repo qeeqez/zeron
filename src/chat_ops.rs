@@ -38,7 +38,7 @@ impl Workspace {
             s.set_value(draft, window, cx);
             s.focus(window, cx);
         });
-        let count = self.chats[index].messages.len();
+        let count = self.filtered_count(cx);
         self.scroller.update(cx, |s, cx| {
             s.reset(count, cx);
         });

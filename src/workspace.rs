@@ -234,7 +234,7 @@ impl Workspace {
                 s.set_value(draft, window, cx);
             });
         }
-        let count = self.chats[self.active].messages.len();
+        let count = self.filtered_count(cx);
         self.scroller.update(cx, |s, cx| {
             s.reset(count, cx);
         });
