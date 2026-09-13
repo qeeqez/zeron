@@ -13,5 +13,4 @@ Codex-style task & subagent surfaces.
 
 ## Todo
 
-- [x] Expand agent → its own message/tool stream
-- [x] Completed-agent history section
+- [ ] Real subagent backend — currently simulated timers
