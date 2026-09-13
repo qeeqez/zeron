@@ -50,7 +50,7 @@ impl Workspace {
         chat.started_at = Some(std::time::Instant::now());
         self.recall_ix = None;
         self.recall_saved = None;
-        chat.draft.clear();
+
         chat.attachments.clear();
         self.composer.update(cx, |state, cx| {
             state.set_value("", window, cx);
