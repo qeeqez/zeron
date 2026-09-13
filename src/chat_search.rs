@@ -67,7 +67,7 @@ impl Workspace {
 impl Workspace {
     /// Sidebar recency bucket: 0 pinned, 1 today, 2 last 7 days, 3 older.
     pub(crate) fn chat_bucket(&self, ix: usize) -> usize {
-        let chat = &self.chats[ix];
+        let Some(chat) = self.chats.get(ix) else { return 3 };
         if chat.pinned {
             return 0;
         }
