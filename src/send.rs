@@ -67,6 +67,7 @@ impl Workspace {
         chat.running = true;
         chat.failed_flag = false;
         chat.started_at = Some(std::time::Instant::now());
+        self.search_match_ix = 0;
         let count = self.filtered_count(cx);
         self.scroller.update(cx, |s, cx| {
             s.reset(count, cx);
