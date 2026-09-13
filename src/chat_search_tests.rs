@@ -1,4 +1,4 @@
-//! Tests for `chat_ops` helpers — kept in a sibling file so `chat_ops.rs`
+//! Tests for `chat_search` helpers — kept in a sibling file so `chat_search.rs`
 //! stays under the 250-SLOC cap.
 
 #[cfg(test)]
