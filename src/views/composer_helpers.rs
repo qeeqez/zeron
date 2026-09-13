@@ -92,13 +92,13 @@ fn apply_slash(ws: &Entity<Workspace>, cmd: &str, window: &mut Window, cx: &mut 
         });
     });
 }
-
 fn apply_mention(ws: &Entity<Workspace>, path: &str, window: &mut Window, cx: &mut App) {
     ws.update(cx, |this, cx| {
         this.composer.update(cx, |s, cx| {
             let cur = s.value().to_string();
             let before = cur.rsplit_once('@').map(|(b, _)| b).unwrap_or("");
             s.set_value(format!("{before}@{path} "), window, cx);
+            s.focus(window, cx);
         });
     });
 }
