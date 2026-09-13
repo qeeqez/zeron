@@ -1,7 +1,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::input::Input;
-use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarMenuItem, SidebarToggleButton};
+use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarMenuItem};
 
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -16,21 +16,10 @@ impl Workspace {
             .flex()
             .flex_col()
             .gap_2()
-            // Clear the floating traffic lights.
-            .pt(px(28.))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_2()
-                    .child(div().flex().items_center().gap_2().text_sm().font_bold().child(IconName::Bot).child("Rixl Code"))
-                    .child(
-                        SidebarToggleButton::new()
-                            .collapsed(collapsed)
-                            .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
-                    ),
-            )
+            // Top strip: clears the floating traffic lights + toggle and drags
+            // the window (the app owns titlebar dragging).
+            .child(crate::window::titlebar_drag(div().id("sidebar-titlebar").h(px(28.))))
+            .child(div().flex().items_center().gap_2().text_sm().font_bold().child(IconName::Bot).child("Rixl Code"))
             .child(
                 div()
                     .flex()
@@ -122,7 +111,7 @@ impl Workspace {
             .child(
                 Sidebar::new("sidebar")
                     .w(px(self.sidebar_width))
-                    .collapsible(SidebarCollapsible::Icon)
+                    .collapsible(SidebarCollapsible::Offcanvas)
                     .collapsed(collapsed)
                     .header(header)
                     .child(actions)

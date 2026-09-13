@@ -7,6 +7,7 @@ use crate::{
     ThemeDark, ThemeLight, ToggleAgents, ToggleSidebar,
 };
 use gpui_kit::component::Root;
+use gpui_kit::component::sidebar::SidebarToggleButton;
 use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -122,6 +123,7 @@ impl Render for Workspace {
                 }
             })
             .h_full()
+            .relative()
             .flex()
             .flex_col()
             .on_mouse_move(cx.listener(|this, ev: &gpui_kit::MouseMoveEvent, _, cx| {
@@ -152,6 +154,10 @@ impl Render for Workspace {
                     }
                 }),
             )
+            // The app draws its own drag strips (app_owns_titlebar_drag) so the
+            // toggle's clicks reach it instead of AppKit's drag region. The
+            // toggle is a fixed overlay right of the traffic lights, so it
+            // stays put and clickable whether the sidebar is shown or hidden.
             .child(
                 div()
                     .flex()
@@ -160,6 +166,13 @@ impl Render for Workspace {
                     .child(self.render_sidebar(window, cx))
                     .child(self.render_chat(window, cx))
                     .when(self.agents_panel_open, |d| d.child(self.render_agents_panel(window, cx))),
+            )
+            .child(
+                div().absolute().left(px(80.)).top(px(6.)).child(
+                    SidebarToggleButton::new()
+                        .collapsed(self.sidebar_collapsed)
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+                ),
             )
     }
 }
@@ -200,11 +213,14 @@ pub fn open_workspace_window(cx: &mut gpui_kit::AsyncApp) -> gpui_kit::Result<()
             window_min_size: Some(Size { width: px(800.), height: px(600.) }),
             window_bounds: crate::window::saved_window_bounds(),
             window_background: gpui_kit::WindowBackgroundAppearance::Blurred,
-            // Traffic lights float over the sidebar; title hidden, top strip draggable.
+            // The app draws its own TitleBar and moves the window via
+            // start_window_move, so AppKit must not treat the strip as a system
+            // window-move region (which would swallow the toggle's clicks).
+            app_owns_titlebar_drag: true,
             titlebar: Some(gpui_kit::TitlebarOptions {
                 title: Some("Rixl Code".into()),
                 appears_transparent: true,
-                traffic_light_position: None,
+                traffic_light_position: Some(gpui_kit::point(px(9.), px(9.))),
             }),
             ..Default::default()
         },

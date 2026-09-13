@@ -1,6 +1,32 @@
+use std::cell::Cell;
+use std::rc::Rc;
+
+use gpui_kit::base::InteractiveElementExt;
 use gpui_kit::*;
 
 use crate::workspace::Workspace;
+
+/// Make `el` a window-drag strip: press-and-move calls `start_window_move`,
+/// double-click runs the native titlebar action. Needed because the window
+/// sets `app_owns_titlebar_drag` — AppKit no longer drags it, so the app does.
+/// Interactive children (buttons) stop mousedown propagation, so they still
+/// click instead of starting a drag.
+pub(crate) fn titlebar_drag(el: Stateful<Div>) -> Stateful<Div> {
+    let moving = Rc::new(Cell::new(false));
+    let down = moving.clone();
+    let up = moving.clone();
+    let up_out = moving.clone();
+    let mv = moving;
+    el.on_mouse_down(MouseButton::Left, move |_, _, _| down.set(true))
+        .on_mouse_up(MouseButton::Left, move |_, _, _| up.set(false))
+        .on_mouse_up_out(MouseButton::Left, move |_, _, _| up_out.set(false))
+        .on_mouse_move(move |_, window, _| {
+            if mv.replace(false) {
+                window.start_window_move();
+            }
+        })
+        .on_double_click(|_, window, _| window.titlebar_double_click())
+}
 
 /// Prompt before closing while a reply is running; persist bounds first.
 /// Also stashes the composer text into the active chat's draft so unsent

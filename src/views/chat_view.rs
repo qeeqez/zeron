@@ -92,40 +92,47 @@ impl Workspace {
         .jump_button(true)
         .with_jump_button_label("Jump to latest");
 
-        let header = div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .px_4()
-            .py_2()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .text_sm()
-            .child(title)
-            .child(div().flex_1())
-            .child(
-                div()
-                    .id("agents-toggle")
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .px_2()
-                    .py_1()
-                    .rounded_md()
-                    .cursor_pointer()
-                    .text_xs()
-                    .when(panel_open, |d| d.bg(cx.theme().accent).text_color(cx.theme().accent_foreground))
-                    .when(!panel_open, |d| d.text_color(cx.theme().muted_foreground))
-                    .child(IconName::Bot)
-                    .when(running_agents > 0, |d| d.child(format!("{running_agents}")))
-                    .on_click(move |_, _, cx| {
-                        ws_toggle.update(cx, |this, cx| this.toggle_agents_panel(cx));
-                    }),
-            )
-            .child(Button::new("chat-menu").ghost().icon(IconName::Ellipsis).dropdown_menu({
-                let word_wrap = self.word_wrap;
-                move |menu, _window, _cx| chat_menu(menu, &ws_menu, pinned, word_wrap)
-            }));
+        // The header doubles as the window titlebar: it drags the window and
+        // answers double-click. Interactive children stop mousedown so they
+        // click instead of starting a drag.
+        let header = crate::window::titlebar_drag(
+            div()
+                .id("chat-titlebar")
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_4()
+                .py_2()
+                .border_b_1()
+                .border_color(cx.theme().border)
+                .text_sm()
+                .child(title)
+                .child(div().flex_1())
+                .child(
+                    div()
+                        .id("agents-toggle")
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .px_2()
+                        .py_1()
+                        .rounded_md()
+                        .cursor_pointer()
+                        .text_xs()
+                        .when(panel_open, |d| d.bg(cx.theme().accent).text_color(cx.theme().accent_foreground))
+                        .when(!panel_open, |d| d.text_color(cx.theme().muted_foreground))
+                        .child(IconName::Bot)
+                        .when(running_agents > 0, |d| d.child(format!("{running_agents}")))
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(move |_, _, cx| {
+                            ws_toggle.update(cx, |this, cx| this.toggle_agents_panel(cx));
+                        }),
+                )
+                .child(Button::new("chat-menu").ghost().icon(IconName::Ellipsis).dropdown_menu({
+                    let word_wrap = self.word_wrap;
+                    move |menu, _window, _cx| chat_menu(menu, &ws_menu, pinned, word_wrap)
+                })),
+        );
 
         div()
             .flex()
