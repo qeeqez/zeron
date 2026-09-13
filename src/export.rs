@@ -26,10 +26,14 @@ impl Workspace {
         let name = format!("{}.md", if stem.is_empty() { "chat" } else { &stem });
         let home = std::env::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
         let rx = cx.prompt_for_new_path(&home, Some(&name));
-        cx.spawn(async move |_this, _cx| {
-            if let Ok(Ok(Some(path))) = rx.await {
-                std::fs::write(path, out).ok();
-            }
+        let ws = cx.entity();
+        cx.spawn(async move |_this, cx| {
+            let Ok(Ok(Some(path))) = rx.await else { return };
+            let msg = match std::fs::write(&path, out) {
+                Ok(()) => format!("Exported to `{}`", path.display()),
+                Err(_) => format!("Export failed — could not write `{}`", path.display()),
+            };
+            ws.update(cx, |this, cx| this.push_note(msg, cx));
         })
         .detach();
     }

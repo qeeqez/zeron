@@ -158,7 +158,7 @@ impl Workspace {
     }
 
     /// Append a local assistant note (command feedback, not a backend reply).
-    fn push_note(&mut self, text: String, cx: &mut Context<Self>) {
+    pub(crate) fn push_note(&mut self, text: String, cx: &mut Context<Self>) {
         std::rc::Rc::make_mut(&mut self.chats[self.active].messages).push(ChatMessage {
             role: Role::Assistant,
             kind: MessageKind::Text(text.into()),
