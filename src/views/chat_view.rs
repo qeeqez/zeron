@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::model::{ChatMessage, MessageKind};
+use crate::model::ChatMessage;
 use crate::views::cards::MsgCtx;
 use crate::views::render_empty_state;
 use crate::views::render_message;
@@ -68,27 +68,22 @@ impl Workspace {
         let panel_open = self.agents_panel_open;
 
         let msg_count = messages.len();
-        let query = self.chat_search.read(cx).value().to_string().to_lowercase();
-        let filtered: Vec<usize> = if self.chat_search_open && !query.is_empty() {
-            (0..msg_count)
-                .filter(|&ix| {
-                    let msg = &messages[ix];
-                    let text = match &msg.kind {
-                        MessageKind::Text(t) => t.as_str(),
-                        MessageKind::Tool(t) => t.name.as_str(),
-                        MessageKind::Diff(d) => d.path.as_str(),
-                    };
-                    text.to_lowercase().contains(&query)
-                })
-                .collect()
+        let query = if self.chat_search_open {
+            self.chat_search.read(cx).value().to_string().to_lowercase()
         } else {
-            (0..msg_count).collect()
+            String::new()
+        };
+        // None = unfiltered — avoids allocating 0..n every render.
+        let filtered: Option<Vec<usize>> = if query.is_empty() {
+            None
+        } else {
+            Some((0..msg_count).filter(|&ix| crate::chat_ops::msg_matches(&messages[ix], &query)).collect())
         };
         let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, _window, cx| {
-            filtered
-                .get(ix)
-                .and_then(|&real_ix| messages.get(real_ix).map(|msg| (real_ix, msg)))
-                .map(|(real_ix, msg)| render_message(MsgCtx { ix: real_ix, is_last: real_ix == msg_count - 1 }, msg, &ws, cx))
+            let real_ix = filtered.as_ref().map_or(ix, |f| *f.get(ix).unwrap_or(&ix));
+            messages
+                .get(real_ix)
+                .map(|msg| render_message(MsgCtx { ix: real_ix, is_last: real_ix == msg_count - 1 }, msg, &ws, cx))
                 .unwrap_or_else(|| div().into_any_element())
         })
         .jump_button(true)
