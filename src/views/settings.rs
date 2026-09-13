@@ -159,8 +159,9 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
                 .child(div().text_color(hsla(0.0, 0.0, 0.55, 1.0)).child(*desc))
         })))
 }
-pub const SHORTCUTS: [(&str, &str); 13] = [
+pub const SHORTCUTS: [(&str, &str); 14] = [
     ("Cmd+N", "New chat"),
+    ("Cmd+Shift+N", "New window"),
     ("Cmd+B", "Toggle sidebar"),
     ("Cmd+J", "Toggle agents panel"),
     ("Cmd+K", "Command palette"),
