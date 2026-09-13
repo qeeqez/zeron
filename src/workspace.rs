@@ -111,8 +111,16 @@ impl Workspace {
             composer,
             search,
             scroller,
-            model: settings.model.clone().into(),
-            mode: settings.mode.clone().into(),
+            model: if crate::model::MODELS.contains(&settings.model.as_str()) {
+                settings.model.clone().into()
+            } else {
+                "default".into()
+            },
+            mode: if ["Agent", "Plan", "Ask"].contains(&settings.mode.as_str()) {
+                settings.mode.clone().into()
+            } else {
+                "Agent".into()
+            },
             rename,
             palette,
             renaming: None,
