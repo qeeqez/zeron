@@ -1,10 +1,11 @@
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::backend::AccessMode;
 use crate::workspace::Workspace;
 pub struct SettingsPanel {
     ws: Entity<Workspace>,
@@ -76,6 +77,7 @@ impl Render for SettingsPanel {
                 notify: s.notify_on_done,
                 font_size: s.font_size,
                 backend: s.backend.name(),
+                access: s.access(),
                 word_wrap: s.word_wrap,
                 ws: self.ws.clone(),
                 url_input: self.url_input.clone(),
@@ -94,6 +96,7 @@ pub struct SettingsView {
     pub ws: Entity<Workspace>,
     pub url_input: Entity<InputState>,
     pub key_input: Entity<InputState>,
+    pub access: AccessMode,
 }
 
 pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
@@ -112,31 +115,9 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
                 .child(theme_button("Dark", ThemeMode::Dark)),
         )
         .child(div().text_sm().pt_2().child("Notifications"))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .text_xs()
-                .child("Notify on reply complete")
-                .child(div().flex_1())
-                .child(
-                    div()
-                        .id("toggle-notify")
-                        .cursor_pointer()
-                        .child(if s.notify { IconName::Check } else { IconName::X })
-                        .on_click({
-                            let ws = ws.clone();
-                            move |_, _, cx| {
-                                ws.update(cx, |this, cx| {
-                                    this.notify_on_done = !this.notify_on_done;
-                                    this.save_settings();
-                                    cx.notify();
-                                });
-                            }
-                        }),
-                ),
-        )
+        .child(toggle_row(("toggle-notify", "Notify on reply complete"), s.notify, ws.clone(), |this, _cx| {
+            this.notify_on_done = !this.notify_on_done;
+        }))
         .child(div().text_sm().pt_2().child("Font size"))
         .child(
             div()
@@ -186,6 +167,22 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
                     }),
             ),
         )
+        .child(div().text_sm().pt_2().child("Agent access"))
+        .child(div().flex().items_center().gap_2().text_xs().children(AccessMode::ALL.into_iter().map(|mode| {
+            let btn = Button::new(SharedString::from(mode.name())).label(mode.label()).on_click({
+                let ws = ws.clone();
+                move |_, _, cx| {
+                    ws.update(cx, |this, cx| this.set_access(mode, cx));
+                }
+            });
+            if mode == s.access { btn.primary() } else { btn.outline() }
+        })))
+        .child(
+            div()
+                .text_xs()
+                .text_color(hsla(0.0, 0.0, 0.55, 1.0))
+                .child("Filesystem access for Agent-mode turns — Plan and Ask always stay read-only"),
+        )
         .child(
             div()
                 .flex()
@@ -198,25 +195,10 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
                 .child(Input::new(&s.key_input).appearance(true)),
         )
         .child(div().text_sm().pt_2().child("Messages"))
-        .child(
-            div().flex().items_center().gap_2().text_xs().child("Word wrap").child(div().flex_1()).child(
-                div()
-                    .id("toggle-wrap")
-                    .cursor_pointer()
-                    .child(if s.word_wrap { IconName::Check } else { IconName::X })
-                    .on_click({
-                        let ws = ws.clone();
-                        move |_, _, cx| {
-                            ws.update(cx, |this, cx| {
-                                this.word_wrap = !this.word_wrap;
-                                this.save_settings();
-                                this.scroller.update(cx, |s, cx| s.remeasure(cx));
-                                cx.notify();
-                            });
-                        }
-                    }),
-            ),
-        )
+        .child(toggle_row(("toggle-wrap", "Word wrap"), s.word_wrap, ws.clone(), |this, cx| {
+            this.word_wrap = !this.word_wrap;
+            this.scroller.update(cx, |s, cx| s.remeasure(cx));
+        }))
         .child(div().text_sm().pt_2().child("Shortcuts"))
         .child(div().flex().flex_col().gap_1().text_xs().children(SHORTCUTS.iter().map(|(key, desc)| {
             div()
@@ -243,6 +225,27 @@ pub const SHORTCUTS: [(&str, &str); 14] = [
     ("Cmd+Shift+Up/Down", "Cycle message history"),
     ("Esc", "Stop reply / close search"),
 ];
+
+/// A label + check/X row that flips a workspace flag, then persists
+/// settings and re-renders — `set` does the flip plus any side effects.
+/// `row` bundles the element id and label to stay under the arg-count lint.
+fn toggle_row(
+    row: (&'static str, &'static str), on: bool, ws: Entity<Workspace>, set: fn(&mut Workspace, &mut Context<Workspace>),
+) -> impl IntoElement {
+    div().flex().items_center().gap_2().text_xs().child(row.1).child(div().flex_1()).child(
+        div()
+            .id(row.0)
+            .cursor_pointer()
+            .child(if on { IconName::Check } else { IconName::X })
+            .on_click(move |_, _, cx| {
+                ws.update(cx, |this, cx| {
+                    set(this, cx);
+                    this.save_settings();
+                    cx.notify();
+                });
+            }),
+    )
+}
 
 fn theme_button(label: &'static str, mode: ThemeMode) -> impl IntoElement {
     Button::new(SharedString::from(label)).outline().label(label).on_click(move |_, _, cx| {

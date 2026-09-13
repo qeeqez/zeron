@@ -22,6 +22,10 @@ pub struct Workspace {
     pub scroller: Entity<MessageScrollerState>,
     pub model: SharedString,
     pub mode: SharedString,
+    /// Filesystem access granted to Agent-mode turns — Plan/Ask are always
+    /// read-only. Published to `crate::backend` on change so the backend
+    /// `send` signature (called from files outside this lane) stays stable.
+    pub access: crate::backend::AccessMode,
     pub palette: Entity<CommandState>,
     pub rename: Entity<InputState>,
     /// Chat id being renamed — stable across deletions, unlike a vec index.
@@ -137,6 +141,7 @@ impl Workspace {
             } else {
                 "Agent".into()
             },
+            access: crate::backend::AccessMode::from_name(&settings.access),
             rename,
             palette,
             renaming: None,
@@ -154,6 +159,7 @@ impl Workspace {
             http_url: settings.http_url.clone(),
             http_key_env: settings.http_key_env.clone(),
         };
+        crate::backend::set_access_mode(this.access);
         let loaded = crate::persist::load_chats(&mut this.next_chat_id);
         if loaded.is_empty() {
             this.new_chat(cx);
@@ -202,6 +208,7 @@ impl Workspace {
         crate::persist::save_settings(&crate::persist::Settings {
             model: self.model.to_string(),
             mode: self.mode.to_string(),
+            access: self.access.name().into(),
             word_wrap: self.word_wrap,
             font_size: self.font_size,
             notify_on_done: self.notify_on_done,
@@ -214,6 +221,21 @@ impl Workspace {
             sidebar_collapsed: self.sidebar_collapsed,
             active_chat: self.active,
         });
+    }
+
+    /// Current access mode — the getter the backend send path will use if
+    /// `AgentBackend::send` ever takes it as a parameter.
+    pub fn access(&self) -> crate::backend::AccessMode {
+        self.access
+    }
+
+    /// Change the Agent-mode access level, publish it to the backend, and
+    /// persist it. Called from the settings picker.
+    pub fn set_access(&mut self, access: crate::backend::AccessMode, cx: &mut Context<Self>) {
+        self.access = access;
+        crate::backend::set_access_mode(access);
+        self.save_settings();
+        cx.notify();
     }
 }
 

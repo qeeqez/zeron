@@ -6,6 +6,77 @@ mod http;
 pub use codex::CodexCliBackend;
 pub use http::HttpBackend;
 
+/// How much filesystem access an Agent-mode turn gets. Plan/Ask turns are
+/// always read-only regardless of this setting.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AccessMode {
+    /// `-s read-only` — the agent can inspect but not modify files.
+    ReadOnly,
+    /// `-s workspace-write` — writes confined to the working directory.
+    #[default]
+    WorkspaceWrite,
+    /// `-s danger-full-access` — unsandboxed, like Codex's full access.
+    FullAccess,
+}
+
+impl AccessMode {
+    /// All modes, in settings-picker order (least to most permissive).
+    pub const ALL: [AccessMode; 3] = [AccessMode::ReadOnly, AccessMode::WorkspaceWrite, AccessMode::FullAccess];
+
+    /// Stable id stored in settings.json.
+    pub fn name(self) -> &'static str {
+        match self {
+            AccessMode::ReadOnly => "read-only",
+            AccessMode::WorkspaceWrite => "workspace-write",
+            AccessMode::FullAccess => "full-access",
+        }
+    }
+
+    /// Label shown in the settings picker.
+    pub fn label(self) -> &'static str {
+        match self {
+            AccessMode::ReadOnly => "Read only",
+            AccessMode::WorkspaceWrite => "Workspace write",
+            AccessMode::FullAccess => "Full access",
+        }
+    }
+
+    /// `codex exec -s` value for this mode.
+    pub fn sandbox_arg(self) -> &'static str {
+        match self {
+            AccessMode::ReadOnly => "read-only",
+            AccessMode::WorkspaceWrite => "workspace-write",
+            AccessMode::FullAccess => "danger-full-access",
+        }
+    }
+
+    /// Parse a settings.json value; anything unknown falls back to the
+    /// default so a stale or hand-edited file can't wedge the picker.
+    pub fn from_name(name: &str) -> Self {
+        Self::ALL.iter().copied().find(|m| m.name() == name).unwrap_or_default()
+    }
+}
+
+/// Process-wide access level read by `CodexCliBackend::send`. The `send`
+/// signature stays stable (its call sites live in files owned by other
+/// lanes), so the workspace publishes the setting here instead — it also
+/// survives `toggle_backend` rebuilding the backend mid-session.
+static ACCESS_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(AccessMode::WorkspaceWrite as u8);
+
+/// Publish the workspace's access mode for subsequent backend turns.
+pub fn set_access_mode(mode: AccessMode) {
+    ACCESS_MODE.store(mode as u8, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The access mode applied to the next backend turn.
+pub fn access_mode() -> AccessMode {
+    match ACCESS_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+        0 => AccessMode::ReadOnly,
+        2 => AccessMode::FullAccess,
+        _ => AccessMode::WorkspaceWrite,
+    }
+}
+
 /// Events streamed from an agent backend into a chat.
 #[derive(Clone, Debug)]
 pub enum AgentEvent {
