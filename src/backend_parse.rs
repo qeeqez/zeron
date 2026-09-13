@@ -266,3 +266,17 @@ mod turn_tests {
         assert!(matches!(&evs[0], AgentEvent::Error(e) if e == "turn failed"));
     }
 }
+
+#[cfg(test)]
+mod agent_message_tests {
+    use super::*;
+
+    #[test]
+    fn agent_message_completed_without_start() {
+        // A completed agent_message with no prior item.started still appends
+        // to the last text bubble — apply_text_delta creates it if needed.
+        let evs = parse_codex_line(r#"{"type":"item.completed","item":{"id":"m","type":"agent_message","text":"hi"}}"#);
+        assert_eq!(evs.len(), 1);
+        assert!(matches!(&evs[0], AgentEvent::TextDelta(t) if t == "hi"));
+    }
+}
