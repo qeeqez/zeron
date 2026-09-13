@@ -53,8 +53,10 @@ impl Render for Workspace {
             .on_action(move |_: &ThemeDark, window, cx| {
                 Theme::change(ThemeMode::Dark, Some(window), cx);
             })
-            .on_action(|_: &CloseWindow, window, _cx| {
-                window.remove_window();
+            .on_action({
+                let ws = cx.entity();
+                let handle = window.window_handle();
+                move |_: &CloseWindow, window, cx| close_window(&ws, handle, window, cx)
             })
             .on_action({
                 let ws = cx.entity();
@@ -161,6 +163,13 @@ fn chat_switch<A: Action + ChatIx>(cx: &mut Context<Workspace>) -> impl Fn(&A, &
                 this.select_chat(ix, window, cx);
             }
         });
+    }
+}
+
+/// Cmd+W: run the close gate (draft save + running-reply prompt), then close.
+fn close_window(ws: &Entity<Workspace>, handle: AnyWindowHandle, window: &mut Window, cx: &mut App) {
+    if crate::window::confirm_close(ws, handle, window, cx) {
+        window.remove_window();
     }
 }
 
