@@ -129,7 +129,7 @@ impl Workspace {
             } else {
                 std::sync::Arc::new(crate::backend::SimBackend)
             },
-            font_size: settings.font_size,
+            font_size: settings.font_size.clamp(10, 24),
             project_files: Vec::new(),
         };
         let loaded = crate::persist::load_chats(&mut this.next_chat_id);

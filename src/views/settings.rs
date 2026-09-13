@@ -104,7 +104,7 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
                     let ws = ws.clone();
                     move |_, _, cx| {
                         ws.update(cx, |this, cx| {
-                            this.font_size = (this.font_size + 1).min(24);
+                            this.font_size = this.font_size.saturating_add(1).min(24);
                             this.save_settings();
                             this.scroller.update(cx, |s, cx| s.remeasure(cx));
                             cx.notify();
