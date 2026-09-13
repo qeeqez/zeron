@@ -180,12 +180,21 @@ fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (C
     cmd.args(&args)
         .current_dir(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")))
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
+        .stderr(std::process::Stdio::piped());
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => return (CodexOutcome::Failed(format!("codex spawn: {e}")), false),
     };
     let stdout = child.stdout.take().expect("piped");
+    // Drain stderr on a thread from spawn — a chatty child blocks on a
+    // full pipe before stdout EOF, and we want the text on failure.
+    let stderr = child.stderr.take().map(|mut s| {
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            let _ = std::io::Read::read_to_string(&mut s, &mut buf);
+            buf.trim().to_string()
+        })
+    });
     *turn.slot.lock() = Some(child);
     use std::io::BufRead;
     let reader = std::io::BufReader::new(stdout);
@@ -207,7 +216,14 @@ fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (C
     let Some(mut child) = turn.slot.lock().take() else { return (CodexOutcome::Cancelled, emitted) };
     let outcome = match child.wait() {
         Ok(s) if s.success() => CodexOutcome::Failed("codex exited without completing".into()),
-        Ok(s) => CodexOutcome::Failed(format!("codex exited with {s}")),
+        Ok(s) => {
+            let detail = stderr
+                .and_then(|h| h.join().ok())
+                .filter(|e| !e.is_empty())
+                .map(|e| format!(": {e}"))
+                .unwrap_or_default();
+            CodexOutcome::Failed(format!("codex exited with {s}{detail}"))
+        },
         Err(e) => CodexOutcome::Failed(format!("codex wait: {e}")),
     };
     (outcome, emitted)
