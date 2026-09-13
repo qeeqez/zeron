@@ -72,6 +72,7 @@ impl Workspace {
             s.reset(count, cx);
         });
         cx.notify();
+        self.save();
         let prompt = self.chats[self.active]
             .messages
             .iter()
