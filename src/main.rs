@@ -28,7 +28,7 @@ use gpui_kit::*;
 actions!([
     NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7,
     Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp,
-    RecallLast, RecallPrev, RecallNext,
+    RecallLast, RecallPrev, RecallNext, NewWindow,
 ]);
 
 fn main() {
@@ -44,6 +44,8 @@ fn main() {
             ]),
             gpui_kit::Menu::new("File").items([
                 gpui_kit::MenuItem::action("New Chat", NewChat),
+                gpui_kit::MenuItem::action("New Window", NewWindow),
+                gpui_kit::MenuItem::separator(),
                 gpui_kit::MenuItem::action("Reveal Chats Folder", RevealChats),
                 gpui_kit::MenuItem::separator(),
                 gpui_kit::MenuItem::action("Close Window", CloseWindow),
@@ -69,6 +71,7 @@ fn main() {
             KeyBinding::new("escape", EscapeKey, Some("workspace")),
             KeyBinding::new("cmd-/", ShortcutsHelp, Some("workspace")),
             KeyBinding::new("cmd-n", NewChat, Some("workspace")),
+            KeyBinding::new("cmd-shift-n", NewWindow, Some("workspace")),
             KeyBinding::new("cmd-,", OpenSettings, Some("workspace")),
             KeyBinding::new("cmd-up", RecallLast, Some("workspace")),
             KeyBinding::new("cmd-shift-up", RecallPrev, Some("workspace")),
