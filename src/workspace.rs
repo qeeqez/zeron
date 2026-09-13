@@ -2,7 +2,6 @@ use gpui_kit::component::command::CommandState;
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::*;
-use std::time::Duration;
 
 use crate::model::{Agent, Chat};
 
@@ -131,7 +130,7 @@ impl Workspace {
                 std::sync::Arc::new(crate::backend::SimBackend)
             },
             font_size: settings.font_size,
-            project_files: crate::files::scan_project_files(),
+            project_files: Vec::new(),
         };
         let loaded = crate::persist::load_chats(&mut this.next_chat_id);
         if loaded.is_empty() {
@@ -140,7 +139,7 @@ impl Workspace {
             this.chats = loaded;
             this.active = settings.active_chat.min(this.chats.len().saturating_sub(1));
         }
-        this.start_ticker(cx);
+        this.start_background(cx);
         this
     }
 
@@ -190,24 +189,6 @@ impl Workspace {
             sidebar_collapsed: self.sidebar_collapsed,
             active_chat: self.active,
         });
-    }
-
-    /// Re-render once a second while any chat is running so the elapsed
-    /// indicator stays live.
-    fn start_ticker(&self, cx: &mut Context<Self>) {
-        cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(Duration::from_secs(1)).await;
-                let _ = this.update(cx, Self::tick);
-            }
-        })
-        .detach();
-    }
-
-    fn tick(&mut self, cx: &mut Context<Self>) {
-        if self.chats.iter().any(|c| c.running) {
-            cx.notify();
-        }
     }
 
     pub fn toggle_backend(&mut self, cx: &mut Context<Self>) {

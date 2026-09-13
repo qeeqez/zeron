@@ -6,6 +6,7 @@ mod chat_msg;
 mod chat_ops;
 mod export;
 mod files;
+mod lifecycle;
 mod model;
 mod palette;
 mod persist;
