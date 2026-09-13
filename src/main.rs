@@ -7,6 +7,7 @@ mod backend_run;
 mod chat_msg;
 mod chat_ops;
 mod chat_ops_tests;
+mod chat_search;
 mod export;
 mod files;
 mod lifecycle;

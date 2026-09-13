@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::chat_ops::msg_matches;
+    use crate::chat_search::msg_matches;
     use crate::model::{ChatMessage, DiffCard, MessageKind, Role, ToolCall, ToolStatus};
 
     fn msg(kind: MessageKind) -> ChatMessage {

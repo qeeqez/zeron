@@ -73,7 +73,7 @@ impl Workspace {
                     usage: None,
                     at: SystemTime::now(),
                 });
-                if crate::chat_ops::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
+                if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
             },
@@ -93,7 +93,7 @@ impl Workspace {
                     usage: None,
                     at: SystemTime::now(),
                 });
-                if crate::chat_ops::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
+                if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
             },
@@ -126,7 +126,7 @@ impl Workspace {
                     usage: None,
                     at: SystemTime::now(),
                 });
-                if crate::chat_ops::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
+                if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
             },
@@ -151,7 +151,7 @@ impl Workspace {
                     usage: None,
                     at: SystemTime::now(),
                 });
-                if crate::chat_ops::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
+                if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
             },
@@ -182,7 +182,7 @@ impl Workspace {
                 usage: None,
                 at: SystemTime::now(),
             });
-            if is_active && (query.is_empty() || crate::chat_ops::msg_matches(chat.messages.last().unwrap(), &query)) {
+            if is_active && (query.is_empty() || crate::chat_search::msg_matches(chat.messages.last().unwrap(), &query)) {
                 self.scroller.update(cx, |s, cx| s.append(1, cx));
             }
         }
@@ -190,7 +190,7 @@ impl Workspace {
         let MessageKind::Text(t) = &mut last.kind else { return };
         *t = format!("{t}{text}").into();
         if is_active {
-            let pos = crate::chat_ops::last_scroller_pos(&chat.messages, &query);
+            let pos = crate::chat_search::last_scroller_pos(&chat.messages, &query);
             self.scroller.update(cx, |s, cx| s.remeasure_items(pos..pos + 1, cx));
         }
     }

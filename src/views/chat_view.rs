@@ -77,7 +77,7 @@ impl Workspace {
         let filtered: Option<Vec<usize>> = if query.is_empty() {
             None
         } else {
-            Some((0..msg_count).filter(|&ix| crate::chat_ops::msg_matches(&messages[ix], &query)).collect())
+            Some((0..msg_count).filter(|&ix| crate::chat_search::msg_matches(&messages[ix], &query)).collect())
         };
         let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, _window, cx| {
             let real_ix = filtered.as_ref().map_or(ix, |f| *f.get(ix).unwrap_or(&ix));

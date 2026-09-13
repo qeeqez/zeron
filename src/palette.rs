@@ -109,7 +109,11 @@ impl Workspace {
         if query.is_empty() {
             return 0;
         }
-        self.chats[self.active].messages.iter().filter(|m| crate::chat_ops::msg_matches(m, &query)).count()
+        self.chats[self.active]
+            .messages
+            .iter()
+            .filter(|m| crate::chat_search::msg_matches(m, &query))
+            .count()
     }
 
     /// Enter in chat search: jump to next match; Shift+Enter: previous.
