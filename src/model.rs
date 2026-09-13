@@ -41,7 +41,11 @@ pub enum MessageKind {
 pub struct ChatMessage {
     pub role: Role,
     pub kind: MessageKind,
+    /// Missing in early v1 files.
+    #[serde(default)]
     pub rating: Option<bool>,
+    /// Missing in early v1 files — fall back to now().
+    #[serde(default = "std::time::SystemTime::now")]
     pub at: SystemTime,
     /// Token usage reported by the backend for this reply.
     #[serde(default)]
