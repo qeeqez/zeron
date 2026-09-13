@@ -7,11 +7,11 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::send::SLASH_COMMANDS;
 use crate::views::{apply_pick, attachment_chips, mention_item, slash_item};
 use crate::workspace::Workspace;
 
 const MODES: [&str; 3] = ["Agent", "Plan", "Ask"];
-const SLASH_COMMANDS: [&str; 6] = ["clear", "compact", "export", "help", "model", "rename"];
 
 struct PickerSpec {
     id: &'static str,
@@ -60,25 +60,38 @@ impl Workspace {
             },
         });
         let composer_text = self.composer.read(cx).value().to_string();
-        // @-mention only at a word boundary — "user@host" must not pop it.
-        let mention_open = composer_text
-            .char_indices()
-            .any(|(i, c)| c == '@' && composer_text[..i].chars().next_back().is_none_or(|p| p.is_whitespace()));
-        let mention_query = composer_text.rsplit('@').next().unwrap_or("").to_lowercase();
-        let mention_items: Vec<AnyElement> = self
-            .project_files
-            .iter()
-            .filter(|f| mention_query.is_empty() || f.to_lowercase().contains(&mention_query))
-            .take(8)
-            .map(|f| mention_item(f, &ws, cx).into_any_element())
-            .collect();
-        let slash_open = composer_text.starts_with('/');
-        let slash_query = composer_text.trim_start_matches('/').to_lowercase();
-        let slash_items: Vec<AnyElement> = SLASH_COMMANDS
-            .iter()
-            .filter(|c| slash_query.is_empty() || c.to_lowercase().contains(&slash_query))
-            .map(|cmd| slash_item(cmd, &ws, cx).into_any_element())
-            .collect();
+        // The mention menu tracks the LAST `@` token: it must sit at a word
+        // boundary ("user@host" stays quiet) and its query may not contain
+        // whitespace, so a completed "@path next-word" closes the menu.
+        let mention_query = composer_text
+            .rsplit_once('@')
+            .map(|(before, q)| (before, q.to_lowercase()))
+            .filter(|(before, q)| before.chars().next_back().is_none_or(|p| p.is_whitespace()) && !q.chars().any(|c| c.is_whitespace()));
+        let mention_items: Vec<AnyElement> = mention_query
+            .map(|(_, q)| {
+                self.project_files
+                    .iter()
+                    .filter(|f| q.is_empty() || f.to_lowercase().contains(q.as_str()))
+                    .take(8)
+                    .map(|f| mention_item(f, &ws, cx).into_any_element())
+                    .collect()
+            })
+            .unwrap_or_default();
+        // `/` only at position 0; once an argument (whitespace) follows the
+        // command word the menu steps aside.
+        let slash_query = composer_text
+            .strip_prefix('/')
+            .map(str::to_lowercase)
+            .filter(|q| !q.chars().any(|c| c.is_whitespace()));
+        let slash_items: Vec<AnyElement> = slash_query
+            .map(|q| {
+                SLASH_COMMANDS
+                    .iter()
+                    .filter(|c| q.is_empty() || c.contains(q.as_str()))
+                    .map(|cmd| slash_item(cmd, &ws, cx).into_any_element())
+                    .collect()
+            })
+            .unwrap_or_default();
 
         div()
             .p_3()
@@ -96,7 +109,7 @@ impl Workspace {
                     .border_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().input)
-                    .when(mention_open && !mention_items.is_empty(), |d| {
+                    .when(!mention_items.is_empty(), |d| {
                         d.child(
                             div()
                                 .flex()
@@ -118,7 +131,7 @@ impl Workspace {
                                 .children(attachment_chips(&self.chats[self.active], &ws, cx)),
                         )
                     })
-                    .when(slash_open && !slash_items.is_empty(), |d| {
+                    .when(!slash_items.is_empty(), |d| {
                         d.child(
                             div()
                                 .flex()

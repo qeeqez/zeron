@@ -150,6 +150,17 @@ impl Workspace {
         }
         cx.notify();
     }
+
+    /// Run a slash command picked from the composer menu. Routes through
+    /// `send` so selection behaves exactly like typing `/cmd` + Enter.
+    pub(crate) fn run_command(&mut self, cmd: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.composer.update(cx, |s, cx| {
+            s.set_value(format!("/{cmd}"), window, cx);
+            s.focus(window, cx);
+        });
+        self.send(window, cx);
+        cx.notify();
+    }
 }
 
 impl Workspace {

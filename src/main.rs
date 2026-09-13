@@ -11,6 +11,8 @@ mod chat_msg;
 mod chat_ops;
 mod chat_search;
 mod chat_search_tests;
+#[cfg(test)]
+mod composer_tests;
 mod export;
 mod files;
 mod lifecycle;

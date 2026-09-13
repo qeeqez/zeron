@@ -7,7 +7,7 @@ use crate::model::{ChatMessage, MessageKind, Role};
 use crate::workspace::Workspace;
 
 /// Slash commands executable locally; anything else falls through to the backend.
-const SLASH_COMMANDS: [&str; 6] = ["clear", "compact", "export", "help", "model", "rename"];
+pub(crate) const SLASH_COMMANDS: [&str; 6] = ["clear", "compact", "export", "help", "model", "rename"];
 
 impl Workspace {
     pub fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {

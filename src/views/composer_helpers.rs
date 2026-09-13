@@ -11,6 +11,7 @@ pub fn slash_item(cmd: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoE
     let cmd_str = cmd.to_string();
     div()
         .id(SharedString::from(format!("slash-{cmd}")))
+        .test_support()
         .cursor_pointer()
         .px_2()
         .py_1()
@@ -28,6 +29,7 @@ pub fn mention_item(file: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl In
     let path = file.to_string();
     div()
         .id(SharedString::from(format!("mention-{file}")))
+        .test_support()
         .cursor_pointer()
         .px_2()
         .py_1()
@@ -85,12 +87,7 @@ pub fn attachment_chips(chat: &Chat, ws: &Entity<Workspace>, cx: &mut App) -> Ve
 }
 
 fn apply_slash(ws: &Entity<Workspace>, cmd: &str, window: &mut Window, cx: &mut App) {
-    ws.update(cx, |this, cx| {
-        this.composer.update(cx, |s, cx| {
-            s.set_value(format!("/{cmd} "), window, cx);
-            s.focus(window, cx);
-        });
-    });
+    ws.update(cx, |this, cx| this.run_command(cmd, window, cx));
 }
 fn apply_mention(ws: &Entity<Workspace>, path: &str, window: &mut Window, cx: &mut App) {
     ws.update(cx, |this, cx| {
@@ -100,6 +97,8 @@ fn apply_mention(ws: &Entity<Workspace>, path: &str, window: &mut Window, cx: &m
             s.set_value(format!("{before}@{path} "), window, cx);
             s.focus(window, cx);
         });
+        // `set_value` suppresses Change — nudge the workspace so the menu closes.
+        cx.notify();
     });
 }
 
