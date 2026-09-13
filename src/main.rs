@@ -21,7 +21,7 @@ use gpui_kit::*;
 actions!([
     NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7,
     Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp,
-    NewWindow, RecallLast, RecallPrev, RecallNext,
+    RecallLast, RecallPrev, RecallNext,
 ]);
 
 fn main() {
@@ -62,8 +62,6 @@ fn main() {
             KeyBinding::new("escape", EscapeKey, Some("workspace")),
             KeyBinding::new("cmd-/", ShortcutsHelp, Some("workspace")),
             KeyBinding::new("cmd-n", NewChat, Some("workspace")),
-            KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
-            KeyBinding::new("cmd-shift-n", NewWindow, Some("workspace")),
             KeyBinding::new("cmd-,", OpenSettings, Some("workspace")),
             KeyBinding::new("cmd-up", RecallLast, Some("workspace")),
             KeyBinding::new("cmd-shift-up", RecallPrev, Some("workspace")),

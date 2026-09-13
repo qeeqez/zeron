@@ -3,8 +3,8 @@
 use crate::workspace::Workspace;
 use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EscapeKey,
-    NewChat, NewWindow, OpenPalette, OpenSettings, QuitApp, RecallLast, RecallNext, RecallPrev, RevealChats, SearchChat, ShortcutsHelp,
-    ThemeDark, ThemeLight, ToggleAgents, ToggleSidebar,
+    NewChat, OpenPalette, OpenSettings, QuitApp, RecallLast, RecallNext, RecallPrev, RevealChats, SearchChat, ShortcutsHelp, ThemeDark,
+    ThemeLight, ToggleAgents, ToggleSidebar,
 };
 use gpui_kit::component::Root;
 use gpui_kit::component::theme::{Theme, ThemeMode};
@@ -96,12 +96,6 @@ impl Render for Workspace {
                 move |_: &ShortcutsHelp, window, cx| {
                     ws.update(cx, |this, cx| this.shortcuts_help(window, cx));
                 }
-            })
-            .on_action(|_: &NewWindow, _window, cx| {
-                cx.spawn(async move |cx| {
-                    let _ = open_workspace_window(cx);
-                })
-                .detach();
             })
             .on_action({
                 let ws = cx.entity();
