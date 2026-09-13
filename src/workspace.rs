@@ -244,15 +244,7 @@ impl Workspace {
             return;
         }
         let was_active = index == self.active;
-        // A running chat's child outlives the Chat drop — the pump thread
-        // holds the stream's Arc. Kill it explicitly like stop_reply does.
-        let chat = &mut self.chats[index];
-        if let Some(slot) = chat.child.take() {
-            crate::backend::kill_slot(&slot);
-        }
-        if let Some(task) = chat.reply_task.take() {
-            drop(task);
-        }
+        // Chat::drop kills the child slot and cancels the reply task.
         self.chats.remove(index);
         if self.active >= self.chats.len() {
             self.active = self.chats.len() - 1;
