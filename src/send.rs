@@ -41,6 +41,7 @@ impl Workspace {
         chat.failed_flag = false;
         chat.started_at = Some(std::time::Instant::now());
         self.recall_ix = None;
+        self.recall_saved = None;
         chat.draft.clear();
         chat.attachments.clear();
         self.composer.update(cx, |state, cx| {
@@ -127,6 +128,7 @@ impl Workspace {
                 let keep = 4.min(chat.messages.len());
                 chat.messages.drain(..chat.messages.len() - keep);
                 self.recall_ix = None;
+                self.recall_saved = None;
                 let count = self.filtered_count(cx);
                 self.scroller.update(cx, |s, cx| s.reset(count, cx));
                 self.push_note(format!("Compacted — kept the last {keep} messages."), cx);

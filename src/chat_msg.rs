@@ -34,6 +34,7 @@ impl Workspace {
         };
         chat.messages.truncate(ix);
         self.recall_ix = None;
+        self.recall_saved = None;
         self.composer.update(cx, |s, cx| {
             s.set_value(text, window, cx);
             s.focus(window, cx);
@@ -54,6 +55,11 @@ impl Workspace {
         }) else {
             return;
         };
+        // Stash the in-progress composer text — recall_next past the newest
+        // restores it instead of clearing.
+        if self.recall_ix.is_none() {
+            self.recall_saved = Some(self.composer.read(cx).value().to_string());
+        }
         self.recall_ix = Some(0);
         self.composer.update(cx, |s, cx| {
             s.set_value(text, window, cx);
@@ -107,7 +113,8 @@ impl Workspace {
             .collect();
         if cur == 0 {
             self.recall_ix = None;
-            self.composer.update(cx, |s, cx| s.set_value("", window, cx));
+            let saved = self.recall_saved.take().unwrap_or_default();
+            self.composer.update(cx, |s, cx| s.set_value(saved, window, cx));
             return;
         }
         let next = cur - 1;
@@ -115,6 +122,7 @@ impl Workspace {
         // Stale index after truncation — clamp instead of underflowing.
         let Some(&ix) = user_ixs.len().checked_sub(1 + next).and_then(|i| user_ixs.get(i)) else {
             self.recall_ix = None;
+            self.recall_saved = None;
             return;
         };
         let MessageKind::Text(t) = &chat.messages[ix].kind else { return };

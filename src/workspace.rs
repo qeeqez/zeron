@@ -29,6 +29,9 @@ pub struct Workspace {
     pub renaming: Option<u64>,
     /// Index into user messages for Cmd+Shift+Up/Down recall cycling.
     pub recall_ix: Option<usize>,
+    /// Composer text stashed when a recall cycle starts — restored when the
+    /// cycle steps past the newest message.
+    pub recall_saved: Option<String>,
     pub chat_search: Entity<InputState>,
     pub chat_search_open: bool,
     pub search_match_ix: usize,
@@ -66,6 +69,7 @@ impl Workspace {
             // `set_value` suppresses Change, so this only fires on real edits.
             InputEvent::Change => {
                 this.recall_ix = None;
+                this.recall_saved = None;
                 cx.notify();
             },
             _ => {},
@@ -114,6 +118,7 @@ impl Workspace {
             palette,
             renaming: None,
             recall_ix: None,
+            recall_saved: None,
             chat_search,
             chat_search_open: false,
             search_match_ix: 0,
@@ -257,6 +262,7 @@ impl Workspace {
             self.active -= 1;
         }
         self.recall_ix = None;
+        self.recall_saved = None;
         if was_active {
             // Composer still holds the deleted chat's draft — restore the
             // newly-active chat's draft instead.

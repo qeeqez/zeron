@@ -14,6 +14,7 @@ impl Workspace {
         self.chats.push(Chat::new(id, "New chat"));
         self.active = self.chats.len() - 1;
         self.recall_ix = None;
+        self.recall_saved = None;
         self.scroller.update(cx, |s, cx| {
             s.reset(0, cx);
         });
@@ -34,6 +35,7 @@ impl Workspace {
         self.chats[self.active].draft = self.composer.read(cx).value().to_string();
         self.active = index;
         self.recall_ix = None;
+        self.recall_saved = None;
         self.chats[index].unread = false;
         let draft = self.chats[index].draft.clone();
         self.composer.update(cx, |s, cx| {
