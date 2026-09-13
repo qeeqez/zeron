@@ -3,6 +3,7 @@ name = "rixlcode"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.98"
+description = "Codex-style chat UI for macOS — gpui-kit frontend, codex exec backend"
 
 [dependencies]
 chrono = "0.4"
