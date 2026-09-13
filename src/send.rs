@@ -31,9 +31,15 @@ impl Workspace {
             chat.title = text.chars().take(40).collect::<String>().into();
             window.set_window_title(&format!("{} — Rixl Code", chat.title));
         }
+        let display = if chat.attachments.is_empty() {
+            text.to_string()
+        } else {
+            let files = chat.attachments.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", ");
+            format!("{text}\n\n📎 {files}")
+        };
         Rc::make_mut(&mut chat.messages).push(ChatMessage {
             role: Role::User,
-            kind: MessageKind::Text(text.into()),
+            kind: MessageKind::Text(display.into()),
             rating: None,
             usage: None,
             at: SystemTime::now(),
