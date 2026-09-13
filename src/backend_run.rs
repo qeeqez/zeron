@@ -1,8 +1,6 @@
 use std::rc::Rc;
 use std::time::{Duration, SystemTime};
 
-use gpui_kit::component::WindowExt;
-use gpui_kit::component::notification::Notification;
 use gpui_kit::*;
 
 use crate::backend::AgentEvent;
@@ -254,24 +252,3 @@ fn pump_stream(stream: crate::backend::ReplyStream, tx: std::sync::mpsc::Sender<
     }
 }
 
-impl Workspace {
-    /// In-app toast plus — when the window is inactive — a system
-    /// notification and dock bounce. No-op unless `notify_on_done` is set.
-    pub(crate) fn notify_done(&mut self, chat_id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
-        let title = chat.title.clone();
-        if !self.notify_on_done {
-            return;
-        }
-        window.push_notification(Notification::success(format!("{title} — reply complete")), cx);
-        if !window.is_window_active() {
-            window.request_attention();
-            cx.show_system_notification(gpui_kit::SystemNotification {
-                tag: format!("reply-{chat_id}").into(),
-                title: "Rixl Code".into(),
-                body: format!("{title} — reply complete").into(),
-                actions: vec![],
-            });
-        }
-    }
-}

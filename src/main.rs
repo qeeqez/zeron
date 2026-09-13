@@ -15,6 +15,9 @@ mod export;
 mod files;
 mod lifecycle;
 mod model;
+mod notify;
+#[cfg(test)]
+mod notify_tests;
 mod palette;
 mod persist;
 mod root;
@@ -35,6 +38,10 @@ actions!([
 fn main() {
     gpui_kit::application().with_assets(gpui_kit::assets::Assets::new("")).run(|cx| {
         gpui_kit::init(cx);
+        // Names the app in system notifications on platforms that need an
+        // explicit identity (Linux/Windows); a no-op on macOS, where the
+        // bundle provides it.
+        cx.set_app_identity("com.rixl.rixlcode", "Rixl Code");
         cx.set_menus([
             gpui_kit::Menu::new("Rixl Code").items([
                 gpui_kit::MenuItem::action("About Rixl Code", gpui_kit::NoAction),
