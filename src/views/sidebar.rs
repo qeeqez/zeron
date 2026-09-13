@@ -94,6 +94,7 @@ impl Workspace {
             .child(
                 div()
                     .id("settings-btn")
+                    .test_support()
                     .cursor_pointer()
                     .child(IconName::Settings)
                     .on_click(cx.listener(|this, _, window, cx| {

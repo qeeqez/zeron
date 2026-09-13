@@ -43,6 +43,10 @@ pub struct Workspace {
     /// Agents-panel task input — Enter spawns a standalone backend turn.
     pub task_input: Entity<InputState>,
     pub chat_search_open: bool,
+    /// Codex-style settings overlay — built eagerly in `new` so its inputs
+    /// keep their state across opens.
+    pub settings_open: bool,
+    pub settings_panel: Entity<crate::views::settings::SettingsPanel>,
     pub search_match_ix: usize,
     /// One-shot bypass for the close prompt — `remove_window` re-fires
     /// `on_window_should_close`, so the confirmed path sets this to skip it.
@@ -123,6 +127,12 @@ impl Workspace {
         .detach();
 
         let settings = crate::persist::load_settings();
+        // Built eagerly — creating it inside open_settings would re-enter the
+        // workspace borrow (the click listener already holds it).
+        let ws = cx.entity();
+        let settings_panel = cx.new(|cx| {
+            crate::views::settings::SettingsPanel::new(ws.clone(), (settings.http_url.clone(), settings.http_key_env.clone()), window, cx)
+        });
         let mut this = Self {
             chats: Vec::new(),
             active: 0,
@@ -159,6 +169,8 @@ impl Workspace {
             chat_search_open: false,
             search_match_ix: 0,
             close_confirmed: std::cell::Cell::new(false),
+            settings_open: false,
+            settings_panel,
             notify_on_done: settings.notify_on_done,
             word_wrap: settings.word_wrap,
             backend: make_backend(&settings),
@@ -178,7 +190,6 @@ impl Workspace {
         }
         this.apply_theme(window, cx);
         // "system" follows the OS — re-resolve when the appearance flips.
-        let ws = cx.entity();
         window
             .observe_window_appearance(move |window, cx| {
                 ws.update(cx, |this, cx| this.apply_theme(window, cx));
@@ -251,12 +262,6 @@ impl Workspace {
             active_chat: self.active,
             theme: self.theme.clone(),
         });
-    }
-
-    /// Current access mode — the getter the backend send path will use if
-    /// `AgentBackend::send` ever takes it as a parameter.
-    pub fn access(&self) -> crate::backend::AccessMode {
-        self.access
     }
 
     /// Change the Agent-mode access level, publish it to the backend, and

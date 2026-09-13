@@ -63,12 +63,16 @@ impl Workspace {
         self.save();
     }
 
-    pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let ws = cx.entity();
-        window.open_sheet(cx, move |sheet, window, cx| {
-            let panel = cx.new(|cx| crate::views::settings::SettingsPanel::new(ws.clone(), window, cx));
-            sheet.title("Settings").child(panel)
-        });
+    /// Open the Codex-style settings screen — a full-window overlay with a
+    /// nav rail + content pane, owned by `SettingsPanel`.
+    pub fn open_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.settings_open = true;
+        cx.notify();
+    }
+
+    pub fn close_settings(&mut self, cx: &mut Context<Self>) {
+        self.settings_open = false;
+        cx.notify();
     }
 
     pub fn open_chat_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -95,6 +99,11 @@ impl Workspace {
         }
         if self.chat_search_open {
             self.open_chat_search(window, cx);
+            return;
+        }
+        if self.settings_open {
+            self.settings_open = false;
+            cx.notify();
             return;
         }
         if self.agents_panel_open {
@@ -143,7 +152,7 @@ impl Workspace {
     pub fn shortcuts_help(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         window.open_sheet(cx, |sheet, _window, _cx| {
             sheet.title("Keyboard Shortcuts").child(div().flex().flex_col().gap_1().p_4().text_xs().children(
-                crate::views::settings::SHORTCUTS.iter().map(|(key, desc)| {
+                crate::views::settings_sections::SHORTCUTS.iter().map(|(key, desc)| {
                     div()
                         .flex()
                         .items_center()

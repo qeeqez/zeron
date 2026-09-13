@@ -181,6 +181,15 @@ impl Render for Workspace {
                         .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
                 ),
             )
+            // Codex-style settings screen — a full-window overlay, not a
+            // sheet (a sheet can't host the nav rail + content pane).
+            .when(self.settings_open, |d| d.child(self.settings_panel.clone()))
+            // gpui-component's Root only stores sheet/dialog/notification
+            // state — the app must mount the layers itself or open_sheet /
+            // open_dialog / push_notification update state nothing renders.
+            .children(Root::render_notification_layer(window, cx))
+            .children(Root::render_sheet_layer(window, cx))
+            .children(Root::render_dialog_layer(window, cx))
     }
 }
 
