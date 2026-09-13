@@ -37,6 +37,7 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
             }),
             rating: None,
             usage: None,
+            attachments: vec![],
             at: SystemTime::now(),
         });
     }
@@ -135,6 +136,7 @@ impl Workspace {
                 }),
                 rating: None,
                 usage: None,
+            attachments: vec![],
                 at: SystemTime::now(),
             });
         }
@@ -143,6 +145,7 @@ impl Workspace {
             kind: MessageKind::Text("".into()),
             rating: None,
             usage: None,
+            attachments: vec![],
             at: SystemTime::now(),
         });
         if is_active {

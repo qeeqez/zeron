@@ -12,6 +12,7 @@ mod tests {
             kind,
             rating: None,
             usage: None,
+            attachments: vec![],
             at: std::time::SystemTime::now(),
         }
     }

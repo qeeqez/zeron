@@ -53,6 +53,9 @@ pub struct ChatMessage {
     /// Token usage reported by the backend for this reply.
     #[serde(default)]
     pub usage: Option<Usage>,
+    /// Files attached to this message — preserved for retry.
+    #[serde(default)]
+    pub attachments: Vec<SharedString>,
 }
 
 /// Token counts from a completed backend turn.

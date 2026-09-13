@@ -43,6 +43,7 @@ impl Workspace {
             kind: MessageKind::Text(display.into()),
             rating: None,
             usage: None,
+            attachments: chat.attachments.clone(),
             at: SystemTime::now(),
         });
         chat.running = true;
@@ -81,17 +82,23 @@ impl Workspace {
             s.reset(count, cx);
         });
         cx.notify();
-        self.save();
-        let prompt = self.chats[self.active]
+        let (prompt, attachments) = self.chats[self.active]
             .messages
             .iter()
             .rev()
             .find(|m| m.role == Role::User)
             .map(|m| match &m.kind {
-                MessageKind::Text(t) => t.to_string(),
-                _ => String::new(),
+                MessageKind::Text(t) => (t.to_string(), m.attachments.clone()),
+                _ => (String::new(), vec![]),
             })
             .unwrap_or_default();
+        // Re-attach the files — the original prompt included them.
+        let prompt = if attachments.is_empty() {
+            prompt
+        } else {
+            let files = attachments.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", ");
+            format!("{prompt}\n\n📎 {files}")
+        };
         self.start_reply(&prompt, cx);
     }
 
@@ -165,6 +172,7 @@ impl Workspace {
             kind: MessageKind::Text(text.into()),
             rating: None,
             usage: None,
+            attachments: vec![],
             at: SystemTime::now(),
         });
         if self.push_visible(cx) {

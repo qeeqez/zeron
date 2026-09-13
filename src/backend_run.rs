@@ -71,6 +71,7 @@ impl Workspace {
                     kind: MessageKind::Text("".into()),
                     rating: None,
                     usage: None,
+                    attachments: vec![],
                     at: SystemTime::now(),
                 });
                 if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
@@ -91,6 +92,7 @@ impl Workspace {
                     }),
                     rating: None,
                     usage: None,
+                    attachments: vec![],
                     at: SystemTime::now(),
                 });
                 if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
@@ -128,6 +130,7 @@ impl Workspace {
                     kind: MessageKind::Diff(crate::model::DiffCard { path, added, removed, hunks, expanded: false }),
                     rating: None,
                     usage: None,
+                    attachments: vec![],
                     at: SystemTime::now(),
                 });
                 if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
@@ -153,6 +156,7 @@ impl Workspace {
                     kind: MessageKind::Text(format!("**Error:** {msg}").into()),
                     rating: None,
                     usage: None,
+                    attachments: vec![],
                     at: SystemTime::now(),
                 });
                 if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
@@ -184,6 +188,7 @@ impl Workspace {
                 kind: MessageKind::Text("".into()),
                 rating: None,
                 usage: None,
+                attachments: vec![],
                 at: SystemTime::now(),
             });
             if is_active && (query.is_empty() || crate::chat_search::msg_matches(chat.messages.last().unwrap(), &query)) {
