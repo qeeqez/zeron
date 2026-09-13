@@ -21,6 +21,9 @@ pub struct Workspace {
     pub changes: Vec<crate::git::FileChange>,
     pub sidebar_width: f32,
     pub resizing_sidebar: bool,
+    /// Settings-screen nav rail width + its in-progress drag flag.
+    pub settings_nav_width: f32,
+    pub resizing_settings_nav: bool,
     pub composer: Entity<TextareaState>,
     pub search: Entity<InputState>,
     pub scroller: Entity<MessageScrollerState>,
@@ -142,6 +145,8 @@ impl Workspace {
             next_agent_id: 0,
             next_chat_id: 0,
             resizing_sidebar: false,
+            settings_nav_width: settings.settings_nav_width.clamp(160.0, 400.0),
+            resizing_settings_nav: false,
             agents_panel_open: false,
             changes_panel_open: false,
             changes: Vec::new(),
@@ -173,7 +178,7 @@ impl Workspace {
             settings_panel,
             notify_on_done: settings.notify_on_done,
             word_wrap: settings.word_wrap,
-            backend: make_backend(&settings),
+            backend: crate::backend::make_backend(&settings),
             font_size: settings.font_size.clamp(10, 24),
             theme: settings.theme.clone(),
             project_files: Vec::new(),
@@ -259,6 +264,7 @@ impl Workspace {
             window_bounds: prev.window_bounds,
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
+            settings_nav_width: self.settings_nav_width,
             active_chat: self.active,
             theme: self.theme.clone(),
         });
@@ -287,17 +293,5 @@ impl Workspace {
     pub fn refresh_changes(&mut self, cx: &mut Context<Self>) {
         self.changes = crate::git::collect_in_cwd();
         cx.notify();
-    }
-}
-
-/// Build the selected backend. `http` falls back to codex-cli when no
-/// endpoint is configured — an empty URL would fail every send anyway.
-fn make_backend(s: &crate::persist::Settings) -> std::sync::Arc<dyn crate::backend::AgentBackend> {
-    match s.backend_name() {
-        "sim" => std::sync::Arc::new(crate::backend::SimBackend),
-        "http" if !s.http_url.is_empty() => {
-            std::sync::Arc::new(crate::backend::HttpBackend::new(s.http_url.clone(), s.http_key_env.clone()))
-        },
-        _ => std::sync::Arc::new(crate::backend::CodexCliBackend::new()),
     }
 }

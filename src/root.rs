@@ -137,12 +137,17 @@ impl Render for Workspace {
                     this.sidebar_width = f32::from(ev.position.x).clamp(180.0, 480.0);
                     cx.notify();
                 }
+                if this.resizing_settings_nav && ev.dragging() {
+                    this.settings_nav_width = f32::from(ev.position.x).clamp(160.0, 400.0);
+                    cx.notify();
+                }
             }))
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| {
-                    if this.resizing_sidebar {
+                    if this.resizing_sidebar || this.resizing_settings_nav {
                         this.resizing_sidebar = false;
+                        this.resizing_settings_nav = false;
                         this.save_settings();
                         cx.notify();
                     }
@@ -153,8 +158,9 @@ impl Render for Workspace {
             .on_mouse_up_out(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| {
-                    if this.resizing_sidebar {
+                    if this.resizing_sidebar || this.resizing_settings_nav {
                         this.resizing_sidebar = false;
+                        this.resizing_settings_nav = false;
                         this.save_settings();
                         cx.notify();
                     }

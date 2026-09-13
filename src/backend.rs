@@ -177,3 +177,13 @@ pub(crate) fn kill_slot(slot: &parking_lot::Mutex<Option<std::process::Child>>) 
         });
     }
 }
+
+/// Build the selected backend. `http` falls back to codex-cli when no
+/// endpoint is configured — an empty URL would fail every send anyway.
+pub fn make_backend(s: &crate::persist::Settings) -> std::sync::Arc<dyn AgentBackend> {
+    match s.backend_name() {
+        "sim" => std::sync::Arc::new(SimBackend),
+        "http" if !s.http_url.is_empty() => std::sync::Arc::new(HttpBackend::new(s.http_url.clone(), s.http_key_env.clone())),
+        _ => std::sync::Arc::new(CodexCliBackend::new()),
+    }
+}

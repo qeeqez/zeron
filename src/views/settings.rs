@@ -174,11 +174,14 @@ impl Render for SettingsPanel {
 impl SettingsPanel {
     fn render_nav(&self, query: &str, panel: &Entity<SettingsPanel>, cx: &App) -> impl IntoElement {
         let theme = cx.theme();
+        let width = self.ws.read(cx).settings_nav_width;
+        let ws = self.ws.clone();
         let rail = div()
             .id("settings-nav")
-            .w(px(220.))
+            .w(px(width))
             .h_full()
             .flex_shrink_0()
+            .relative()
             .flex()
             .flex_col()
             .gap_1()
@@ -187,7 +190,29 @@ impl SettingsPanel {
             .border_r_1()
             .border_color(theme.sidebar_border)
             .child(crate::views::settings_nav::back_row(&self.ws, cx))
-            .child(Input::new(&self.search).prefix(IconName::Search).appearance(true));
+            .child(Input::new(&self.search).prefix(IconName::Search).appearance(true))
+            // Drag handle on the rail's right edge — same pattern as the main
+            // sidebar's `sidebar-resize`.
+            .child(
+                div()
+                    .id("settings-nav-resize")
+                    .test_support()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .w(px(5.))
+                    .cursor_col_resize()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        move |_, _, cx| {
+                            ws.update(cx, |this, cx| {
+                                this.resizing_settings_nav = true;
+                                cx.notify();
+                            });
+                        },
+                    ),
+            );
         if query.is_empty() {
             rail.children(Section::GROUPS.iter().map(|(name, sections)| {
                 div()

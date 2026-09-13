@@ -139,6 +139,8 @@ pub struct Settings {
     pub window_bounds: Option<[f32; 4]>,
     pub sidebar_width: f32,
     pub sidebar_collapsed: bool,
+    /// Settings-screen nav rail width in pixels.
+    pub settings_nav_width: f32,
     pub active_chat: usize,
     /// Appearance: "system" | "light" | "dark".
     pub theme: String,
@@ -172,6 +174,7 @@ impl Default for Settings {
             window_bounds: None,
             sidebar_width: 255.0,
             sidebar_collapsed: false,
+            settings_nav_width: 220.0,
             active_chat: 0,
             theme: "system".into(),
         }
