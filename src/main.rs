@@ -15,6 +15,8 @@ mod chat_search;
 mod chat_search_tests;
 #[cfg(test)]
 mod composer_tests;
+#[cfg(test)]
+mod continuity_tests;
 mod export;
 mod files;
 mod git;
@@ -27,6 +29,7 @@ mod notify;
 mod notify_tests;
 mod palette;
 mod persist;
+mod persist_tests;
 mod root;
 mod send;
 mod simulate;
