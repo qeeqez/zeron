@@ -164,6 +164,14 @@ pub(crate) fn msg_matches(m: &crate::model::ChatMessage, query: &str) -> bool {
     text.to_lowercase().contains(query)
 }
 
+impl Workspace {
+    /// Current vec index of the chat with `id` — positions shift on delete,
+    /// so UI closures must capture the id and resolve at action time.
+    pub(crate) fn chat_index(&self, id: u64) -> Option<usize> {
+        self.chats.iter().position(|c| c.id == id)
+    }
+}
+
 /// Should a newly pushed last message grow the scroller? False only when a
 /// non-empty search query is active and the message doesn't match.
 pub(crate) fn grows_scroller(is_active: bool, msg: &crate::model::ChatMessage, query: &str) -> bool {

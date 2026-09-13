@@ -8,6 +8,7 @@ mod message;
 pub mod settings;
 
 mod sidebar;
+mod sidebar_row;
 
 pub use composer_helpers::{apply_pick, attachment_chips, mention_item, slash_item};
 pub use empty::render_empty_state;
