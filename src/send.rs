@@ -46,9 +46,9 @@ impl Workspace {
         self.composer.update(cx, |state, cx| {
             state.set_value("", window, cx);
         });
-        self.scroller.update(cx, |s, cx| {
-            s.append(1, cx);
-        });
+        if self.push_visible(cx) {
+            self.scroller.update(cx, |s, cx| s.append(1, cx));
+        }
         cx.notify();
         self.save();
         self.start_reply(&prompt, cx);
@@ -149,7 +149,9 @@ impl Workspace {
             usage: None,
             at: SystemTime::now(),
         });
-        self.scroller.update(cx, |s, cx| s.append(1, cx));
+        if self.push_visible(cx) {
+            self.scroller.update(cx, |s, cx| s.append(1, cx));
+        }
         cx.notify();
         self.save();
     }

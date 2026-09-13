@@ -171,6 +171,43 @@ impl Workspace {
             })
             .count()
     }
+
+    /// Whether a just-appended last message should grow the scroller count —
+    /// false when chat search is open and the message doesn't match.
+    pub(crate) fn push_visible(&self, cx: &App) -> bool {
+        let query = self.chat_search.read(cx).value().to_string().to_lowercase();
+        if !self.chat_search_open || query.is_empty() {
+            return true;
+        }
+        let Some(m) = self.chats[self.active].messages.last() else { return false };
+        msg_matches(m, &query)
+    }
+}
+
+/// The text a chat-search query matches against for one message.
+pub(crate) fn msg_matches(m: &crate::model::ChatMessage, query: &str) -> bool {
+    let text = match &m.kind {
+        MessageKind::Text(t) => t.as_str(),
+        MessageKind::Tool(t) => t.name.as_str(),
+        MessageKind::Diff(d) => d.path.as_str(),
+    };
+    text.to_lowercase().contains(query)
+}
+
+/// Should a newly pushed last message grow the scroller? False only when a
+/// non-empty search query is active and the message doesn't match.
+pub(crate) fn grows_scroller(is_active: bool, msg: &crate::model::ChatMessage, query: &str) -> bool {
+    is_active && (query.is_empty() || msg_matches(msg, query))
+}
+
+/// Scroller position of the last message: its vec index, or the match count
+/// minus one when a search query filters the list.
+pub(crate) fn last_scroller_pos(messages: &[crate::model::ChatMessage], query: &str) -> usize {
+    if query.is_empty() {
+        messages.len().saturating_sub(1)
+    } else {
+        messages.iter().filter(|m| msg_matches(m, query)).count().saturating_sub(1)
+    }
 }
 impl Workspace {
     /// Rough token estimate: chars/4 across the active chat's messages.

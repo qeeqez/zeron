@@ -47,30 +47,17 @@ impl Workspace {
     /// Apply one backend event to the chat identified by `chat_id`.
     /// Chat may have been deleted — events for it are dropped.
     fn apply_event(&mut self, chat_id: u64, ev: AgentEvent, cx: &mut Context<Self>) {
+        // Scroller updates only apply to the visible (active) chat, and only
+        // when the new message matches an open chat-search query.
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
+        let query = if self.chat_search_open {
+            self.chat_search.read(cx).value().to_string().to_lowercase()
+        } else {
+            String::new()
+        };
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         match ev {
-            AgentEvent::TextDelta(text) => {
-                // Must be an assistant Text message — the last message right
-                // after send is the user's own text.
-                let needs_new =
-                    !matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant && matches!(m.kind, MessageKind::Text(_)));
-                if needs_new {
-                    chat.messages.push(ChatMessage {
-                        role: Role::Assistant,
-
-                        kind: MessageKind::Text("".into()),
-                        rating: None,
-                        usage: None,
-                        at: SystemTime::now(),
-                    });
-                    self.scroller.update(cx, |s, cx| s.append(1, cx));
-                }
-                let Some(last) = chat.messages.last_mut() else { return };
-                let MessageKind::Text(t) = &mut last.kind else { return };
-                *t = format!("{t}{text}").into();
-                let last_ix = chat.messages.len() - 1;
-                self.scroller.update(cx, |s, cx| s.remeasure_items(last_ix..last_ix + 1, cx));
-            },
+            AgentEvent::TextDelta(text) => self.apply_text_delta(chat_id, &text, cx),
             AgentEvent::ToolCallStart { ix, name, detail } => {
                 chat.messages.push(ChatMessage {
                     role: Role::Assistant,
@@ -86,7 +73,9 @@ impl Workspace {
                     at: SystemTime::now(),
                 });
                 let _ = ix;
-                self.scroller.update(cx, |s, cx| s.append(1, cx));
+                if crate::chat_ops::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
+                    self.scroller.update(cx, |s, cx| s.append(1, cx));
+                }
             },
             AgentEvent::ToolCallDelta { ix, output } => {
                 let _ = ix;
@@ -113,7 +102,9 @@ impl Workspace {
                     usage: None,
                     at: SystemTime::now(),
                 });
-                self.scroller.update(cx, |s, cx| s.append(1, cx));
+                if crate::chat_ops::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
+                    self.scroller.update(cx, |s, cx| s.append(1, cx));
+                }
             },
             AgentEvent::Usage { input, output } => {
                 // Prefer the text reply; fall back to any assistant message.
@@ -136,12 +127,49 @@ impl Workspace {
                     usage: None,
                     at: SystemTime::now(),
                 });
-                self.scroller.update(cx, |s, cx| s.append(1, cx));
+                if crate::chat_ops::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
+                    self.scroller.update(cx, |s, cx| s.append(1, cx));
+                }
             },
         }
         cx.notify();
     }
+}
 
+impl Workspace {
+    /// Append a text delta to the chat's last assistant Text message,
+    /// creating the bubble on the first delta.
+    fn apply_text_delta(&mut self, chat_id: u64, text: &str, cx: &mut Context<Self>) {
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
+        let query = if self.chat_search_open {
+            self.chat_search.read(cx).value().to_string().to_lowercase()
+        } else {
+            String::new()
+        };
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
+        // Must be an assistant Text message — the last message right after
+        // send is the user's own text.
+        let needs_new = !matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant && matches!(m.kind, MessageKind::Text(_)));
+        if needs_new {
+            chat.messages.push(ChatMessage {
+                role: Role::Assistant,
+                kind: MessageKind::Text("".into()),
+                rating: None,
+                usage: None,
+                at: SystemTime::now(),
+            });
+            if is_active && (query.is_empty() || crate::chat_ops::msg_matches(chat.messages.last().unwrap(), &query)) {
+                self.scroller.update(cx, |s, cx| s.append(1, cx));
+            }
+        }
+        let Some(last) = chat.messages.last_mut() else { return };
+        let MessageKind::Text(t) = &mut last.kind else { return };
+        *t = format!("{t}{text}").into();
+        if is_active {
+            let pos = crate::chat_ops::last_scroller_pos(&chat.messages, &query);
+            self.scroller.update(cx, |s, cx| s.remeasure_items(pos..pos + 1, cx));
+        }
+    }
     /// Mark the reply finished. `failed_flag` survives so the retry banner
     /// stays visible until the next send/retry clears it.
     pub(crate) fn finish_reply(&mut self, chat_id: u64, cx: &mut Context<Self>) {

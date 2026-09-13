@@ -38,9 +38,9 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
             at: SystemTime::now(),
         });
     }
-    this.scroller.update(cx, |s, cx| {
-        s.append(1, cx);
-    });
+    if this.push_visible(cx) {
+        this.scroller.update(cx, |s, cx| s.append(1, cx));
+    }
     cx.notify();
 
     let task = cx.spawn(async move |this, cx| {
@@ -108,6 +108,7 @@ impl Workspace {
 
     fn begin_stream(&mut self, chat_id: u64, cx: &mut Context<Self>) {
         let failed = Self::reply_failed();
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.failed_flag = failed;
         if let Some(last) = chat.messages.last_mut()
@@ -138,13 +139,22 @@ impl Workspace {
             usage: None,
             at: SystemTime::now(),
         });
-        self.scroller.update(cx, |s, cx| {
-            s.append(if failed { 1 } else { 2 }, cx);
-        });
+        if is_active {
+            // Under an open search only matching messages grow the count —
+            // the empty text bubble never matches a non-empty query.
+            let query = self.chat_search.read(cx).value().to_string().to_lowercase();
+            let n = if self.chat_search_open && !query.is_empty() {
+                usize::from(!failed && crate::chat_ops::msg_matches(&chat.messages[chat.messages.len() - 2], &query))
+            } else {
+                usize::from(!failed) + 1
+            };
+            self.scroller.update(cx, |s, cx| s.append(n, cx));
+        }
         cx.notify();
     }
 
     fn stream_chunk(&mut self, chat_id: u64, cx: &mut Context<Self>) {
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         let Some(last) = chat.messages.last_mut() else { return };
         let MessageKind::Text(text) = &mut last.kind else { return };
@@ -157,10 +167,18 @@ impl Workspace {
             full.char_indices().map(|(i, _)| i).take_while(|&i| i <= next_len).last().unwrap_or(0)
         };
         *text = full[..next_len].into();
-        let last_ix = chat.messages.len() - 1;
-        self.scroller.update(cx, |s, cx| {
-            s.remeasure_items(last_ix..last_ix + 1, cx);
-        });
+        if is_active {
+            let query = self.chat_search.read(cx).value().to_string().to_lowercase();
+            let searching = self.chat_search_open && !query.is_empty();
+            // Filtered position = number of matching messages - 1; the text
+            // bubble only counts once it matches the query.
+            let pos = if searching {
+                chat.messages.iter().filter(|m| crate::chat_ops::msg_matches(m, &query)).count().saturating_sub(1)
+            } else {
+                chat.messages.len() - 1
+            };
+            self.scroller.update(cx, |s, cx| s.remeasure_items(pos..pos + 1, cx));
+        }
         cx.notify();
     }
 
@@ -173,9 +191,9 @@ impl Workspace {
         if !is_active {
             chat.unread = true;
         }
-        self.scroller.update(cx, |s, cx| {
-            s.remeasure(cx);
-        });
+        if is_active {
+            self.scroller.update(cx, |s, cx| s.remeasure(cx));
+        }
         cx.notify();
         self.save();
     }
