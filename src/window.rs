@@ -29,10 +29,11 @@ pub(crate) fn titlebar_drag(el: Stateful<Div>) -> Stateful<Div> {
         .on_double_click(|_, window, _| window.titlebar_double_click())
 }
 
-/// Height of the per-pane top drag strip. The sidebar's strip and the
-/// content's titlebar both use it so they line up as one continuous
-/// titlebar row under the overlaid traffic lights + toggle.
-pub(crate) const TOP_BAR_H: f32 = 38.;
+/// Height of the per-pane top drag strip. Matches the traffic-light
+/// container (`button_height + 2·traffic_light_position.y` ≈ 14 + 2·9) so
+/// strip content centers on the same line as the lights. The sidebar's strip
+/// and the content's titlebar both use it → one continuous titlebar row.
+pub(crate) const TOP_BAR_H: f32 = 32.;
 
 /// The sidebar toggle for the unified top bar. It sits inline in the
 /// `titlebar_drag` strip in `Workspace::render`, right of the traffic

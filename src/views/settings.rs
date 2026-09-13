@@ -1,3 +1,4 @@
+use crate::views::settings_nav::Section;
 use crate::workspace::Workspace;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
@@ -86,60 +87,6 @@ enum Field {
     KeyEnv,
 }
 
-/// A nav-rail section. `name` feeds element ids; `label` is what renders.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Section {
-    General,
-    Appearance,
-    Voice,
-    Profile,
-    Shortcuts,
-    McpServers,
-}
-
-impl Section {
-    const ALL: [Section; 6] = [Self::General, Self::Appearance, Self::Voice, Self::Profile, Self::Shortcuts, Self::McpServers];
-    /// (group header, sections) pairs for the rail — matches the Codex
-    /// settings sidebar grouping.
-    const GROUPS: [(&'static str, &'static [Section]); 3] = [
-        ("Personal", &[Self::General, Self::Appearance, Self::Voice, Self::Profile]),
-        ("Coding", &[Self::Shortcuts]),
-        ("Integrations", &[Self::McpServers]),
-    ];
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::General => "general",
-            Self::Appearance => "appearance",
-            Self::Voice => "voice",
-            Self::Profile => "profile",
-            Self::Shortcuts => "shortcuts",
-            Self::McpServers => "mcp",
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::General => "General",
-            Self::Appearance => "Appearance",
-            Self::Voice => "Voice",
-            Self::Profile => "Profile",
-            Self::Shortcuts => "Shortcuts",
-            Self::McpServers => "MCP Servers",
-        }
-    }
-
-    pub(crate) fn icon(self) -> IconName {
-        match self {
-            Self::General => IconName::SlidersHorizontal,
-            Self::Appearance => IconName::Palette,
-            Self::Voice => IconName::Mic,
-            Self::Profile => IconName::CircleUser,
-            Self::Shortcuts => IconName::Keyboard,
-            Self::McpServers => IconName::PlugZap,
-        }
-    }
-}
-
 impl Render for SettingsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let s = self.ws.read(cx);
@@ -166,8 +113,36 @@ impl Render for SettingsPanel {
             .bg(theme.background)
             .text_color(theme.foreground)
             .flex()
-            .child(self.render_nav(&query, &panel, cx))
-            .child(self.render_content(&view, cx))
+            .flex_col()
+            // Top strip on the same line as the traffic lights + the overlaid
+            // sidebar toggle (which stays visible over settings). Padded left
+            // past them; shows breadcrumbs for the current section.
+            .child(
+                crate::window::titlebar_drag(
+                    div()
+                        .id("settings-topbar")
+                        .h(px(crate::window::TOP_BAR_H))
+                        .w_full()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .pl(px(112.))
+                        .pr_4()
+                        .text_sm()
+                        .child(div().text_color(theme.muted_foreground).child("Settings"))
+                        .child(div().text_color(theme.muted_foreground).child(IconName::ChevronRight))
+                        .child(self.section.label()),
+                )
+                .test_support(),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h_0()
+                    .child(self.render_nav(&query, &panel, cx))
+                    .child(self.render_content(&view, cx)),
+            )
     }
 }
 

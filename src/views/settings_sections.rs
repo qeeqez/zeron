@@ -10,7 +10,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::backend::AccessMode;
-use crate::views::settings::Section;
+use crate::views::settings_nav::Section;
 use crate::workspace::Workspace;
 
 /// Snapshot of workspace state + owned inputs the section bodies render from.

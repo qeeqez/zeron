@@ -180,20 +180,19 @@ impl Render for Workspace {
                     .when(self.agents_panel_open, |d| d.child(self.render_agents_panel(window, cx)))
                     .when(self.changes_panel_open, |d| d.child(self.render_changes_panel(window, cx))),
             )
-            // The toggle is a fixed overlay right of the traffic lights — it
-            // sits over the sidebar's top strip when open and over the
-            // content's titlebar when collapsed, never moving.
-            .child(
-                div()
-                    .absolute()
-                    .left(px(72.))
-                    .top(px(7.))
-                    .child(crate::window::sidebar_toggle(self.sidebar_collapsed, cx)),
-            )
-
             // Codex-style settings screen — a full-window overlay, not a
             // sheet (a sheet can't host the nav rail + content pane).
             .when(self.settings_open, |d| d.child(self.settings_panel.clone()))
+            // The toggle is a fixed overlay right of the traffic lights,
+            // vertically centered on the top-strip line. Rendered after the
+            // settings overlay so it stays visible there too — over the
+            // sidebar's strip when open, the content's titlebar when
+            // collapsed, and the settings top bar when settings is open.
+            .child(
+                div().absolute().left(px(72.)).top_0().h(px(crate::window::TOP_BAR_H)).flex().items_center().child(
+                    crate::window::sidebar_toggle(self.sidebar_collapsed, cx),
+                ),
+            )
             // gpui-component's Root only stores sheet/dialog/notification
             // state — the app must mount the layers itself or open_sheet /
             // open_dialog / push_notification update state nothing renders.
