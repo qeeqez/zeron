@@ -87,7 +87,7 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Esc: stop a running reply, close chat search, close agents panel.
+    /// Esc: stop a running reply, close chat search, close the side panels.
     pub fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.chats[self.active].running {
             self.stop_reply(cx);
@@ -99,6 +99,10 @@ impl Workspace {
         }
         if self.agents_panel_open {
             self.agents_panel_open = false;
+            cx.notify();
+        }
+        if self.changes_panel_open {
+            self.changes_panel_open = false;
             cx.notify();
         }
     }

@@ -1,5 +1,6 @@
 mod agents_panel;
 mod cards;
+mod changes;
 mod chat_view;
 mod composer;
 mod composer_helpers;

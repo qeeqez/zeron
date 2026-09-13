@@ -6,6 +6,8 @@ mod backend_parse;
 #[cfg(test)]
 mod backend_parse_tests;
 mod backend_run;
+#[cfg(test)]
+mod changes_ui_tests;
 mod chat_delete;
 mod chat_msg;
 mod chat_ops;
@@ -15,6 +17,9 @@ mod chat_search_tests;
 mod composer_tests;
 mod export;
 mod files;
+mod git;
+#[cfg(test)]
+mod git_tests;
 mod lifecycle;
 mod model;
 mod notify;
@@ -34,9 +39,9 @@ mod workspace;
 use gpui_kit::*;
 
 actions!([
-    NewChat, DeleteChat, ToggleSidebar, ToggleAgents, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7,
-    Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp,
-    RecallLast, RecallPrev, RecallNext, NewWindow,
+    NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5,
+    Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey,
+    ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow,
 ]);
 
 fn main() {
@@ -75,6 +80,7 @@ fn main() {
             gpui_kit::Menu::new("View").items([
                 gpui_kit::MenuItem::action("Toggle Sidebar", ToggleSidebar),
                 gpui_kit::MenuItem::action("Toggle Agents", ToggleAgents),
+                gpui_kit::MenuItem::action("Toggle Changes", ToggleChanges),
                 gpui_kit::MenuItem::separator(),
                 gpui_kit::MenuItem::action("Command Palette", OpenPalette),
             ]),
@@ -90,6 +96,7 @@ fn main() {
             KeyBinding::new("cmd-shift-backspace", DeleteChat, Some("workspace")),
             KeyBinding::new("cmd-shift-down", RecallNext, Some("workspace")),
             KeyBinding::new("cmd-j", ToggleAgents, Some("workspace")),
+            KeyBinding::new("cmd-shift-j", ToggleChanges, Some("workspace")),
             KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
             KeyBinding::new("cmd-k", OpenPalette, Some("workspace")),
             KeyBinding::new("cmd-w", CloseWindow, Some("workspace")),

@@ -15,6 +15,10 @@ pub struct Workspace {
     /// Monotonic id source for chats — survives deletions.
     pub next_chat_id: u64,
     pub agents_panel_open: bool,
+    pub changes_panel_open: bool,
+    /// Working-tree git changes shown in the Changes panel — refreshed on
+    /// open and via the panel's refresh button.
+    pub changes: Vec<crate::git::FileChange>,
     pub sidebar_width: f32,
     pub resizing_sidebar: bool,
     pub composer: Entity<TextareaState>,
@@ -129,6 +133,8 @@ impl Workspace {
             next_chat_id: 0,
             resizing_sidebar: false,
             agents_panel_open: false,
+            changes_panel_open: false,
+            changes: Vec::new(),
             composer,
             search,
             scroller,
@@ -259,6 +265,22 @@ impl Workspace {
         self.access = access;
         crate::backend::set_access_mode(access);
         self.save_settings();
+        cx.notify();
+    }
+
+    /// Toggle the Changes panel; opening refreshes the change list so the
+    /// first render never shows stale rows.
+    pub fn toggle_changes_panel(&mut self, cx: &mut Context<Self>) {
+        self.changes_panel_open = !self.changes_panel_open;
+        if self.changes_panel_open {
+            self.changes = crate::git::collect_in_cwd();
+        }
+        cx.notify();
+    }
+
+    /// Re-run git collection for the Changes panel.
+    pub fn refresh_changes(&mut self, cx: &mut Context<Self>) {
+        self.changes = crate::git::collect_in_cwd();
         cx.notify();
     }
 }

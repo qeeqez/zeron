@@ -4,7 +4,7 @@ use crate::workspace::Workspace;
 use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EscapeKey,
     NewChat, NewWindow, OpenPalette, OpenSettings, QuitApp, RecallLast, RecallNext, RecallPrev, RevealChats, SearchChat, ShortcutsHelp,
-    ThemeDark, ThemeLight, ToggleAgents, ToggleSidebar,
+    ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleSidebar,
 };
 use gpui_kit::component::Root;
 use gpui_kit::component::sidebar::SidebarToggleButton;
@@ -44,6 +44,12 @@ impl Render for Workspace {
             })
             .on_action(move |_: &ToggleAgents, _, cx| {
                 ws_agents.update(cx, |this, cx| this.toggle_agents_panel(cx));
+            })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &ToggleChanges, _, cx| {
+                    ws.update(cx, |this, cx| this.toggle_changes_panel(cx));
+                }
             })
             .on_action(move |_: &OpenPalette, window, cx| {
                 ws_palette.update(cx, |this, cx| this.open_palette(window, cx));
@@ -165,7 +171,8 @@ impl Render for Workspace {
                     .min_h_0()
                     .when(!self.sidebar_collapsed, |d| d.child(self.render_sidebar(window, cx)))
                     .child(self.render_chat(window, cx))
-                    .when(self.agents_panel_open, |d| d.child(self.render_agents_panel(window, cx))),
+                    .when(self.agents_panel_open, |d| d.child(self.render_agents_panel(window, cx)))
+                    .when(self.changes_panel_open, |d| d.child(self.render_changes_panel(window, cx))),
             )
             .child(
                 div().absolute().left(px(80.)).top(px(6.)).child(
