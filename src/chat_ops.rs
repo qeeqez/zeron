@@ -15,6 +15,7 @@ impl Workspace {
         self.active = self.chats.len() - 1;
         self.recall_ix = None;
         self.recall_saved = None;
+        self.search_match_ix = 0;
         self.scroller.update(cx, |s, cx| {
             s.reset(0, cx);
         });
