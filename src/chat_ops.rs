@@ -5,8 +5,10 @@ use crate::workspace::Workspace;
 impl Workspace {
     pub fn new_chat(&mut self, cx: &mut Context<Self>) {
         // Stash the current draft before switching — the composer text
-        // belongs to the outgoing chat.
-        self.chats[self.active].draft = self.composer.read(cx).value().to_string();
+        // belongs to the outgoing chat. `get_mut`: first launch has no chats.
+        if let Some(chat) = self.chats.get_mut(self.active) {
+            chat.draft = self.composer.read(cx).value().to_string();
+        }
         let id = self.next_chat_id;
         self.next_chat_id += 1;
         self.chats.push(Chat::new(id, "New chat"));

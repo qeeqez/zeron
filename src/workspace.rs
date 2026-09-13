@@ -245,6 +245,10 @@ impl Workspace {
     }
 
     fn delete_chat_now(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        // Re-check: the prompt is async — chats may have shrunk meanwhile.
+        if self.chats.len() <= 1 || index >= self.chats.len() {
+            return;
+        }
         let was_active = index == self.active;
         self.chats.remove(index);
         if self.active >= self.chats.len() {
