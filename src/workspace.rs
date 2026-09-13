@@ -32,6 +32,9 @@ pub struct Workspace {
     pub chat_search: Entity<InputState>,
     pub chat_search_open: bool,
     pub search_match_ix: usize,
+    /// One-shot bypass for the close prompt — `remove_window` re-fires
+    /// `on_window_should_close`, so the confirmed path sets this to skip it.
+    pub close_confirmed: std::cell::Cell<bool>,
     pub notify_on_done: bool,
     pub word_wrap: bool,
     pub font_size: u8,
@@ -114,6 +117,7 @@ impl Workspace {
             chat_search,
             chat_search_open: false,
             search_match_ix: 0,
+            close_confirmed: std::cell::Cell::new(false),
             notify_on_done: settings.notify_on_done,
             word_wrap: settings.word_wrap,
             backend: if settings.use_codex_cli {
