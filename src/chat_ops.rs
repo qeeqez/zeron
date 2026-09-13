@@ -77,6 +77,7 @@ impl Workspace {
         }
         chat.running = false;
         chat.started_at = None;
+        self.search_match_ix = 0;
         cx.notify();
         self.save();
     }
