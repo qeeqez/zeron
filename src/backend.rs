@@ -88,26 +88,36 @@ impl AgentBackend for CodexCliBackend {
         "codex-cli"
     }
 
-    fn send(&self, prompt: &str, model: &str, _mode: &str) -> ReplyStream {
+    fn send(&self, prompt: &str, model: &str, mode: &str) -> ReplyStream {
         let (tx, rx) = std::sync::mpsc::channel();
         // Each turn owns its child slot — concurrent chats can't clobber it.
-        let slot = std::sync::Arc::new(parking_lot::Mutex::new(None));
-        let (prompt, model) = (prompt.to_string(), model.to_string());
-        let thread_slot = slot.clone();
-        std::thread::spawn(move || run_codex(&prompt, &model, &thread_slot, &tx));
-        ReplyStream { events: rx, child: Some(slot) }
+        let turn = std::sync::Arc::new(CodexTurn {
+            prompt: prompt.to_string(),
+            model: model.to_string(),
+            mode: mode.to_string(),
+            slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+        });
+        let thread_turn = turn.clone();
+        std::thread::spawn(move || run_codex(&thread_turn, &tx));
+        ReplyStream { events: rx, child: Some(turn.slot.clone()) }
     }
 }
-fn run_codex(
-    prompt: &str, model: &str, slot: &std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
-    tx: &std::sync::mpsc::Sender<AgentEvent>,
-) {
+/// Everything one codex turn needs — bundled so the spawn helpers stay
+/// under the argument-count lint.
+struct CodexTurn {
+    prompt: String,
+    model: String,
+    mode: String,
+    slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
+}
+
+fn run_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) {
     let mut emitted = false;
     for attempt in 0..3u64 {
         if attempt > 0 {
             std::thread::sleep(std::time::Duration::from_millis(400 * attempt));
         }
-        let (outcome, got_events) = spawn_codex(prompt, model, slot, tx);
+        let (outcome, got_events) = spawn_codex(turn, tx);
         emitted |= got_events;
         match outcome {
             CodexOutcome::Done | CodexOutcome::Cancelled | CodexOutcome::Dead => return,
@@ -130,16 +140,17 @@ enum CodexOutcome {
 
 /// One `codex exec` attempt: spawn, read JSONL until EOF, reap, classify.
 /// Returns the outcome plus whether any event was emitted.
-fn spawn_codex(
-    prompt: &str, model: &str, slot: &std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
-    tx: &std::sync::mpsc::Sender<AgentEvent>,
-) -> (CodexOutcome, bool) {
+fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (CodexOutcome, bool) {
     let mut cmd = std::process::Command::new("codex");
     let mut args = vec!["exec", "--json", "--skip-git-repo-check"];
-    if model != "default" {
-        args.extend(["-m", model]);
+    if turn.model != "default" {
+        args.extend(["-m", turn.model.as_str()]);
     }
-    args.push(prompt);
+    // Plan/Ask are read-only turns — the agent must not write files.
+    if matches!(turn.mode.as_str(), "Plan" | "Ask") {
+        args.extend(["-s", "read-only"]);
+    }
+    args.push(turn.prompt.as_str());
     cmd.args(&args)
         .current_dir(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")))
         .stdout(std::process::Stdio::piped())
@@ -149,7 +160,7 @@ fn spawn_codex(
         Err(e) => return (CodexOutcome::Failed(format!("codex spawn: {e}")), false),
     };
     let stdout = child.stdout.take().expect("piped");
-    *slot.lock() = Some(child);
+    *turn.slot.lock() = Some(child);
     use std::io::BufRead;
     let reader = std::io::BufReader::new(stdout);
     let (mut done, mut emitted) = (false, false);
@@ -158,7 +169,7 @@ fn spawn_codex(
             done |= matches!(e, AgentEvent::Done);
             emitted = true;
             if tx.send(e).is_err() {
-                kill_slot(slot);
+                kill_slot(&turn.slot);
                 return (CodexOutcome::Dead, emitted);
             }
         }
@@ -167,7 +178,7 @@ fn spawn_codex(
         return (CodexOutcome::Done, emitted);
     }
     // EOF without turn.completed: killed by cancel() or crashed.
-    let Some(mut child) = slot.lock().take() else { return (CodexOutcome::Cancelled, emitted) };
+    let Some(mut child) = turn.slot.lock().take() else { return (CodexOutcome::Cancelled, emitted) };
     let outcome = match child.wait() {
         Ok(s) if s.success() => CodexOutcome::Failed("codex exited without completing".into()),
         Ok(s) => CodexOutcome::Failed(format!("codex exited with {s}")),
