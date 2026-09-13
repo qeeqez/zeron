@@ -10,8 +10,12 @@ struct StoredChat {
     v: u32,
     title: String,
     messages: Vec<ChatMessage>,
+    /// Missing in early v1 files.
+    #[serde(default)]
     pinned: bool,
+    #[serde(default)]
     archived: bool,
+    #[serde(default)]
     draft: String,
     /// Missing in early v1 files — fall back to now().
     #[serde(default = "std::time::SystemTime::now")]
