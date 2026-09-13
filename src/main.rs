@@ -73,6 +73,7 @@ fn main() {
             KeyBinding::new("cmd-shift-backspace", DeleteChat, Some("workspace")),
             KeyBinding::new("cmd-shift-down", RecallNext, Some("workspace")),
             KeyBinding::new("cmd-j", ToggleAgents, Some("workspace")),
+            KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
             KeyBinding::new("cmd-k", OpenPalette, Some("workspace")),
             KeyBinding::new("cmd-w", CloseWindow, Some("workspace")),
             KeyBinding::new("cmd-f", SearchChat, Some("workspace")),
