@@ -38,6 +38,9 @@ impl Workspace {
             return;
         };
         Rc::make_mut(&mut chat.messages).truncate(ix);
+        // Truncating drops the turn that earned `last_turn` — don't let the
+        // new tail message inherit its duration label.
+        chat.last_turn = None;
         self.recall_ix = None;
         self.search_match_ix = 0;
         // Stash the in-progress composer text — recall_next past the newest
@@ -173,6 +176,7 @@ impl Workspace {
             && child.try_wait().ok().flatten().is_none()
         {
             let _ = child.kill();
+            let _ = child.wait(); // reap — kill alone leaves a zombie
             return;
         }
         if let Ok(child) = Command::new("say").arg(&**text).spawn() {
