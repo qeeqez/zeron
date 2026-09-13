@@ -44,6 +44,11 @@ pub fn save_chats(chats: &[Chat]) {
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
         if let Ok(json) = serde_json::to_string_pretty(&stored) {
+            // Skip the write when nothing changed — save() runs on every
+            // keystroke-adjacent action and most chats are untouched.
+            if fs::read_to_string(&dst).is_ok_and(|old| old == json) {
+                continue;
+            }
             let _ = fs::write(&tmp, json);
             let _ = fs::rename(&tmp, &dst);
         }
