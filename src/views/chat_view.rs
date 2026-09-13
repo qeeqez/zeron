@@ -43,6 +43,8 @@ fn chat_menu(
         ws_wrap.update(cx, |this, cx| {
             this.word_wrap = !this.word_wrap;
             this.save_settings();
+            // Every message's height changed — remeasure the whole list.
+            this.scroller.update(cx, |s, cx| s.remeasure(cx));
             cx.notify();
         });
     }))
