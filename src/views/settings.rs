@@ -94,6 +94,7 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
                         ws.update(cx, |this, cx| {
                             this.font_size = this.font_size.saturating_sub(1).max(10);
                             this.save_settings();
+                            this.scroller.update(cx, |s, cx| s.remeasure(cx));
                             cx.notify();
                         });
                     }
@@ -105,6 +106,7 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
                         ws.update(cx, |this, cx| {
                             this.font_size = (this.font_size + 1).min(24);
                             this.save_settings();
+                            this.scroller.update(cx, |s, cx| s.remeasure(cx));
                             cx.notify();
                         });
                     }
