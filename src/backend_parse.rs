@@ -14,6 +14,7 @@ pub fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
             detail: item["command"].as_str().unwrap_or("").into(),
         }],
         "item.started" if item["type"].as_str() == Some("agent_message") => vec![AgentEvent::TextStart],
+
         "item.completed" => match item["type"].as_str() {
             Some("command_execution") => {
                 let mut out = Vec::with_capacity(2);
@@ -243,5 +244,25 @@ mod file_change_tests {
     fn missing_changes_yields_nothing() {
         let evs = parse_codex_line(r#"{"type":"item.completed","item":{"id":"f","type":"file_change","status":"completed"}}"#);
         assert!(evs.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod turn_tests {
+    use super::*;
+
+    #[test]
+    fn turn_completed_missing_usage() {
+        let evs = parse_codex_line(r#"{"type":"turn.completed"}"#);
+        assert_eq!(evs.len(), 2);
+        assert!(matches!(&evs[0], AgentEvent::Usage { input: 0, output: 0 }));
+        assert!(matches!(&evs[1], AgentEvent::Done));
+    }
+
+    #[test]
+    fn turn_failed_missing_message() {
+        let evs = parse_codex_line(r#"{"type":"turn.failed"}"#);
+        assert_eq!(evs.len(), 1);
+        assert!(matches!(&evs[0], AgentEvent::Error(e) if e == "turn failed"));
     }
 }
