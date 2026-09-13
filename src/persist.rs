@@ -64,17 +64,27 @@ pub fn save_chats(chats: &[Chat]) {
     }
 }
 
-/// Load chats from disk; returns empty vec on any error. Each chat gets a
-/// fresh id from `next_id` so reply tasks can target chats stably.
+/// Load chats from disk; returns empty vec on any error. Files are read in
+/// numeric-name order — the same order `save_chats` wrote — so the persisted
+/// `active_chat` index still points at the same conversation. Each chat gets
+/// a fresh id from `next_id` so reply tasks can target chats stably.
 pub fn load_chats(next_id: &mut u64) -> Vec<Chat> {
     let dir = chats_dir();
     let Ok(entries) = fs::read_dir(&dir) else { return Vec::new() };
-    let mut chats: Vec<Chat> = entries
+    let mut files: Vec<(usize, PathBuf)> = entries
         .filter_map(|e| {
             let path = e.ok()?.path();
             if path.extension()?.to_str()? != "json" {
                 return None;
             }
+            let ix = path.file_stem()?.to_str()?.parse::<usize>().ok()?;
+            Some((ix, path))
+        })
+        .collect();
+    files.sort_by_key(|(ix, _)| *ix);
+    files
+        .into_iter()
+        .filter_map(|(_, path)| {
             let stored: StoredChat = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
             if stored.v != 1 {
                 return None;
@@ -88,9 +98,7 @@ pub fn load_chats(next_id: &mut u64) -> Vec<Chat> {
             chat.created_at = stored.created_at;
             Some(chat)
         })
-        .collect();
-    chats.sort_by_key(|c| c.created_at);
-    chats
+        .collect()
 }
 
 #[derive(Serialize, Deserialize)]
