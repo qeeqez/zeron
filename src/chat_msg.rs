@@ -8,11 +8,11 @@ use crate::workspace::Workspace;
 impl Workspace {
     pub fn rate_message(&mut self, ix: usize, up: bool, cx: &mut Context<Self>) {
         let chat = &mut self.chats[self.active];
-        if let Some(msg) = chat.messages.get_mut(ix) {
-            msg.rating = if msg.rating == Some(up) { None } else { Some(up) };
-        }
+        let Some(msg) = chat.messages.get_mut(ix) else { return };
+        msg.rating = if msg.rating == Some(up) { None } else { Some(up) };
+        let pos = self.filtered_pos(ix, cx);
         self.scroller.update(cx, |s, cx| {
-            s.remeasure_items(ix..ix + 1, cx);
+            s.remeasure_items(pos..pos + 1, cx);
         });
         cx.notify();
         self.save();

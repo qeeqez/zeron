@@ -172,6 +172,18 @@ impl Workspace {
     }
 }
 
+impl Workspace {
+    /// Scroller position of message `real_ix` — its vec index, or the count
+    /// of matching messages before it when a search query filters the list.
+    pub(crate) fn filtered_pos(&self, real_ix: usize, cx: &App) -> usize {
+        let query = self.chat_search.read(cx).value().to_lowercase();
+        if !self.chat_search_open || query.is_empty() {
+            return real_ix;
+        }
+        self.chats[self.active].messages[..real_ix].iter().filter(|m| msg_matches(m, &query)).count()
+    }
+}
+
 /// Should a newly pushed last message grow the scroller? False only when a
 /// non-empty search query is active and the message doesn't match.
 pub(crate) fn grows_scroller(is_active: bool, msg: &crate::model::ChatMessage, query: &str) -> bool {

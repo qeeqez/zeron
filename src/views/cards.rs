@@ -18,8 +18,10 @@ fn toggle_expanded(ws: Entity<Workspace>, ix: usize) -> impl Fn(&ClickEvent, &mu
                 MessageKind::Text(_) => {},
             }
             // Height changed — the virtual scroller must re-measure or the
-            // expanded body renders clipped.
-            this.scroller.update(cx, |s, cx| s.remeasure_items(ix..ix + 1, cx));
+            // expanded body renders clipped. Under an open search the
+            // scroller indexes the filtered list, so map real ix → position.
+            let pos = this.filtered_pos(ix, cx);
+            this.scroller.update(cx, |s, cx| s.remeasure_items(pos..pos + 1, cx));
             cx.notify();
         });
     }
