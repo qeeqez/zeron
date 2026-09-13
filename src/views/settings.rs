@@ -104,19 +104,27 @@ impl Render for SettingsPanel {
         let panel = cx.entity();
         let query = self.search.read(cx).value().to_lowercase();
         let theme = cx.theme();
+        // Left edge sits at the main sidebar's right edge — the sidebar and
+        // the overlaid toggle stay visible and functional while settings is
+        // open, and the chat composer keeps focus so Esc still closes it.
+        let left = if s.sidebar_collapsed { 0. } else { s.sidebar_width };
         div()
             .id("settings-screen")
             .test_support()
             .absolute()
-            .inset_0()
+            .top_0()
+            .bottom_0()
+            .right_0()
+            .left(px(left))
             .occlude()
             .bg(theme.background)
             .text_color(theme.foreground)
             .flex()
             .flex_col()
             // Top strip on the same line as the traffic lights + the overlaid
-            // sidebar toggle (which stays visible over settings). Padded left
-            // past them; shows breadcrumbs for the current section.
+            // sidebar toggle. When the sidebar is collapsed the toggle sits on
+            // this strip's left, so pad past it; when open the toggle is over
+            // the sidebar and this strip needs only normal padding.
             .child(
                 crate::window::titlebar_drag(
                     div()
@@ -126,7 +134,8 @@ impl Render for SettingsPanel {
                         .flex()
                         .items_center()
                         .gap_2()
-                        .pl(px(112.))
+                        .when(s.sidebar_collapsed, |d| d.pl(px(112.)))
+                        .when(!s.sidebar_collapsed, |d| d.px_4())
                         .pr_4()
                         .text_sm()
                         .child(div().text_color(theme.muted_foreground).child("Settings"))

@@ -180,8 +180,9 @@ impl Render for Workspace {
                     .when(self.agents_panel_open, |d| d.child(self.render_agents_panel(window, cx)))
                     .when(self.changes_panel_open, |d| d.child(self.render_changes_panel(window, cx))),
             )
-            // Codex-style settings screen — a full-window overlay, not a
-            // sheet (a sheet can't host the nav rail + content pane).
+            // Settings is an overlay that starts at the sidebar's right edge —
+            // the sidebar + toggle stay visible and functional, and the chat
+            // composer keeps focus so Esc still closes settings.
             .when(self.settings_open, |d| d.child(self.settings_panel.clone()))
             // The toggle is a fixed overlay right of the traffic lights,
             // vertically centered on the top-strip line. Rendered after the
