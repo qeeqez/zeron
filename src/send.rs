@@ -28,7 +28,7 @@ impl Workspace {
         let chat = &mut self.chats[self.active];
         if chat.messages.is_empty() && chat.title == "New chat" {
             chat.title = text.chars().take(40).collect::<String>().into();
-            window.set_window_title(&format!("Rixl Code — {}", chat.title));
+            window.set_window_title(&format!("{} — Rixl Code", chat.title));
         }
         chat.messages.push(ChatMessage {
             role: Role::User,

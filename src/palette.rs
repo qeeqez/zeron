@@ -56,7 +56,7 @@ impl Workspace {
         {
             chat.title = title.into();
             if is_active {
-                window.set_window_title(&format!("Rixl Code — {}", chat.title));
+                window.set_window_title(&format!("{} — Rixl Code", chat.title));
             }
         }
         cx.notify();

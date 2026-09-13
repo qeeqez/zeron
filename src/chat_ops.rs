@@ -48,7 +48,7 @@ impl Workspace {
         self.scroller.update(cx, |s, cx| {
             s.reset(count, cx);
         });
-        window.set_window_title(&format!("Rixl Code — {}", self.chats[index].title));
+        window.set_window_title(&format!("{} — Rixl Code", self.chats[index].title));
         cx.notify();
         self.save();
         self.save_settings();
@@ -295,5 +295,5 @@ fn focus_new_chat(composer: &Entity<gpui_kit::component::input::TextareaState>, 
         s.set_value("", window, cx);
         s.focus(window, cx);
     });
-    window.set_window_title("Rixl Code — New chat");
+    window.set_window_title("New chat — Rixl Code");
 }
