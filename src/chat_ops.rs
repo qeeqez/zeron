@@ -158,12 +158,12 @@ impl Workspace {
 
 /// The text a chat-search query matches against for one message.
 pub(crate) fn msg_matches(m: &crate::model::ChatMessage, query: &str) -> bool {
-    let text = match &m.kind {
-        MessageKind::Text(t) => t.as_str(),
-        MessageKind::Tool(t) => t.name.as_str(),
-        MessageKind::Diff(d) => d.path.as_str(),
+    let haystacks: &[&str] = match &m.kind {
+        MessageKind::Text(t) => &[t.as_str()],
+        MessageKind::Tool(t) => &[t.name.as_str(), t.detail.as_str(), t.output.as_str()],
+        MessageKind::Diff(d) => &[d.path.as_str(), d.hunks.as_str()],
     };
-    text.to_lowercase().contains(query)
+    haystacks.iter().any(|h| h.to_lowercase().contains(query))
 }
 
 impl Workspace {
