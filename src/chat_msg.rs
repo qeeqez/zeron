@@ -34,6 +34,7 @@ impl Workspace {
         };
         chat.messages.truncate(ix);
         self.recall_ix = None;
+        self.search_match_ix = 0;
         // Stash the in-progress composer text — recall_next past the newest
         // restores it instead of clearing.
         self.recall_saved = Some(self.composer.read(cx).value().to_string());
