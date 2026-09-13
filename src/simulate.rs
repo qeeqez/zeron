@@ -81,7 +81,11 @@ impl Workspace {
     /// Advance the agent with stable `id` — positions shift when finished
     /// agents are cleared, so index-based lookup would hit the wrong agent.
     fn advance_agent(&mut self, id: u64, step: usize, cx: &mut Context<Self>) {
-        let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) else { return };
+        // Task drop cancels at the next await — an in-flight update can still
+        // land, so don't resurrect a cancelled agent.
+        let Some(agent) = self.agents.iter_mut().find(|a| a.id == id && a.status == AgentStatus::Running) else {
+            return;
+        };
         agent.steps_done = step;
         agent.elapsed_secs += 1;
         agent.step = format!("step {step}").into();
