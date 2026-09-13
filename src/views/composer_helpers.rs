@@ -88,6 +88,7 @@ fn apply_slash(ws: &Entity<Workspace>, cmd: &str, window: &mut Window, cx: &mut 
     ws.update(cx, |this, cx| {
         this.composer.update(cx, |s, cx| {
             s.set_value(format!("/{cmd} "), window, cx);
+            s.focus(window, cx);
         });
     });
 }
