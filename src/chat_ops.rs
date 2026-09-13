@@ -252,6 +252,7 @@ impl Workspace {
             }
             let _ = this.update(cx, |this, cx| {
                 this.chats.clear();
+                this.search_match_ix = 0;
                 this.new_chat(cx);
             });
         })
