@@ -36,6 +36,7 @@ impl Workspace {
         self.active = index;
         self.recall_ix = None;
         self.recall_saved = None;
+        self.search_match_ix = 0;
         self.chats[index].unread = false;
         let draft = self.chats[index].draft.clone();
         self.composer.update(cx, |s, cx| {
