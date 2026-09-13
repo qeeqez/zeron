@@ -89,6 +89,11 @@ impl Workspace {
             Some(_) => return, // already at the oldest
             None => 0,
         };
+        // Stash the in-progress composer text on first recall — recall_next
+        // past the newest restores it instead of clearing.
+        if self.recall_saved.is_none() {
+            self.recall_saved = Some(self.composer.read(cx).value().to_string());
+        }
         self.recall_ix = Some(next);
         let ix = user_ixs[user_ixs.len() - 1 - next];
         let MessageKind::Text(t) = &chat.messages[ix].kind else { return };
