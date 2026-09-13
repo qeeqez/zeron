@@ -134,6 +134,18 @@ impl Render for Workspace {
                     }
                 }),
             )
+            // Mouse-up outside the window still ends the drag — otherwise the
+            // next hover resizes without a press.
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    if this.resizing_sidebar {
+                        this.resizing_sidebar = false;
+                        this.save_settings();
+                        cx.notify();
+                    }
+                }),
+            )
             .child(
                 div()
                     .flex()
