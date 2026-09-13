@@ -44,6 +44,10 @@ pub struct Workspace {
     pub project_files: Vec<SharedString>,
 
     pub backend: std::sync::Arc<dyn crate::backend::AgentBackend>,
+    /// HTTP transport config — kept on the workspace so `toggle_backend`
+    /// can rebuild `HttpBackend` without re-reading settings.json.
+    pub http_url: String,
+    pub http_key_env: String,
 }
 
 impl Workspace {
@@ -132,13 +136,11 @@ impl Workspace {
             close_confirmed: std::cell::Cell::new(false),
             notify_on_done: settings.notify_on_done,
             word_wrap: settings.word_wrap,
-            backend: if settings.use_codex_cli {
-                std::sync::Arc::new(crate::backend::CodexCliBackend::new())
-            } else {
-                std::sync::Arc::new(crate::backend::SimBackend)
-            },
+            backend: make_backend(&settings),
             font_size: settings.font_size.clamp(10, 24),
             project_files: Vec::new(),
+            http_url: settings.http_url.clone(),
+            http_key_env: settings.http_key_env.clone(),
         };
         let loaded = crate::persist::load_chats(&mut this.next_chat_id);
         if loaded.is_empty() {
@@ -191,11 +193,26 @@ impl Workspace {
             word_wrap: self.word_wrap,
             font_size: self.font_size,
             notify_on_done: self.notify_on_done,
-            use_codex_cli: matches!(self.backend.name(), "codex-cli"),
+            backend: self.backend.name().into(),
+            http_url: self.http_url.clone(),
+            http_key_env: self.http_key_env.clone(),
+            use_codex_cli: None,
             window_bounds: prev.window_bounds,
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
             active_chat: self.active,
         });
+    }
+}
+
+/// Build the selected backend. `http` falls back to codex-cli when no
+/// endpoint is configured — an empty URL would fail every send anyway.
+fn make_backend(s: &crate::persist::Settings) -> std::sync::Arc<dyn crate::backend::AgentBackend> {
+    match s.backend_name() {
+        "sim" => std::sync::Arc::new(crate::backend::SimBackend),
+        "http" if !s.http_url.is_empty() => {
+            std::sync::Arc::new(crate::backend::HttpBackend::new(s.http_url.clone(), s.http_key_env.clone()))
+        },
+        _ => std::sync::Arc::new(crate::backend::CodexCliBackend::new()),
     }
 }

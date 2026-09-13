@@ -23,7 +23,7 @@ impl Render for SettingsPanel {
             SettingsView {
                 notify: s.notify_on_done,
                 font_size: s.font_size,
-                use_codex: matches!(s.backend.name(), "codex-cli"),
+                backend: s.backend.name(),
                 word_wrap: s.word_wrap,
                 ws: self.ws.clone(),
             },
@@ -35,7 +35,7 @@ impl Render for SettingsPanel {
 pub struct SettingsView {
     pub notify: bool,
     pub font_size: u8,
-    pub use_codex: bool,
+    pub backend: &'static str,
     pub word_wrap: bool,
     pub ws: Entity<Workspace>,
 }
@@ -114,11 +114,12 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
         )
         .child(div().text_sm().pt_2().child("Backend"))
         .child(
-            div().flex().items_center().gap_2().text_xs().child("Use codex CLI").child(div().flex_1()).child(
+            div().flex().items_center().gap_2().text_xs().child(s.backend).child(div().flex_1()).child(
                 div()
                     .id("toggle-backend")
                     .cursor_pointer()
-                    .child(if s.use_codex { IconName::Check } else { IconName::X })
+                    .text_color(hsla(0.0, 0.0, 0.55, 1.0))
+                    .child("cycle")
                     .on_click({
                         let ws = ws.clone();
                         move |_, _, cx| {

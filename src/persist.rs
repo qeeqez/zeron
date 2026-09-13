@@ -119,13 +119,36 @@ pub struct Settings {
     pub mode: String,
     pub notify_on_done: bool,
     pub word_wrap: bool,
-    pub use_codex_cli: bool,
+    /// Backend selector: "codex-cli" | "sim" | "http". Migrated from the
+    /// old `use_codex_cli` bool — see `use_codex_cli` below.
+    pub backend: String,
+    /// HTTP transport endpoint (POST, NDJSON response stream).
+    pub http_url: String,
+    /// Env var holding the bearer token for `http_url` — the key itself
+    /// is never written to this file.
+    pub http_key_env: String,
+    /// Legacy field: present only in pre-`backend` files. Read for
+    /// migration, never written back.
+    #[serde(skip_serializing)]
+    pub use_codex_cli: Option<bool>,
     pub font_size: u8,
     /// Last window bounds: [x, y, width, height] in pixels.
     pub window_bounds: Option<[f32; 4]>,
     pub sidebar_width: f32,
     pub sidebar_collapsed: bool,
     pub active_chat: usize,
+}
+
+impl Settings {
+    /// Effective backend name, folding in the legacy bool when the file
+    /// predates the `backend` field.
+    pub fn backend_name(&self) -> &str {
+        match self.use_codex_cli {
+            Some(true) => "codex-cli",
+            Some(false) => "sim",
+            None => self.backend.as_str(),
+        }
+    }
 }
 
 impl Default for Settings {
@@ -135,7 +158,10 @@ impl Default for Settings {
             mode: "Agent".into(),
             notify_on_done: true,
             word_wrap: true,
-            use_codex_cli: true,
+            backend: "codex-cli".into(),
+            http_url: String::new(),
+            http_key_env: "RIXL_API_KEY".into(),
+            use_codex_cli: None,
             font_size: 14,
             window_bounds: None,
             sidebar_width: 255.0,
