@@ -4,9 +4,10 @@ Native macOS app in Rust on `gpui-kit` 0.6 (gpui-pre + gpui-component), Codex-de
 
 ## Current state
 
-- App shell: `gpui_kit::application()` + `Root`, counter demo in `src/main.rs`.
+- App shell: `gpui_kit::application()` + `Root`, `Workspace` view in `src/workspace.rs`.
 - Tooling: nightly toolchain, clippy/rustfmt/sloc-guard (250 SLOC/file), lefthook hooks, nextest.
-- No real agent backend — all chat data is simulated in-process.
+- Backend: `codex exec --json` via `CodexCliBackend`; `SimBackend` for offline dev.
+- Persistence: chats + settings under `~/.rixl/rixlcode/`, atomic writes, retention cap.
 
 ## Feature areas (each file = one area, checkboxes = remaining work)
 
