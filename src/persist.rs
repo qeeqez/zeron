@@ -94,8 +94,10 @@ pub fn load_chats(next_id: &mut u64) -> Vec<Chat> {
     files
         .into_iter()
         .filter_map(|(_, path)| {
-            let stored: StoredChat = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+            let stored: StoredChat = serde_json::from_str(&fs::read_to_string(&path).ok()?).ok()?;
             if stored.v != 1 {
+                // Unknown format — keep the file as .bak so it isn't lost.
+                let _ = fs::rename(&path, path.with_extension("json.bak"));
                 return None;
             }
             let mut chat = Chat::new(*next_id, stored.title);
