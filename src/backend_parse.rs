@@ -227,3 +227,21 @@ mod reasoning_tests {
         assert!(evs.is_empty());
     }
 }
+
+#[cfg(test)]
+mod file_change_tests {
+    use super::*;
+
+    #[test]
+    fn non_completed_yields_nothing() {
+        let evs =
+            parse_codex_line(r#"{"type":"item.completed","item":{"id":"f","type":"file_change","status":"in_progress","changes":[]}}"#);
+        assert!(evs.is_empty());
+    }
+
+    #[test]
+    fn missing_changes_yields_nothing() {
+        let evs = parse_codex_line(r#"{"type":"item.completed","item":{"id":"f","type":"file_change","status":"completed"}}"#);
+        assert!(evs.is_empty());
+    }
+}
