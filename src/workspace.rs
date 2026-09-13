@@ -102,7 +102,7 @@ impl Workspace {
             chats: Vec::new(),
             active: 0,
             sidebar_collapsed: settings.sidebar_collapsed,
-            sidebar_width: settings.sidebar_width,
+            sidebar_width: settings.sidebar_width.clamp(180.0, 480.0),
             agents: Vec::new(),
             next_agent_id: 0,
             next_chat_id: 0,
