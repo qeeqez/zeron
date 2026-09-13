@@ -97,7 +97,7 @@ impl Workspace {
             prompt
         } else {
             let files = attachments.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", ");
-            format!("{prompt}\n\n📎 {files}")
+            format!("{prompt}\n\n[Attached files: {files}]")
         };
         self.start_reply(&prompt, cx);
     }
