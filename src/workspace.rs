@@ -25,7 +25,8 @@ pub struct Workspace {
     pub mode: SharedString,
     pub palette: Entity<CommandState>,
     pub rename: Entity<InputState>,
-    pub renaming: Option<usize>,
+    /// Chat id being renamed — stable across deletions, unlike a vec index.
+    pub renaming: Option<u64>,
     /// Index into user messages for Cmd+Shift+Up/Down recall cycling.
     pub recall_ix: Option<usize>,
     pub chat_search: Entity<InputState>,
