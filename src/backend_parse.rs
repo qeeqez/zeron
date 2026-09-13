@@ -126,3 +126,77 @@ fn diff_for_path(path: &str) -> Option<AgentEvent> {
     }
     Some(AgentEvent::Diff { path: path.into(), added, removed, hunks: hunks.into() })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn malformed_json_yields_nothing() {
+        assert!(parse_codex_line("not json").is_empty());
+        assert!(parse_codex_line("{}").is_empty());
+        assert!(parse_codex_line(r#"{"type":"item.started"}"#).is_empty());
+    }
+
+    #[test]
+    fn command_execution_start_and_end() {
+        let start = parse_codex_line(r#"{"type":"item.started","item":{"id":"a","type":"command_execution","command":"ls"}}"#);
+        assert!(matches!(&start[0], AgentEvent::ToolCallStart { name, detail, .. } if name == "shell" && detail == "ls"));
+        let done = parse_codex_line(
+            r#"{"type":"item.completed","item":{"id":"a","type":"command_execution","aggregated_output":"hi\n","exit_code":0}}"#,
+        );
+        assert_eq!(done.len(), 2);
+        assert!(matches!(&done[0], AgentEvent::ToolCallDelta { output, .. } if output == "hi\n"));
+        assert!(matches!(&done[1], AgentEvent::ToolCallEnd { ok: true, .. }));
+    }
+
+    #[test]
+    fn empty_output_skips_delta() {
+        let done = parse_codex_line(
+            r#"{"type":"item.completed","item":{"id":"a","type":"command_execution","aggregated_output":"","exit_code":1}}"#,
+        );
+        assert_eq!(done.len(), 1);
+        assert!(matches!(&done[0], AgentEvent::ToolCallEnd { ok: false, .. }));
+    }
+
+    #[test]
+    fn agent_message_starts_new_bubble() {
+        let start = parse_codex_line(r#"{"type":"item.started","item":{"id":"m1","type":"agent_message"}}"#);
+        assert!(matches!(&start[0], AgentEvent::TextStart));
+        let done = parse_codex_line(r#"{"type":"item.completed","item":{"id":"m1","type":"agent_message","text":"hi"}}"#);
+        assert!(matches!(&done[0], AgentEvent::TextDelta(t) if t == "hi"));
+    }
+
+    #[test]
+    fn turn_completed_emits_usage_and_done() {
+        let evs = parse_codex_line(r#"{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}"#);
+        assert_eq!(evs.len(), 2);
+        assert!(matches!(&evs[0], AgentEvent::Usage { input: 10, output: 5 }));
+        assert!(matches!(&evs[1], AgentEvent::Done));
+    }
+
+    #[test]
+    fn error_variants() {
+        let e = parse_codex_line(r#"{"type":"error","message":"boom"}"#);
+        assert!(matches!(&e[0], AgentEvent::Error(m) if m == "boom"));
+        let f = parse_codex_line(r#"{"type":"turn.failed","error":{"message":"nope"}}"#);
+        assert!(matches!(&f[0], AgentEvent::Error(m) if m == "nope"));
+    }
+
+    #[test]
+    fn same_item_id_routes_to_same_ix() {
+        let a = parse_codex_line(r#"{"type":"item.started","item":{"id":"x","type":"command_execution","command":"a"}}"#);
+        let b = parse_codex_line(
+            r#"{"type":"item.completed","item":{"id":"x","type":"command_execution","aggregated_output":"","exit_code":0}}"#,
+        );
+        let ix_a = match &a[0] {
+            AgentEvent::ToolCallStart { ix, .. } => *ix,
+            _ => panic!(),
+        };
+        let ix_b = match &b[0] {
+            AgentEvent::ToolCallEnd { ix, .. } => *ix,
+            _ => panic!(),
+        };
+        assert_eq!(ix_a, ix_b);
+    }
+}
