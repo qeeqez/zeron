@@ -142,6 +142,7 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
                             ws.update(cx, |this, cx| {
                                 this.word_wrap = !this.word_wrap;
                                 this.save_settings();
+                                this.scroller.update(cx, |s, cx| s.remeasure(cx));
                                 cx.notify();
                             });
                         }

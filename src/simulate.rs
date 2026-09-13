@@ -173,14 +173,7 @@ impl Workspace {
         *text = full[..next_len].into();
         if is_active {
             let query = self.chat_search.read(cx).value().to_string().to_lowercase();
-            let searching = self.chat_search_open && !query.is_empty();
-            // Filtered position = number of matching messages - 1; the text
-            // bubble only counts once it matches the query.
-            let pos = if searching {
-                chat.messages.iter().filter(|m| crate::chat_ops::msg_matches(m, &query)).count().saturating_sub(1)
-            } else {
-                chat.messages.len() - 1
-            };
+            let pos = crate::chat_ops::last_scroller_pos(&chat.messages, &query);
             self.scroller.update(cx, |s, cx| s.remeasure_items(pos..pos + 1, cx));
         }
         cx.notify();
