@@ -98,13 +98,15 @@ impl Workspace {
                 }
             },
             AgentEvent::ToolCallDelta { ix, output } => {
-                if let Some(m) = Rc::make_mut(&mut chat.messages)
-                    .iter_mut()
-                    .rev()
-                    .find(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix))
-                    && let MessageKind::Tool(t) = &mut m.kind
+                let pos = chat.messages.iter().rposition(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix));
+                if let Some(pos) = pos
+                    && let MessageKind::Tool(t) = &mut Rc::make_mut(&mut chat.messages)[pos].kind
                 {
                     t.output = format!("{}{}", t.output, output).into();
+                }
+                if is_active && let Some(pos) = pos {
+                    let sp = self.filtered_pos(pos, cx);
+                    self.scroller.update(cx, |s, cx| s.remeasure_items(sp..sp + 1, cx));
                 }
             },
             AgentEvent::ToolCallEnd { ix, ok } => {
