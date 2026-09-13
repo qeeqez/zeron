@@ -200,3 +200,30 @@ mod tests {
         assert_eq!(ix_a, ix_b);
     }
 }
+
+#[cfg(test)]
+mod reasoning_tests {
+    use super::*;
+
+    #[test]
+    fn reasoning_string_text() {
+        let evs = parse_codex_line(r#"{"type":"item.completed","item":{"id":"r","type":"reasoning","text":"thinking…"}}"#);
+        assert_eq!(evs.len(), 3);
+        assert!(matches!(&evs[0], AgentEvent::ToolCallStart { name, .. } if name == "thinking"));
+        assert!(matches!(&evs[1], AgentEvent::ToolCallDelta { output, .. } if output == "thinking…"));
+        assert!(matches!(&evs[2], AgentEvent::ToolCallEnd { ok: true, .. }));
+    }
+
+    #[test]
+    fn reasoning_array_text() {
+        let evs = parse_codex_line(r#"{"type":"item.completed","item":{"id":"r","type":"reasoning","text":[{"text":"a"},{"text":"b"}]}}"#);
+        assert_eq!(evs.len(), 3);
+        assert!(matches!(&evs[1], AgentEvent::ToolCallDelta { output, .. } if output == "a\nb"));
+    }
+
+    #[test]
+    fn reasoning_empty_yields_nothing() {
+        let evs = parse_codex_line(r#"{"type":"item.completed","item":{"id":"r","type":"reasoning","text":""}}"#);
+        assert!(evs.is_empty());
+    }
+}
