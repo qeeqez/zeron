@@ -45,7 +45,7 @@ actions!([
 ]);
 
 fn main() {
-    gpui_kit::application().with_assets(gpui_kit::assets::Assets::new("")).run(|cx| {
+    gpui_kit::application().with_assets(gpui_kit::assets::AllAssets::new("")).run(|cx| {
         gpui_kit::init(cx);
         // Names the app in system notifications on platforms that need an
         // explicit identity (Linux/Windows); a no-op on macOS, where the

@@ -11,7 +11,7 @@ use gpui_kit::*;
 /// host a two-pane layout and weren't mounted anyway).
 pub struct SettingsPanel {
     ws: Entity<Workspace>,
-    section: Section,
+    pub(crate) section: Section,
     search: Entity<InputState>,
     url_input: Entity<InputState>,
     key_input: Entity<InputState>,
@@ -128,7 +128,7 @@ impl Section {
         }
     }
 
-    fn icon(self) -> IconName {
+    pub(crate) fn icon(self) -> IconName {
         match self {
             Self::General => IconName::SlidersHorizontal,
             Self::Appearance => IconName::Palette,
@@ -186,6 +186,7 @@ impl SettingsPanel {
             .bg(theme.sidebar)
             .border_r_1()
             .border_color(theme.sidebar_border)
+            .child(crate::views::settings_nav::back_row(&self.ws, cx))
             .child(Input::new(&self.search).prefix(IconName::Search).appearance(true));
         if query.is_empty() {
             rail.children(Section::GROUPS.iter().map(|(name, sections)| {
@@ -195,14 +196,14 @@ impl SettingsPanel {
                     .gap_1()
                     .pt_3()
                     .child(div().px_2().pb_1().text_xs().text_color(theme.muted_foreground).child(*name))
-                    .children(sections.iter().map(|s| nav_item(*s, *s == self.section, panel, cx)))
+                    .children(sections.iter().map(|s| crate::views::settings_nav::nav_item(*s, *s == self.section, panel, cx)))
             }))
         } else {
             rail.children(
                 Section::ALL
                     .iter()
                     .filter(|s| s.label().to_lowercase().contains(query))
-                    .map(|s| nav_item(*s, *s == self.section, panel, cx)),
+                    .map(|s| crate::views::settings_nav::nav_item(*s, *s == self.section, panel, cx)),
             )
         }
     }
@@ -240,30 +241,4 @@ impl SettingsPanel {
                 .child(crate::views::settings_sections::section_body(self.section, view, cx)),
         )
     }
-}
-
-fn nav_item(section: Section, selected: bool, panel: &Entity<SettingsPanel>, cx: &App) -> impl IntoElement {
-    let theme = cx.theme();
-    let panel = panel.clone();
-    div()
-        .id(SharedString::from(format!("settings-nav-{}", section.name())))
-        .test_support()
-        .flex()
-        .items_center()
-        .gap_2()
-        .px_2()
-        .py_1()
-        .rounded_md()
-        .cursor_pointer()
-        .text_sm()
-        .when(!selected, |d| d.text_color(theme.muted_foreground))
-        .when(selected, |d| d.bg(theme.list_active))
-        .child(section.icon())
-        .child(section.label())
-        .on_click(move |_, _, cx| {
-            panel.update(cx, |this, cx| {
-                this.section = section;
-                cx.notify();
-            });
-        })
 }

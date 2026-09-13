@@ -7,6 +7,7 @@ mod composer_helpers;
 mod empty;
 mod message;
 pub mod settings;
+pub mod settings_nav;
 pub mod settings_sections;
 
 mod sidebar;
