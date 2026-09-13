@@ -8,7 +8,7 @@ use crate::{
 };
 use gpui_kit::component::Root;
 
-use gpui_kit::component::theme::{ActiveTheme, Theme, ThemeMode};
+use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
@@ -166,24 +166,10 @@ impl Render for Workspace {
                     }
                 }),
             )
-            // One continuous top bar across the whole window: it drags the
-            // window (the app owns titlebar dragging) and hosts the sidebar
-            // toggle right of the traffic lights (~x 9-70). It renders in
-            // both sidebar states, so the toggle never moves.
-            .child(
-                crate::window::titlebar_drag(
-                    div()
-                        .id("top-bar")
-                        .h(px(28.))
-                        .w_full()
-                        .flex()
-                        .items_center()
-                        .pl(px(72.))
-                        .bg(cx.theme().sidebar)
-                        .child(crate::window::sidebar_toggle(self.sidebar_collapsed, cx)),
-                )
-                .test_support(),
-            )
+            // Sidebar (full-height) + content pane. Each draws a top drag
+            // strip of the same height so they read as one continuous
+            // titlebar row; the traffic lights + toggle overlay the leading
+            // strip's top-left.
             .child(
                 div()
                     .flex()
@@ -193,6 +179,16 @@ impl Render for Workspace {
                     .child(self.render_chat(window, cx))
                     .when(self.agents_panel_open, |d| d.child(self.render_agents_panel(window, cx)))
                     .when(self.changes_panel_open, |d| d.child(self.render_changes_panel(window, cx))),
+            )
+            // The toggle is a fixed overlay right of the traffic lights — it
+            // sits over the sidebar's top strip when open and over the
+            // content's titlebar when collapsed, never moving.
+            .child(
+                div()
+                    .absolute()
+                    .left(px(72.))
+                    .top(px(7.))
+                    .child(crate::window::sidebar_toggle(self.sidebar_collapsed, cx)),
             )
 
             // Codex-style settings screen — a full-window overlay, not a

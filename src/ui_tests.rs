@@ -44,35 +44,30 @@ fn sidebar_toggle_hides_and_restores() {
         // Sidebar starts expanded — its wrap element is present.
         assert!(window.find("sidebar-wrap").visible(), "sidebar should start visible");
 
-        // One continuous top bar spans the full window width and hosts the
-        // toggle right of the traffic lights; the panes draw no strips.
-        let bar = window.find("top-bar");
-        assert_eq!(bar.bounds().size.width, window.viewport_size().width, "top bar must span the window");
-        assert_eq!(f32::from(bar.bounds().origin.y), 0.0, "top bar must sit at the window top");
-        assert!(window.try_find("sidebar-titlebar").is_none(), "sidebar must not draw its own strip");
-        assert!(window.try_find("content-titlebar").is_none(), "content pane must not draw its own strip");
-        window.within("top-bar").find("sidebar-toggle");
+        // The sidebar is full-height: its top drag strip sits at the window's
+        // top edge, and the content's titlebar is the same height — together
+        // they read as one continuous titlebar row. The toggle is a fixed
+        // overlay right of the traffic lights, present in both states.
+        let sidebar_strip = window.find("sidebar-titlebar");
+        assert_eq!(f32::from(sidebar_strip.bounds().origin.y), 0.0, "sidebar top strip must reach the window top");
         let open_bounds = window.find("sidebar-toggle").bounds();
-        let open_bar_bounds = bar.bounds();
 
-        // Clicking the inline toggle collapses the sidebar fully — Offcanvas
-        // removes it from layout rather than shrinking to an icon rail.
+        // Clicking the toggle collapses the sidebar fully — Offcanvas removes
+        // it from layout rather than shrinking to an icon rail.
         window.click("sidebar-toggle", cx);
         window.draw(cx).clear(cx);
         assert!(window.try_find("sidebar-wrap").is_none(), "sidebar should hide completely");
 
-        // Collapsed: the same top bar is still there and the toggle never
-        // moved — same element, same bounds, same parent.
-        assert_eq!(window.find("top-bar").bounds(), open_bar_bounds, "top bar must be identical collapsed");
-        window.within("top-bar").find("sidebar-toggle");
+        // Collapsed: the toggle is a fixed overlay — same spot, now over the
+        // content's titlebar.
         assert_eq!(window.find("sidebar-toggle").bounds(), open_bounds, "toggle must stay right of the traffic lights in both states");
 
-        // The toggle stays clickable in the collapsed bar and re-opens the
+        // The toggle stays clickable in the collapsed state and re-opens the
         // sidebar.
         window.click("sidebar-toggle", cx);
         window.draw(cx).clear(cx);
         assert!(window.find("sidebar-wrap").visible(), "sidebar should re-open");
-        window.within("top-bar").find("sidebar-toggle");
+        window.find("sidebar-toggle");
     });
 }
 

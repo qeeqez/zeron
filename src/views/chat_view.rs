@@ -104,8 +104,14 @@ impl Workspace {
                 .flex()
                 .items_center()
                 .gap_2()
-                .px_4()
-                .py_2()
+                // Same height as the sidebar's top strip → one continuous
+                // titlebar row. When the sidebar is collapsed the overlaid
+                // traffic lights + toggle sit on this strip's left, so pad
+                // past them.
+                .h(px(crate::window::TOP_BAR_H))
+                .when(self.sidebar_collapsed, |d| d.pl(px(112.)))
+                .when(!self.sidebar_collapsed, |d| d.px_4())
+                .pr_4()
                 .border_b_1()
                 .border_color(cx.theme().border)
                 .text_sm()

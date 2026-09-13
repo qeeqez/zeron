@@ -110,8 +110,10 @@ impl Workspace {
             .bg(cx.theme().sidebar.opacity(0.6))
             .border_r_1()
             .border_color(cx.theme().sidebar_border)
-            // The shared top bar in `Workspace::render` covers the window's
-            // drag strip + sidebar toggle; the sidebar starts below it.
+            // Full-height sidebar: its top strip is a transparent window-drag
+            // zone of TOP_BAR_H that lines up with the content's titlebar —
+            // the traffic lights + toggle overlay its top-left.
+            .child(crate::window::titlebar_drag(div().id("sidebar-titlebar").h(px(crate::window::TOP_BAR_H)).w_full()).test_support())
             .child(
                 div().flex_1().min_h_0().child(
                     Sidebar::new("sidebar")
