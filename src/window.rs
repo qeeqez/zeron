@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use gpui_kit::base::InteractiveElementExt;
+use gpui_kit::component::sidebar::SidebarToggleButton;
 use gpui_kit::*;
 
 use crate::workspace::Workspace;
@@ -26,6 +27,23 @@ pub(crate) fn titlebar_drag(el: Stateful<Div>) -> Stateful<Div> {
             }
         })
         .on_double_click(|_, window, _| window.titlebar_double_click())
+}
+
+/// The sidebar toggle for the unified titlebar. It sits inline in a
+/// `titlebar_drag` strip — in the sidebar's top strip while the sidebar is
+/// open, in the content pane's while collapsed — always right of the traffic
+/// lights. The mousedown must stop here: the strip's own listener would
+/// otherwise arm a window move under the press and swallow the drag.
+pub(crate) fn sidebar_toggle(collapsed: bool, cx: &mut Context<Workspace>) -> impl IntoElement {
+    div()
+        .id("sidebar-toggle")
+        .test_support()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(
+            SidebarToggleButton::new()
+                .collapsed(collapsed)
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+        )
 }
 
 /// Prompt before closing while a reply is running; persist bounds first.

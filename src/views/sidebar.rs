@@ -16,9 +16,7 @@ impl Workspace {
             .flex()
             .flex_col()
             .gap_2()
-            // Top strip: clears the floating traffic lights + toggle and drags
-            // the window (the app owns titlebar dragging).
-            .child(crate::window::titlebar_drag(div().id("sidebar-titlebar").h(px(28.))))
+            // Title row + search sit below the window's drag strip.
             .child(div().flex().items_center().gap_2().text_sm().font_bold().child(IconName::Bot).child("Rixl Code"))
             .child(
                 div()
@@ -107,18 +105,39 @@ impl Workspace {
             .test_support()
             .h_full()
             .relative()
+            .flex()
+            .flex_col()
             .bg(cx.theme().sidebar.opacity(0.6))
             .border_r_1()
             .border_color(cx.theme().sidebar_border)
+            // Top strip: drags the window (the app owns titlebar dragging) and
+            // hosts the sidebar toggle right of the traffic lights (~x 9-70).
+            // It lives outside `Sidebar` so it stays flush with the window top
+            // and lines up with the content pane's strip.
             .child(
-                Sidebar::new("sidebar")
-                    .w(px(self.sidebar_width))
-                    .collapsible(SidebarCollapsible::Offcanvas)
-                    .collapsed(collapsed)
-                    .header(header)
-                    .child(actions)
-                    .children(groups)
-                    .footer(footer),
+                crate::window::titlebar_drag(
+                    div()
+                        .id("sidebar-titlebar")
+                        .h(px(28.))
+                        .flex()
+                        .items_center()
+                        .pl(px(72.))
+                        .bg(cx.theme().sidebar)
+                        .child(crate::window::sidebar_toggle(collapsed, cx)),
+                )
+                .test_support(),
+            )
+            .child(
+                div().flex_1().min_h_0().child(
+                    Sidebar::new("sidebar")
+                        .w(px(self.sidebar_width))
+                        .collapsible(SidebarCollapsible::Offcanvas)
+                        .collapsed(collapsed)
+                        .header(header)
+                        .child(actions)
+                        .children(groups)
+                        .footer(footer),
+                ),
             )
             .when(!collapsed, |d| {
                 d.child(

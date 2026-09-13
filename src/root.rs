@@ -7,7 +7,7 @@ use crate::{
     ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleSidebar,
 };
 use gpui_kit::component::Root;
-use gpui_kit::component::sidebar::SidebarToggleButton;
+
 use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -166,10 +166,9 @@ impl Render for Workspace {
                     }
                 }),
             )
-            // The app draws its own drag strips (app_owns_titlebar_drag) so the
-            // toggle's clicks reach it instead of AppKit's drag region. The
-            // toggle is a fixed overlay right of the traffic lights, so it
-            // stays put and clickable whether the sidebar is shown or hidden.
+            // The app draws its own drag strips (app_owns_titlebar_drag); the
+            // sidebar toggle lives inline in those strips — in the sidebar's
+            // top strip while open, in the content pane's while collapsed.
             .child(
                 div()
                     .flex()
@@ -180,13 +179,7 @@ impl Render for Workspace {
                     .when(self.agents_panel_open, |d| d.child(self.render_agents_panel(window, cx)))
                     .when(self.changes_panel_open, |d| d.child(self.render_changes_panel(window, cx))),
             )
-            .child(
-                div().absolute().left(px(80.)).top(px(6.)).child(
-                    SidebarToggleButton::new()
-                        .collapsed(self.sidebar_collapsed)
-                        .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
-                ),
-            )
+
             // Codex-style settings screen — a full-window overlay, not a
             // sheet (a sheet can't host the nav rail + content pane).
             .when(self.settings_open, |d| d.child(self.settings_panel.clone()))

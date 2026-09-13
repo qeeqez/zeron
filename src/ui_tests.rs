@@ -44,16 +44,33 @@ fn sidebar_toggle_hides_and_restores() {
         // Sidebar starts expanded — its wrap element is present.
         assert!(window.find("sidebar-wrap").visible(), "sidebar should start visible");
 
-        // The floating toggle (right of the traffic lights) collapses it fully —
-        // Offcanvas removes it from layout rather than shrinking to an icon rail.
-        window.click("collapse", cx);
+        // Unified titlebar: the toggle sits inline in the sidebar's top strip,
+        // right of the traffic lights — not in the content pane's strip.
+        window.within("sidebar-titlebar").find("sidebar-toggle");
+        assert!(window.within("content-titlebar").try_find("sidebar-toggle").is_none());
+        let open_origin = window.find("sidebar-toggle").bounds().origin;
+
+        // Clicking the inline toggle collapses the sidebar fully — Offcanvas
+        // removes it from layout rather than shrinking to an icon rail.
+        window.click("sidebar-toggle", cx);
         window.draw(cx).clear(cx);
         assert!(window.try_find("sidebar-wrap").is_none(), "sidebar should hide completely");
 
-        // The toggle stays mounted and re-opens the sidebar.
-        window.click("collapse", cx);
+        // Collapsed: the toggle moves to the content pane's top strip, keeping
+        // the same spot right of the traffic lights.
+        window.within("content-titlebar").find("sidebar-toggle");
+        assert_eq!(
+            window.find("sidebar-toggle").bounds().origin,
+            open_origin,
+            "toggle must stay right of the traffic lights in both states"
+        );
+
+        // The toggle stays clickable in the collapsed strip and re-opens the
+        // sidebar.
+        window.click("sidebar-toggle", cx);
         window.draw(cx).clear(cx);
         assert!(window.find("sidebar-wrap").visible(), "sidebar should re-open");
+        window.within("sidebar-titlebar").find("sidebar-toggle");
     });
 }
 
