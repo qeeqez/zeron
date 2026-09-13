@@ -28,7 +28,8 @@ impl Workspace {
         let prompt = self.build_prompt(text);
         let chat = &mut self.chats[self.active];
         if chat.messages.is_empty() && chat.title == "New chat" {
-            chat.title = text.chars().take(40).collect::<String>().into();
+            let title = text.lines().next().unwrap_or("").chars().take(40).collect::<String>();
+            chat.title = title.into();
             window.set_window_title(&format!("{} — Rixl Code", chat.title));
         }
         let display = if chat.attachments.is_empty() {
