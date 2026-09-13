@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::time::SystemTime;
 
 use gpui_kit::*;
@@ -30,7 +31,7 @@ impl Workspace {
             chat.title = text.chars().take(40).collect::<String>().into();
             window.set_window_title(&format!("{} — Rixl Code", chat.title));
         }
-        chat.messages.push(ChatMessage {
+        Rc::make_mut(&mut chat.messages).push(ChatMessage {
             role: Role::User,
             kind: MessageKind::Text(text.into()),
             rating: None,
@@ -62,7 +63,7 @@ impl Workspace {
             return;
         }
         while matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant) {
-            chat.messages.pop();
+            Rc::make_mut(&mut chat.messages).pop();
         }
         chat.running = true;
         chat.failed_flag = false;
@@ -131,7 +132,8 @@ impl Workspace {
                 }
                 let chat = &mut self.chats[self.active];
                 let keep = 4.min(chat.messages.len());
-                chat.messages.drain(..chat.messages.len() - keep);
+                let drain_to = chat.messages.len() - keep;
+                Rc::make_mut(&mut chat.messages).drain(..drain_to);
                 self.recall_ix = None;
                 self.recall_saved = None;
                 let count = self.filtered_count(cx);
@@ -150,7 +152,7 @@ impl Workspace {
 
     /// Append a local assistant note (command feedback, not a backend reply).
     fn push_note(&mut self, text: String, cx: &mut Context<Self>) {
-        self.chats[self.active].messages.push(ChatMessage {
+        std::rc::Rc::make_mut(&mut self.chats[self.active].messages).push(ChatMessage {
             role: Role::Assistant,
             kind: MessageKind::Text(text.into()),
             rating: None,

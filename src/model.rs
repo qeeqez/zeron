@@ -69,11 +69,11 @@ pub enum Role {
 }
 
 pub struct Chat {
-    /// Stable identity — positions shift on delete, so reply tasks must
-    /// not capture indices.
+    /// Shared with the scroller's render closure — `Rc::make_mut` clones
+    /// only when a snapshot is still alive.
+    pub messages: std::rc::Rc<Vec<ChatMessage>>,
     pub id: u64,
     pub title: SharedString,
-    pub messages: Vec<ChatMessage>,
     pub running: bool,
     pub failed_flag: bool,
     pub pinned: bool,
@@ -94,7 +94,7 @@ impl Chat {
         Self {
             id,
             title: title.into(),
-            messages: Vec::new(),
+            messages: std::rc::Rc::new(Vec::new()),
             running: false,
             failed_flag: false,
             pinned: false,

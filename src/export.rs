@@ -10,7 +10,7 @@ impl Workspace {
     pub fn export_chat(&mut self, ix: usize, cx: &mut Context<Self>) {
         let Some(chat) = self.chats.get(ix) else { return };
         let mut out = format!("# {}\n\n", chat.title);
-        for msg in &chat.messages {
+        for msg in chat.messages.iter() {
             let role = match msg.role {
                 Role::User => "User",
                 Role::Assistant => "Assistant",

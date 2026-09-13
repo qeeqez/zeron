@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::time::{Duration, SystemTime};
 
 use gpui_kit::component::WindowExt;
@@ -66,7 +67,7 @@ impl Workspace {
         match ev {
             AgentEvent::TextDelta(text) => self.apply_text_delta(chat_id, &text, cx),
             AgentEvent::ToolCallStart { ix, name, detail } => {
-                chat.messages.push(ChatMessage {
+                Rc::make_mut(&mut chat.messages).push(ChatMessage {
                     role: Role::Assistant,
                     kind: MessageKind::Tool(ToolCall {
                         tool_ix: ix,
@@ -85,7 +86,10 @@ impl Workspace {
                 }
             },
             AgentEvent::ToolCallDelta { ix, output } => {
-                if let Some(m) = chat.messages.iter_mut().rev().find(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix))
+                if let Some(m) = Rc::make_mut(&mut chat.messages)
+                    .iter_mut()
+                    .rev()
+                    .find(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix))
                     && let MessageKind::Tool(t) = &mut m.kind
                 {
                     t.output = format!("{}{}", t.output, output).into();
@@ -93,14 +97,17 @@ impl Workspace {
             },
             AgentEvent::ToolCallEnd { ix, ok } => {
                 let status = if ok { ToolStatus::Done } else { ToolStatus::Failed };
-                if let Some(m) = chat.messages.iter_mut().rev().find(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix))
+                if let Some(m) = Rc::make_mut(&mut chat.messages)
+                    .iter_mut()
+                    .rev()
+                    .find(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix))
                     && let MessageKind::Tool(t) = &mut m.kind
                 {
                     t.status = status;
                 }
             },
             AgentEvent::Diff { path, added, removed, hunks } => {
-                chat.messages.push(ChatMessage {
+                Rc::make_mut(&mut chat.messages).push(ChatMessage {
                     role: Role::Assistant,
                     kind: MessageKind::Diff(crate::model::DiffCard { path, added, removed, hunks, expanded: false }),
                     rating: None,
@@ -119,13 +126,13 @@ impl Workspace {
                     .rposition(|m| m.role == Role::Assistant && matches!(m.kind, MessageKind::Text(_)))
                     .or_else(|| chat.messages.iter().rposition(|m| m.role == Role::Assistant));
                 if let Some(ix) = ix {
-                    chat.messages[ix].usage = Some(crate::model::Usage { input, output });
+                    Rc::make_mut(&mut chat.messages)[ix].usage = Some(crate::model::Usage { input, output });
                 }
             },
             AgentEvent::Done => {},
             AgentEvent::Error(msg) => {
                 chat.failed_flag = true;
-                chat.messages.push(ChatMessage {
+                Rc::make_mut(&mut chat.messages).push(ChatMessage {
                     role: Role::Assistant,
                     kind: MessageKind::Text(format!("**Error:** {msg}").into()),
                     rating: None,
@@ -156,7 +163,7 @@ impl Workspace {
         // send is the user's own text.
         let needs_new = !matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant && matches!(m.kind, MessageKind::Text(_)));
         if needs_new {
-            chat.messages.push(ChatMessage {
+            Rc::make_mut(&mut chat.messages).push(ChatMessage {
                 role: Role::Assistant,
                 kind: MessageKind::Text("".into()),
                 rating: None,
@@ -167,7 +174,7 @@ impl Workspace {
                 self.scroller.update(cx, |s, cx| s.append(1, cx));
             }
         }
-        let Some(last) = chat.messages.last_mut() else { return };
+        let Some(last) = Rc::make_mut(&mut chat.messages).last_mut() else { return };
         let MessageKind::Text(t) = &mut last.kind else { return };
         *t = format!("{t}{text}").into();
         if is_active {

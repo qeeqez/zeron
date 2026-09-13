@@ -54,7 +54,7 @@ impl Workspace {
     pub fn render_chat(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let chat = &self.chats[self.active];
         let empty = chat.messages.is_empty();
-        let messages: Rc<Vec<ChatMessage>> = Rc::new(chat.messages.clone());
+        let messages: Rc<Vec<ChatMessage>> = chat.messages.clone();
         let running = chat.running;
         let failed = chat.failed_flag;
         let title = chat.title.clone();

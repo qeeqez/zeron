@@ -11,7 +11,7 @@ use crate::workspace::Workspace;
 fn toggle_expanded(ws: Entity<Workspace>, ix: usize) -> impl Fn(&ClickEvent, &mut Window, &mut App) {
     move |_, _, cx| {
         ws.update(cx, |this, cx| {
-            let Some(msg) = this.chats[this.active].messages.get_mut(ix) else { return };
+            let Some(msg) = std::rc::Rc::make_mut(&mut this.chats[this.active].messages).get_mut(ix) else { return };
             match &mut msg.kind {
                 MessageKind::Tool(tool) => tool.expanded = !tool.expanded,
                 MessageKind::Diff(diff) => diff.expanded = !diff.expanded,

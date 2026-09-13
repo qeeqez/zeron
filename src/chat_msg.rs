@@ -1,5 +1,7 @@
 //! Per-message operations: rate, edit, recall, copy.
 
+use std::rc::Rc;
+
 use gpui_kit::*;
 
 use crate::model::{MessageKind, Role};
@@ -8,7 +10,7 @@ use crate::workspace::Workspace;
 impl Workspace {
     pub fn rate_message(&mut self, ix: usize, up: bool, cx: &mut Context<Self>) {
         let chat = &mut self.chats[self.active];
-        let Some(msg) = chat.messages.get_mut(ix) else { return };
+        let Some(msg) = Rc::make_mut(&mut chat.messages).get_mut(ix) else { return };
         msg.rating = if msg.rating == Some(up) { None } else { Some(up) };
         let pos = self.filtered_pos(ix, cx);
         self.scroller.update(cx, |s, cx| {
@@ -32,7 +34,7 @@ impl Workspace {
         }) else {
             return;
         };
-        chat.messages.truncate(ix);
+        Rc::make_mut(&mut chat.messages).truncate(ix);
         self.recall_ix = None;
         self.search_match_ix = 0;
         // Stash the in-progress composer text — recall_next past the newest

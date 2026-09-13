@@ -39,7 +39,7 @@ pub fn save_chats(chats: &[Chat]) {
         let stored = StoredChat {
             v: 1,
             title: chat.title.to_string(),
-            messages: chat.messages.clone(),
+            messages: (*chat.messages).clone(),
             pinned: chat.pinned,
             archived: chat.archived,
             draft: chat.draft.clone(),
@@ -100,7 +100,7 @@ pub fn load_chats(next_id: &mut u64) -> Vec<Chat> {
             }
             let mut chat = Chat::new(*next_id, stored.title);
             *next_id += 1;
-            chat.messages = stored.messages;
+            chat.messages = std::rc::Rc::new(stored.messages);
             chat.pinned = stored.pinned;
             chat.archived = stored.archived;
             chat.draft = stored.draft;

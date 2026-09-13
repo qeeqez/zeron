@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gpui_kit::*;
@@ -24,7 +25,7 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
     this.spawn_agent(AgentSpec { name: "explorer", lane: "rixl/explore", steps_total: 4 }, cx);
     this.spawn_agent(AgentSpec { name: "reviewer", lane: "rixl/review", steps_total: 3 }, cx);
     if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
-        chat.messages.push(ChatMessage {
+        Rc::make_mut(&mut chat.messages).push(ChatMessage {
             role: Role::Assistant,
             kind: MessageKind::Tool(ToolCall {
                 tool_ix: 0,
@@ -116,14 +117,14 @@ impl Workspace {
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.failed_flag = failed;
-        if let Some(last) = chat.messages.last_mut()
+        if let Some(last) = Rc::make_mut(&mut chat.messages).last_mut()
             && let MessageKind::Tool(tool) = &mut last.kind
         {
             tool.status = if failed { ToolStatus::Failed } else { ToolStatus::Done };
             tool.output = TOOL_OUTPUT.into();
         }
         if !failed {
-            chat.messages.push(ChatMessage {
+            Rc::make_mut(&mut chat.messages).push(ChatMessage {
                 role: Role::Assistant,
                 kind: MessageKind::Diff(DiffCard {
                     path: "src/main.rs".into(),
@@ -137,7 +138,7 @@ impl Workspace {
                 at: SystemTime::now(),
             });
         }
-        chat.messages.push(ChatMessage {
+        Rc::make_mut(&mut chat.messages).push(ChatMessage {
             role: Role::Assistant,
             kind: MessageKind::Text("".into()),
             rating: None,
@@ -161,7 +162,7 @@ impl Workspace {
     fn stream_chunk(&mut self, chat_id: u64, cx: &mut Context<Self>) {
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
-        let Some(last) = chat.messages.last_mut() else { return };
+        let Some(last) = Rc::make_mut(&mut chat.messages).last_mut() else { return };
         let MessageKind::Text(text) = &mut last.kind else { return };
         let full: &str = if chat.failed_flag { REPLY_FAIL } else { REPLY_OK };
         let next_len = (text.len() + full.len() / 12 + 1).min(full.len());
