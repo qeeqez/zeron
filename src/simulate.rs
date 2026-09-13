@@ -90,7 +90,6 @@ impl Workspace {
             return;
         };
         agent.steps_done = step;
-        agent.elapsed_secs += 1;
         agent.step = format!("step {step}").into();
         let tool = match step % 4 {
             1 => "read_file",

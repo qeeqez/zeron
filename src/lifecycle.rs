@@ -30,7 +30,14 @@ impl Workspace {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
-        if self.chats.iter().any(|c| c.running) {
+        let mut dirty = self.chats.iter().any(|c| c.running);
+        for agent in &mut self.agents {
+            if agent.status == crate::model::AgentStatus::Running {
+                agent.elapsed_secs += 1;
+                dirty = true;
+            }
+        }
+        if dirty {
             cx.notify();
         }
     }

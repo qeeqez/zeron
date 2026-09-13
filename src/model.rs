@@ -86,6 +86,9 @@ pub struct Chat {
     /// Backend child slot for the in-flight turn — lets stop/delete kill a
     /// hung process without waiting for the pump thread.
     pub child: Option<std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>>,
+    /// Agents-panel row tracking the in-flight turn — lets stop/finish
+    /// close the row without scanning by name.
+    pub run_agent: Option<u64>,
     pub draft: String,
     pub unread: bool,
     pub archived: bool,
@@ -105,6 +108,7 @@ impl Chat {
             started_at: None,
             reply_task: None,
             child: None,
+            run_agent: None,
             attachments: Vec::new(),
             archived: false,
             unread: false,

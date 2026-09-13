@@ -16,6 +16,7 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     let model = this.model.to_string();
     let mode = this.mode.to_string();
     let stream = this.backend.send(prompt, &model, &mode);
+    this.spawn_run_agent(crate::agents::RunAgentSpec { chat_id, name: this.backend.name(), lane: &model }, cx);
     // Share the child slot with the chat so stop/delete can kill a hung
     // process directly — dropping the stream only cancels once the pump
     // thread wakes on the next event.
@@ -63,6 +64,27 @@ impl Workspace {
         } else {
             String::new()
         };
+        // Log to the turn's agent row before borrowing the chat — the row
+        // lives on `self.agents`, a disjoint field, but the borrow checker
+        match &ev {
+            AgentEvent::ToolCallStart { name, detail, .. } => {
+                self.agent_log(chat_id, crate::agents::AgentLogEntry { line: format!("{name} {detail}"), count_step: true }, cx);
+            },
+            AgentEvent::Diff { path, added, removed, .. } => {
+                self.agent_log(
+                    chat_id,
+                    crate::agents::AgentLogEntry {
+                        line: format!("diff {path} +{added} -{removed}"),
+                        count_step: false,
+                    },
+                    cx,
+                );
+            },
+            AgentEvent::Error(msg) => {
+                self.agent_log(chat_id, crate::agents::AgentLogEntry { line: format!("error: {msg}"), count_step: false }, cx);
+            },
+            _ => {},
+        }
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         match ev {
             AgentEvent::TextStart => {
@@ -206,6 +228,8 @@ impl Workspace {
     /// Mark the reply finished. `failed_flag` survives so the retry banner
     /// stays visible until the next send/retry clears it.
     pub(crate) fn finish_reply(&mut self, chat_id: u64, cx: &mut Context<Self>) {
+        let ok = !self.chats.iter().any(|c| c.id == chat_id && c.failed_flag);
+        self.finish_run_agent(chat_id, ok, cx);
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.running = false;

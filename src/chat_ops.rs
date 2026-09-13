@@ -77,6 +77,12 @@ impl Workspace {
         }
         chat.running = false;
         chat.started_at = None;
+        if let Some(id) = chat.run_agent.take()
+            && let Some(agent) = self.agents.iter_mut().find(|a| a.id == id)
+        {
+            agent.status = crate::model::AgentStatus::Cancelled;
+            agent.step = "cancelled".into();
+        }
         self.search_match_ix = 0;
         cx.notify();
         self.save();
