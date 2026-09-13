@@ -42,8 +42,8 @@ pub fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
     }
 }
 
-/// Stable per-item key — codex's `item.id` string hashed to u32 so
-/// parallel tool calls route deltas to the right card.
+/// Stable per-item key — codex's `item.id` string hashed so parallel
+/// tool calls route deltas to the right card. Process-local only.
 fn item_ix(item: &serde_json::Value) -> usize {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
