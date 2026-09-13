@@ -82,6 +82,14 @@ impl Workspace {
             _ => {},
         })
         .detach();
+        // Cmd+Q / QuitApp bypasses the window close gate — save drafts here.
+        cx.on_app_quit(|this, cx| {
+            this.chats[this.active].draft = this.composer.read(cx).value().to_string();
+            this.save();
+            async {}
+        })
+        .detach();
+
         let settings = crate::persist::load_settings();
         let mut this = Self {
             chats: Vec::new(),
@@ -241,17 +249,6 @@ impl Workspace {
         self.save();
     }
 
-    pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
-        self.sidebar_collapsed = !self.sidebar_collapsed;
-        self.save_settings();
-        cx.notify();
-    }
-
-    pub fn toggle_agents_panel(&mut self, cx: &mut Context<Self>) {
-        self.agents_panel_open = !self.agents_panel_open;
-        cx.notify();
-    }
-
     /// Sidebar recency bucket: 0 pinned, 1 today, 2 last 7 days, 3 older.
     pub(crate) fn chat_bucket(&self, ix: usize) -> usize {
         let chat = &self.chats[ix];
@@ -276,8 +273,5 @@ impl Workspace {
             .collect();
         order.sort_by_key(|ix| (self.chat_bucket(*ix), std::cmp::Reverse(self.chats[*ix].created_at)));
         order
-    }
-    pub fn running_agents(&self) -> usize {
-        self.agents.iter().filter(|a| a.status == crate::model::AgentStatus::Running).count()
     }
 }

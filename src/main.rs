@@ -4,6 +4,7 @@ mod backend_parse;
 mod backend_run;
 mod chat_msg;
 mod chat_ops;
+mod export;
 mod files;
 mod model;
 mod palette;
