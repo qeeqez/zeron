@@ -159,6 +159,11 @@ fn palette_items() -> Vec<CommandItem> {
         CommandItem::new().label("Delete Chat").action(Box::new(crate::DeleteChat)),
         CommandItem::new().label("Toggle Sidebar").action(Box::new(crate::ToggleSidebar)),
         CommandItem::new().label("Toggle Agents Panel").action(Box::new(crate::ToggleAgents)),
+        CommandItem::new().label("Search in Chat").action(Box::new(crate::SearchChat)),
+        CommandItem::new().label("Copy Transcript").action(Box::new(crate::CopyTranscript)),
+        CommandItem::new().label("Open Settings").action(Box::new(crate::OpenSettings)),
+        CommandItem::new().label("Reveal Chats Folder").action(Box::new(crate::RevealChats)),
+        CommandItem::new().label("Keyboard Shortcuts").action(Box::new(crate::ShortcutsHelp)),
         CommandItem::new().label("Switch to Light Theme").action(Box::new(crate::ThemeLight)),
         CommandItem::new().label("Switch to Dark Theme").action(Box::new(crate::ThemeDark)),
     ]
