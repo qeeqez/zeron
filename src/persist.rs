@@ -140,6 +140,8 @@ pub struct Settings {
     pub sidebar_width: f32,
     pub sidebar_collapsed: bool,
     pub active_chat: usize,
+    /// Appearance: "system" | "light" | "dark".
+    pub theme: String,
 }
 
 impl Settings {
@@ -171,6 +173,7 @@ impl Default for Settings {
             sidebar_width: 255.0,
             sidebar_collapsed: false,
             active_chat: 0,
+            theme: "system".into(),
         }
     }
 }

@@ -163,7 +163,7 @@ impl Render for Workspace {
                     .flex()
                     .flex_1()
                     .min_h_0()
-                    .child(self.render_sidebar(window, cx))
+                    .when(!self.sidebar_collapsed, |d| d.child(self.render_sidebar(window, cx)))
                     .child(self.render_chat(window, cx))
                     .when(self.agents_panel_open, |d| d.child(self.render_agents_panel(window, cx))),
             )

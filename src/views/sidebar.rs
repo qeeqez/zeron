@@ -103,6 +103,7 @@ impl Workspace {
 
         div()
             .id("sidebar-wrap")
+            .test_support()
             .h_full()
             .relative()
             .bg(cx.theme().sidebar.opacity(0.6))

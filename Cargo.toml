@@ -17,6 +17,8 @@ ureq = { version = "3", features = ["json"] }
 # `gpui` is the published gpui-pre crate under its canonical name — the
 # `#[gpui_kit::test]` macro expands to `gpui::` paths, so it must resolve.
 gpui = { version = "0.3.1", package = "gpui-pre", features = ["test-support"] }
+# Headless UI testing: scoped queries, native input events, state snapshots.
+# Re-declared here to add test-support for test builds only (features union).
 gpui-kit = { version = "0.6", features = ["test-support"] }
 
 [profile.release]

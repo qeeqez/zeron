@@ -251,4 +251,3 @@ fn pump_stream(stream: crate::backend::ReplyStream, tx: std::sync::mpsc::Sender<
         }
     }
 }
-

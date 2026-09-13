@@ -25,6 +25,8 @@ mod persist;
 mod root;
 mod send;
 mod simulate;
+#[cfg(test)]
+mod ui_tests;
 mod views;
 mod window;
 mod workspace;

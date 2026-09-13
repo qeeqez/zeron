@@ -1,7 +1,6 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
@@ -106,13 +105,14 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
         .flex_col()
         .gap_3()
         .p_4()
-        .child(div().text_sm().child("Theme"))
+        .child(div().text_sm().child("Appearance"))
         .child(
             div()
                 .flex()
                 .gap_2()
-                .child(theme_button("Light", ThemeMode::Light))
-                .child(theme_button("Dark", ThemeMode::Dark)),
+                .child(theme_button("System", "system", &ws))
+                .child(theme_button("Light", "light", &ws))
+                .child(theme_button("Dark", "dark", &ws)),
         )
         .child(div().text_sm().pt_2().child("Notifications"))
         .child(toggle_row(("toggle-notify", "Notify on reply complete"), s.notify, ws.clone(), |this, _cx| {
@@ -247,8 +247,13 @@ fn toggle_row(
     )
 }
 
-fn theme_button(label: &'static str, mode: ThemeMode) -> impl IntoElement {
-    Button::new(SharedString::from(label)).outline().label(label).on_click(move |_, _, cx| {
-        Theme::change(mode, None, cx);
+fn theme_button(label: &'static str, mode: &'static str, ws: &Entity<Workspace>) -> impl IntoElement {
+    let ws = ws.clone();
+    Button::new(SharedString::from(label)).outline().label(label).on_click(move |_, window, cx| {
+        ws.update(cx, |this, cx| {
+            this.theme = mode.to_string();
+            this.save_settings();
+            this.apply_theme(window, cx);
+        });
     })
 }

@@ -46,6 +46,8 @@ pub struct Workspace {
     pub notify_on_done: bool,
     pub word_wrap: bool,
     pub font_size: u8,
+    /// Appearance: "system" | "light" | "dark". "system" follows the OS.
+    pub theme: String,
     /// Project-relative file paths for the @-mention picker.
     pub project_files: Vec<SharedString>,
 
@@ -155,6 +157,7 @@ impl Workspace {
             word_wrap: settings.word_wrap,
             backend: make_backend(&settings),
             font_size: settings.font_size.clamp(10, 24),
+            theme: settings.theme.clone(),
             project_files: Vec::new(),
             http_url: settings.http_url.clone(),
             http_key_env: settings.http_key_env.clone(),
@@ -167,8 +170,28 @@ impl Workspace {
             this.chats = loaded;
             this.active = settings.active_chat.min(this.chats.len().saturating_sub(1));
         }
+        this.apply_theme(window, cx);
+        // "system" follows the OS — re-resolve when the appearance flips.
+        let ws = cx.entity();
+        window
+            .observe_window_appearance(move |window, cx| {
+                ws.update(cx, |this, cx| this.apply_theme(window, cx));
+            })
+            .detach();
         this.start_background(cx);
         this
+    }
+
+    /// Resolve the configured appearance and apply it. "system" maps the OS
+    /// window appearance to a concrete mode; anything else is used as-is.
+    pub(crate) fn apply_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use gpui_kit::component::theme::{Theme, ThemeMode};
+        let mode = match self.theme.as_str() {
+            "light" => ThemeMode::Light,
+            "dark" => ThemeMode::Dark,
+            _ => ThemeMode::from(window.appearance()),
+        };
+        Theme::change(mode, Some(window), cx);
     }
 
     pub(crate) fn save(&mut self) {
@@ -220,6 +243,7 @@ impl Workspace {
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
             active_chat: self.active,
+            theme: self.theme.clone(),
         });
     }
 

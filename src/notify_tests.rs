@@ -82,8 +82,5 @@ fn silent_when_reply_finishes_focused(cx: &mut TestAppContext) {
     cx.update(|window, _| window.activate_window());
     cx.run_until_parked();
     send_reply(&workspace, cx);
-    assert!(
-        cx.delivered_system_notifications().is_empty(),
-        "focused window must not post a system notification"
-    );
+    assert!(cx.delivered_system_notifications().is_empty(), "focused window must not post a system notification");
 }
