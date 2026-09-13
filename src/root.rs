@@ -8,7 +8,7 @@ use crate::{
 };
 use gpui_kit::component::Root;
 
-use gpui_kit::component::theme::{Theme, ThemeMode};
+use gpui_kit::component::theme::{ActiveTheme, Theme, ThemeMode};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
@@ -166,9 +166,24 @@ impl Render for Workspace {
                     }
                 }),
             )
-            // The app draws its own drag strips (app_owns_titlebar_drag); the
-            // sidebar toggle lives inline in those strips — in the sidebar's
-            // top strip while open, in the content pane's while collapsed.
+            // One continuous top bar across the whole window: it drags the
+            // window (the app owns titlebar dragging) and hosts the sidebar
+            // toggle right of the traffic lights (~x 9-70). It renders in
+            // both sidebar states, so the toggle never moves.
+            .child(
+                crate::window::titlebar_drag(
+                    div()
+                        .id("top-bar")
+                        .h(px(28.))
+                        .w_full()
+                        .flex()
+                        .items_center()
+                        .pl(px(72.))
+                        .bg(cx.theme().sidebar)
+                        .child(crate::window::sidebar_toggle(self.sidebar_collapsed, cx)),
+                )
+                .test_support(),
+            )
             .child(
                 div()
                     .flex()

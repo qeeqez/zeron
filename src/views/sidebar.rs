@@ -110,23 +110,8 @@ impl Workspace {
             .bg(cx.theme().sidebar.opacity(0.6))
             .border_r_1()
             .border_color(cx.theme().sidebar_border)
-            // Top strip: drags the window (the app owns titlebar dragging) and
-            // hosts the sidebar toggle right of the traffic lights (~x 9-70).
-            // It lives outside `Sidebar` so it stays flush with the window top
-            // and lines up with the content pane's strip.
-            .child(
-                crate::window::titlebar_drag(
-                    div()
-                        .id("sidebar-titlebar")
-                        .h(px(28.))
-                        .flex()
-                        .items_center()
-                        .pl(px(72.))
-                        .bg(cx.theme().sidebar)
-                        .child(crate::window::sidebar_toggle(collapsed, cx)),
-                )
-                .test_support(),
-            )
+            // The shared top bar in `Workspace::render` covers the window's
+            // drag strip + sidebar toggle; the sidebar starts below it.
             .child(
                 div().flex_1().min_h_0().child(
                     Sidebar::new("sidebar")

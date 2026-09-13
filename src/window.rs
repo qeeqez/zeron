@@ -29,11 +29,11 @@ pub(crate) fn titlebar_drag(el: Stateful<Div>) -> Stateful<Div> {
         .on_double_click(|_, window, _| window.titlebar_double_click())
 }
 
-/// The sidebar toggle for the unified titlebar. It sits inline in a
-/// `titlebar_drag` strip — in the sidebar's top strip while the sidebar is
-/// open, in the content pane's while collapsed — always right of the traffic
-/// lights. The mousedown must stop here: the strip's own listener would
-/// otherwise arm a window move under the press and swallow the drag.
+/// The sidebar toggle for the unified top bar. It sits inline in the
+/// `titlebar_drag` strip in `Workspace::render`, right of the traffic
+/// lights — the same spot whether the sidebar is open or collapsed. The
+/// mousedown must stop here: the strip's own listener would otherwise arm a
+/// window move under the press and swallow the drag.
 pub(crate) fn sidebar_toggle(collapsed: bool, cx: &mut Context<Workspace>) -> impl IntoElement {
     div()
         .id("sidebar-toggle")

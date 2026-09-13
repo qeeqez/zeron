@@ -137,18 +137,8 @@ impl Workspace {
                 })),
         );
 
-        // Top strip of the content pane: a window-drag region that lines up
-        // with the sidebar's own strip. While the sidebar is collapsed it also
-        // hosts the toggle, padded right of the traffic lights (~x 9-70).
-        let top_strip = crate::window::titlebar_drag(
-            div()
-                .id("content-titlebar")
-                .h(px(28.))
-                .flex()
-                .items_center()
-                .when(self.sidebar_collapsed, |d| d.pl(px(72.)).child(crate::window::sidebar_toggle(true, cx))),
-        )
-        .test_support();
+        // The shared top bar in `Workspace::render` covers the window's drag
+        // strip + sidebar toggle; the content pane starts below it.
 
         div()
             .flex()
@@ -156,7 +146,6 @@ impl Workspace {
             .flex_1()
             .h_full()
             .bg(cx.theme().background)
-            .child(top_strip)
             .child(header)
             .when(self.chat_search_open, |d| {
                 d.child(
