@@ -165,3 +165,35 @@ pub fn load_settings() -> Settings {
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stored_chat_defaults_missing_fields() {
+        // Early v1 files lack pinned/archived/draft/created_at — they must
+        // parse with defaults instead of dropping the chat.
+        let json = r#"{"v":1,"title":"t","messages":[]}"#;
+        let s: StoredChat = serde_json::from_str(json).unwrap();
+        assert!(!s.pinned && !s.archived && s.draft.is_empty());
+    }
+
+    #[test]
+    fn settings_defaults_missing_fields() {
+        // A file with only `model` must not reset the rest.
+        let s: Settings = serde_json::from_str(r#"{"model":"gpt-5"}"#).unwrap();
+        assert_eq!(s.model, "gpt-5");
+        assert_eq!(s.font_size, 14);
+        assert!(s.notify_on_done);
+    }
+
+    #[test]
+    fn settings_roundtrip() {
+        let s = Settings::default();
+        let json = serde_json::to_string(&s).unwrap();
+        let back: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.model, s.model);
+        assert_eq!(back.font_size, s.font_size);
+    }
+}
