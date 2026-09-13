@@ -27,6 +27,7 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
         chat.messages.push(ChatMessage {
             role: Role::Assistant,
             kind: MessageKind::Tool(ToolCall {
+                tool_ix: 0,
                 name: "shell".into(),
                 detail: "cargo build --locked".into(),
                 output: "".into(),

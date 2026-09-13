@@ -69,6 +69,7 @@ impl Workspace {
                 chat.messages.push(ChatMessage {
                     role: Role::Assistant,
                     kind: MessageKind::Tool(ToolCall {
+                        tool_ix: ix,
                         name,
                         detail,
                         output: "".into(),
@@ -79,23 +80,20 @@ impl Workspace {
                     usage: None,
                     at: SystemTime::now(),
                 });
-                let _ = ix;
                 if crate::chat_ops::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
             },
             AgentEvent::ToolCallDelta { ix, output } => {
-                let _ = ix;
-                if let Some(m) = chat.messages.iter_mut().rev().find(|m| matches!(m.kind, MessageKind::Tool(_)))
+                if let Some(m) = chat.messages.iter_mut().rev().find(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix))
                     && let MessageKind::Tool(t) = &mut m.kind
                 {
                     t.output = format!("{}{}", t.output, output).into();
                 }
             },
             AgentEvent::ToolCallEnd { ix, ok } => {
-                let _ = ix;
                 let status = if ok { ToolStatus::Done } else { ToolStatus::Failed };
-                if let Some(m) = chat.messages.iter_mut().rev().find(|m| matches!(m.kind, MessageKind::Tool(_)))
+                if let Some(m) = chat.messages.iter_mut().rev().find(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix))
                     && let MessageKind::Tool(t) = &mut m.kind
                 {
                     t.status = status;

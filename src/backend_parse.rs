@@ -9,7 +9,7 @@ pub fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
     let Some(kind) = ev["type"].as_str() else { return vec![] };
     match kind {
         "item.started" if item["type"].as_str() == Some("command_execution") => vec![AgentEvent::ToolCallStart {
-            ix: 0,
+            ix: item_ix(item),
             name: "shell".into(),
             detail: item["command"].as_str().unwrap_or("").into(),
         }],
@@ -18,9 +18,9 @@ pub fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
                 let mut out = Vec::with_capacity(2);
                 let output = item["aggregated_output"].as_str().unwrap_or("");
                 if !output.is_empty() {
-                    out.push(AgentEvent::ToolCallDelta { ix: 0, output: output.into() });
+                    out.push(AgentEvent::ToolCallDelta { ix: item_ix(item), output: output.into() });
                 }
-                out.push(AgentEvent::ToolCallEnd { ix: 0, ok: item["exit_code"].as_i64() == Some(0) });
+                out.push(AgentEvent::ToolCallEnd { ix: item_ix(item), ok: item["exit_code"].as_i64() == Some(0) });
                 out
             },
             Some("agent_message") => vec![AgentEvent::TextDelta(item["text"].as_str().unwrap_or("").into())],
@@ -41,6 +41,15 @@ pub fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
     }
 }
 
+/// Stable per-item key — codex's `item.id` string hashed to u32 so
+/// parallel tool calls route deltas to the right card.
+fn item_ix(item: &serde_json::Value) -> usize {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    item["id"].as_str().unwrap_or("").hash(&mut h);
+    h.finish() as usize
+}
+
 /// Turn a completed `reasoning` item into a collapsible "thinking" card.
 /// `text` is a string on some codex versions, an array of {text:…} on others.
 fn reasoning_events(item: &serde_json::Value) -> Vec<AgentEvent> {
@@ -57,9 +66,13 @@ fn reasoning_events(item: &serde_json::Value) -> Vec<AgentEvent> {
         vec![]
     } else {
         vec![
-            AgentEvent::ToolCallStart { ix: 0, name: "thinking".into(), detail: "".into() },
-            AgentEvent::ToolCallDelta { ix: 0, output: text.into() },
-            AgentEvent::ToolCallEnd { ix: 0, ok: true },
+            AgentEvent::ToolCallStart {
+                ix: item_ix(item),
+                name: "thinking".into(),
+                detail: "".into(),
+            },
+            AgentEvent::ToolCallDelta { ix: item_ix(item), output: text.into() },
+            AgentEvent::ToolCallEnd { ix: item_ix(item), ok: true },
         ]
     }
 }

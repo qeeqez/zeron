@@ -14,6 +14,9 @@ pub enum ToolStatus {
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolCall {
+    /// Backend-assigned index — parallel tool calls interleave, so deltas
+    /// must match on this, not "last tool message".
+    pub tool_ix: usize,
     pub name: SharedString,
     pub detail: SharedString,
     pub output: SharedString,
