@@ -2,7 +2,7 @@ use gpui_kit::component::command::CommandState;
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::*;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use crate::model::{Agent, Chat};
 
@@ -139,15 +139,30 @@ impl Workspace {
         // order is oldest-first, so retain() hits the oldest first.
         const MAX_CHATS: usize = 50;
         if self.chats.len() > MAX_CHATS {
+            let dropped_before_active = self.retention_drops_before_active(MAX_CHATS);
             let mut drop_left = self.chats.len() - MAX_CHATS;
             self.chats.retain(|c| {
                 let drop = drop_left > 0 && !c.pinned;
                 drop_left -= usize::from(drop);
                 !drop
             });
-            self.active = self.active.min(self.chats.len().saturating_sub(1));
+            self.active = self.active.saturating_sub(dropped_before_active).min(self.chats.len().saturating_sub(1));
         }
         crate::persist::save_chats(&self.chats);
+    }
+
+    /// How many chats `retain` will drop before `self.active` — the first
+    /// `len - max` non-pinned chats go, so count those under the index.
+    fn retention_drops_before_active(&self, max: usize) -> usize {
+        let mut drop_left = self.chats.len() - max;
+        let mut dropped = 0usize;
+        for (ix, c) in self.chats.iter().enumerate() {
+            if drop_left > 0 && !c.pinned {
+                drop_left -= 1;
+                dropped += usize::from(ix < self.active);
+            }
+        }
+        dropped
     }
 
     pub(crate) fn save_settings(&self) {
@@ -247,31 +262,5 @@ impl Workspace {
         });
         cx.notify();
         self.save();
-    }
-
-    /// Sidebar recency bucket: 0 pinned, 1 today, 2 last 7 days, 3 older.
-    pub(crate) fn chat_bucket(&self, ix: usize) -> usize {
-        let chat = &self.chats[ix];
-        if chat.pinned {
-            return 0;
-        }
-        let day = Duration::from_secs(86_400);
-        match SystemTime::now().duration_since(chat.created_at) {
-            Ok(d) if d < day => 1,
-            Ok(d) if d < day * 7 => 2,
-            _ => 3,
-        }
-    }
-
-    /// Chat indices in sidebar display order — pinned first, then recency
-    /// buckets, newest first within each. Archived chats are excluded and
-    /// `query` filters by title. Cmd+1..9 resolves against this order so
-    /// the shortcut matches what the sidebar shows.
-    pub(crate) fn sidebar_order(&self, query: &str) -> Vec<usize> {
-        let mut order: Vec<usize> = (0..self.chats.len())
-            .filter(|ix| !self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(query)))
-            .collect();
-        order.sort_by_key(|ix| (self.chat_bucket(*ix), std::cmp::Reverse(self.chats[*ix].created_at)));
-        order
     }
 }

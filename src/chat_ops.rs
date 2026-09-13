@@ -239,3 +239,31 @@ impl Workspace {
         self.agents.iter().filter(|a| a.status == crate::model::AgentStatus::Running).count()
     }
 }
+
+impl Workspace {
+    /// Sidebar recency bucket: 0 pinned, 1 today, 2 last 7 days, 3 older.
+    pub(crate) fn chat_bucket(&self, ix: usize) -> usize {
+        let chat = &self.chats[ix];
+        if chat.pinned {
+            return 0;
+        }
+        let day = std::time::Duration::from_secs(86_400);
+        match std::time::SystemTime::now().duration_since(chat.created_at) {
+            Ok(d) if d < day => 1,
+            Ok(d) if d < day * 7 => 2,
+            _ => 3,
+        }
+    }
+
+    /// Chat indices in sidebar display order — pinned first, then recency
+    /// buckets, newest first within each. Archived chats are excluded and
+    /// `query` filters by title. Cmd+1..9 resolves against this order so
+    /// the shortcut matches what the sidebar shows.
+    pub(crate) fn sidebar_order(&self, query: &str) -> Vec<usize> {
+        let mut order: Vec<usize> = (0..self.chats.len())
+            .filter(|ix| !self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(query)))
+            .collect();
+        order.sort_by_key(|ix| (self.chat_bucket(*ix), std::cmp::Reverse(self.chats[*ix].created_at)));
+        order
+    }
+}
