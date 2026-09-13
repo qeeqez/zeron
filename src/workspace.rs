@@ -21,9 +21,6 @@ pub struct Workspace {
     pub changes: Vec<crate::git::FileChange>,
     pub sidebar_width: f32,
     pub resizing_sidebar: bool,
-    /// Settings-screen nav rail width + its in-progress drag flag.
-    pub settings_nav_width: f32,
-    pub resizing_settings_nav: bool,
     pub composer: Entity<TextareaState>,
     pub search: Entity<InputState>,
     pub scroller: Entity<MessageScrollerState>,
@@ -145,8 +142,6 @@ impl Workspace {
             next_agent_id: 0,
             next_chat_id: 0,
             resizing_sidebar: false,
-            settings_nav_width: settings.settings_nav_width.clamp(160.0, 400.0),
-            resizing_settings_nav: false,
             agents_panel_open: false,
             changes_panel_open: false,
             changes: Vec::new(),
@@ -264,7 +259,6 @@ impl Workspace {
             window_bounds: prev.window_bounds,
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
-            settings_nav_width: self.settings_nav_width,
             active_chat: self.active,
             theme: self.theme.clone(),
         });

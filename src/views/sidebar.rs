@@ -116,14 +116,25 @@ impl Workspace {
             .child(crate::window::titlebar_drag(div().id("sidebar-titlebar").h(px(crate::window::TOP_BAR_H)).w_full()).test_support())
             .child(
                 div().flex_1().min_h_0().child(
-                    Sidebar::new("sidebar")
-                        .w(px(self.sidebar_width))
-                        .collapsible(SidebarCollapsible::Offcanvas)
-                        .collapsed(collapsed)
-                        .header(header)
-                        .child(actions)
-                        .children(groups)
-                        .footer(footer),
+                    // One shared sidebar column: when settings is open it
+                    // shows the settings nav; otherwise the chat list.
+                    if self.settings_open {
+                        div()
+                            .w(px(self.sidebar_width))
+                            .h_full()
+                            .child(crate::views::settings_nav::settings_nav(&self.settings_panel, cx))
+                            .into_any_element()
+                    } else {
+                        Sidebar::new("sidebar")
+                            .w(px(self.sidebar_width))
+                            .collapsible(SidebarCollapsible::Offcanvas)
+                            .collapsed(collapsed)
+                            .header(header)
+                            .child(actions)
+                            .children(groups)
+                            .footer(footer)
+                            .into_any_element()
+                    },
                 ),
             )
             .when(!collapsed, |d| {

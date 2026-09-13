@@ -2,7 +2,7 @@ use crate::views::settings_nav::Section;
 use crate::workspace::Workspace;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -11,9 +11,9 @@ use gpui_kit::*;
 /// as a full-window overlay from `Workspace::render` (sheets/dialogs can't
 /// host a two-pane layout and weren't mounted anyway).
 pub struct SettingsPanel {
-    ws: Entity<Workspace>,
+    pub(crate) ws: Entity<Workspace>,
     pub(crate) section: Section,
-    search: Entity<InputState>,
+    pub(crate) search: Entity<InputState>,
     url_input: Entity<InputState>,
     key_input: Entity<InputState>,
 }
@@ -101,12 +101,11 @@ impl Render for SettingsPanel {
             url_input: self.url_input.clone(),
             key_input: self.key_input.clone(),
         };
-        let panel = cx.entity();
-        let query = self.search.read(cx).value().to_lowercase();
         let theme = cx.theme();
-        // Left edge sits at the main sidebar's right edge — the sidebar and
-        // the overlaid toggle stay visible and functional while settings is
-        // open, and the chat composer keeps focus so Esc still closes it.
+        // Left edge sits at the main sidebar's right edge — the sidebar (now
+        // showing the settings nav) and the overlaid toggle stay visible and
+        // functional while settings is open, and the chat composer keeps
+        // focus so Esc still closes it.
         let left = if s.sidebar_collapsed { 0. } else { s.sidebar_width };
         div()
             .id("settings-screen")
@@ -144,79 +143,11 @@ impl Render for SettingsPanel {
                 )
                 .test_support(),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .child(self.render_nav(&query, &panel, cx))
-                    .child(self.render_content(&view, cx)),
-            )
+            .child(self.render_content(&view, cx))
     }
 }
 
 impl SettingsPanel {
-    fn render_nav(&self, query: &str, panel: &Entity<SettingsPanel>, cx: &App) -> impl IntoElement {
-        let theme = cx.theme();
-        let width = self.ws.read(cx).settings_nav_width;
-        let ws = self.ws.clone();
-        let rail = div()
-            .id("settings-nav")
-            .w(px(width))
-            .h_full()
-            .flex_shrink_0()
-            .relative()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .p_3()
-            .bg(theme.sidebar)
-            .border_r_1()
-            .border_color(theme.sidebar_border)
-            .child(crate::views::settings_nav::back_row(&self.ws, cx))
-            .child(Input::new(&self.search).prefix(IconName::Search).appearance(true))
-            // Drag handle on the rail's right edge — same pattern as the main
-            // sidebar's `sidebar-resize`.
-            .child(
-                div()
-                    .id("settings-nav-resize")
-                    .test_support()
-                    .absolute()
-                    .top_0()
-                    .right_0()
-                    .bottom_0()
-                    .w(px(5.))
-                    .cursor_col_resize()
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        move |_, _, cx| {
-                            ws.update(cx, |this, cx| {
-                                this.resizing_settings_nav = true;
-                                cx.notify();
-                            });
-                        },
-                    ),
-            );
-        if query.is_empty() {
-            rail.children(Section::GROUPS.iter().map(|(name, sections)| {
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .pt_3()
-                    .child(div().px_2().pb_1().text_xs().text_color(theme.muted_foreground).child(*name))
-                    .children(sections.iter().map(|s| crate::views::settings_nav::nav_item(*s, *s == self.section, panel, cx)))
-            }))
-        } else {
-            rail.children(
-                Section::ALL
-                    .iter()
-                    .filter(|s| s.label().to_lowercase().contains(query))
-                    .map(|s| crate::views::settings_nav::nav_item(*s, *s == self.section, panel, cx)),
-            )
-        }
-    }
-
     fn render_content(&self, view: &crate::views::settings_sections::SettingsView, cx: &App) -> impl IntoElement {
         let theme = cx.theme();
         let ws = self.ws.clone();
