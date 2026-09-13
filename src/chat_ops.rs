@@ -135,18 +135,7 @@ impl Workspace {
         if !self.chat_search_open || query.is_empty() {
             return self.chats[self.active].messages.len();
         }
-        self.chats[self.active]
-            .messages
-            .iter()
-            .filter(|m| {
-                let text = match &m.kind {
-                    MessageKind::Text(t) => t.as_str(),
-                    MessageKind::Tool(t) => t.name.as_str(),
-                    MessageKind::Diff(d) => d.path.as_str(),
-                };
-                text.to_lowercase().contains(&query)
-            })
-            .count()
+        self.chats[self.active].messages.iter().filter(|m| msg_matches(m, &query)).count()
     }
 
     /// Whether a just-appended last message should grow the scroller count —
