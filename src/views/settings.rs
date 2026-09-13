@@ -72,9 +72,10 @@ pub fn settings_body(s: SettingsView, _cx: &mut App) -> impl IntoElement {
                         .on_click({
                             let ws = ws.clone();
                             move |_, _, cx| {
-                                ws.update(cx, |this, _cx| {
+                                ws.update(cx, |this, cx| {
                                     this.notify_on_done = !this.notify_on_done;
                                     this.save_settings();
+                                    cx.notify();
                                 });
                             }
                         }),
