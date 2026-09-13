@@ -13,14 +13,11 @@ Native macOS app in Rust on `gpui-kit` 0.6 (gpui-pre + gpui-component), Codex-de
 
 | File | Area |
 |---|---|
-| `sidebar.md` | Chat history sidebar: sections, search, context menus, collapse |
-| `chat-ui.md` | Message list, tool-call cards, diffs, streaming, markdown |
-| `composer.md` | Input box, attachments, model/mode pickers, slash commands |
 | `agents.md` | Subagent/task panels, parallel runs, worktree lanes |
 | `backend.md` | Real agent backend (replace simulation) |
 | `persistence.md` | Chat history on disk, resume sessions |
-| `settings.md` | Settings UI, theme switch, config |
-| `chrome.md` | Title bar, status bar, notifications, keyboard shortcuts |
+
+Completed areas live in `docs/done/`: `sidebar.md`, `chat-ui.md`, `composer.md`, `settings.md`, `chrome.md`, `gpui-shell.md`, `scaffold.md`.
 
 ## Conventions
 
