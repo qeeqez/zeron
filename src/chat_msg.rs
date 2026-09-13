@@ -34,7 +34,9 @@ impl Workspace {
         };
         chat.messages.truncate(ix);
         self.recall_ix = None;
-        self.recall_saved = None;
+        // Stash the in-progress composer text — recall_next past the newest
+        // restores it instead of clearing.
+        self.recall_saved = Some(self.composer.read(cx).value().to_string());
         self.composer.update(cx, |s, cx| {
             s.set_value(text, window, cx);
             s.focus(window, cx);
@@ -56,8 +58,9 @@ impl Workspace {
             return;
         };
         // Stash the in-progress composer text — recall_next past the newest
-        // restores it instead of clearing.
-        if self.recall_ix.is_none() {
+        // restores it instead of clearing. Kept if a stash already exists
+        // (e.g. edit_message saved one).
+        if self.recall_saved.is_none() {
             self.recall_saved = Some(self.composer.read(cx).value().to_string());
         }
         self.recall_ix = Some(0);
