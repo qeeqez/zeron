@@ -49,6 +49,11 @@ fn on_http_field(ctx: &FieldCtx, state: &Entity<InputState>, event: &InputEvent,
             Field::Url => this.http_url = value.clone(),
             Field::KeyEnv => this.http_key_env = value.clone(),
         }
+        // HttpBackend clones url/key_env at construction — rebuild it so
+        // the next send uses the edited values instead of the stale ones.
+        if this.backend.name() == "http" {
+            this.backend = std::sync::Arc::new(crate::backend::HttpBackend::new(this.http_url.clone(), this.http_key_env.clone()));
+        }
         this.save_settings();
     });
 }

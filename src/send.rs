@@ -102,12 +102,13 @@ impl Workspace {
         self.start_reply(&prompt, cx);
     }
 
-    /// Dispatch to the real backend or the simulator.
+    /// Dispatch to the real backend or the simulator. Only `sim` is fake —
+    /// every other backend (codex-cli, http) goes through `run_backend`.
     fn start_reply(&mut self, prompt: &str, cx: &mut Context<Self>) {
-        if matches!(self.backend.name(), "codex-cli") {
-            crate::backend_run::run_backend(self, prompt, cx);
-        } else {
+        if self.backend.name() == "sim" {
             crate::simulate::simulate_reply(self, cx);
+        } else {
+            crate::backend_run::run_backend(self, prompt, cx);
         }
     }
 

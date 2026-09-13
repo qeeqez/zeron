@@ -78,6 +78,8 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
     message = message.footer(MessageFooter::new().child(message_footer(mc, msg, ws, cx)));
     let ws_menu = ws.clone();
     div()
+        .id(("msg", ix))
+        .test_support()
         .group(SharedString::from(format!("msg-{ix}")))
         .child(message)
         .context_menu(move |menu, _window, _cx| {
@@ -114,4 +116,68 @@ fn render_text(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut A
             }
         })
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::test::TestWindowExt;
+    use gpui_kit::{TestAppContext, VisualTestContext};
+
+    use crate::model::Role;
+    use crate::workspace::Workspace;
+
+    /// Mount a `Workspace` in a headless window with `HOME` redirected to a
+    /// temp dir so settings/chats stay off the real profile.
+    fn mount(cx: &mut TestAppContext) -> (gpui_kit::Entity<Workspace>, &mut VisualTestContext) {
+        let dir = std::env::temp_dir().join(format!("rixlcode-msg-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        unsafe { std::env::set_var("HOME", &dir) };
+        cx.update(gpui_kit::init);
+        cx.add_window_view(Workspace::new)
+    }
+
+    /// Seed the active chat with a completed assistant turn.
+    fn seed_reply(ws: &gpui_kit::Entity<Workspace>, cx: &mut VisualTestContext) {
+        ws.update(cx, |this, cx| {
+            this.push_note("reply body".into(), cx);
+            this.chats[this.active].last_turn = Some(std::time::Duration::from_secs(7));
+        });
+    }
+
+    #[test]
+    fn assistant_actions_reveal_on_hover() {
+        let mut app = TestAppContext::single();
+        let (ws, cx) = mount(&mut app);
+        seed_reply(&ws, cx);
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            // Ghost icons exist but stay invisible until the row is hovered.
+            assert!(!window.find(("copy", 0usize)).visible(), "copy hidden before hover");
+            window.hover(("msg", 0usize), cx);
+            window.draw(cx).clear(cx);
+            for id in ["copy", "up", "down", "speak"] {
+                assert!(window.find((id, 0usize)).visible(), "{id} should reveal on hover");
+            }
+        });
+    }
+
+    #[test]
+    fn completed_turn_shows_duration_and_feedback_toggles() {
+        let mut app = TestAppContext::single();
+        let (ws, cx) = mount(&mut app);
+        seed_reply(&ws, cx);
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            assert!(window.find(("worked", 0usize)).visible(), "duration label should show");
+            window.hover(("msg", 0usize), cx);
+            window.draw(cx).clear(cx);
+            window.click(("up", 0usize), cx);
+            assert_eq!(ws.read(cx).chats[0].messages[0].rating, Some(true));
+            window.draw(cx).clear(cx);
+            window.click(("down", 0usize), cx);
+            assert_eq!(ws.read(cx).chats[0].messages[0].rating, Some(false));
+        });
+        // The seeded message is an assistant note — verify role for sanity.
+        app.read(|cx| assert!(matches!(ws.read(cx).chats[0].messages[0].role, Role::Assistant)));
+    }
 }

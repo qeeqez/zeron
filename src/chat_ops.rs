@@ -64,11 +64,17 @@ impl Workspace {
 }
 
 impl Workspace {
-    /// Stop the in-flight reply stream for the active chat. Kills the
-    /// backend child directly — a hung child would otherwise leak because
-    /// the pump thread only drops the stream when it wakes on an event.
+    /// Stop the in-flight reply stream for the active chat.
     pub fn stop_reply(&mut self, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[self.active];
+        let id = self.chats[self.active].id;
+        self.stop_chat_reply(id, cx);
+    }
+
+    /// Stop the in-flight reply for chat `id`. Kills the backend child
+    /// directly — a hung child would otherwise leak because the pump
+    /// thread only drops the stream when it wakes on an event.
+    pub(crate) fn stop_chat_reply(&mut self, chat_id: u64, cx: &mut Context<Self>) {
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         if let Some(slot) = chat.child.take() {
             crate::backend::kill_slot(&slot);
         }
@@ -87,7 +93,9 @@ impl Workspace {
         cx.notify();
         self.save();
     }
+}
 
+impl Workspace {
     /// Duplicate chat `ix` (title + messages) as a new chat and select it.
     pub fn duplicate_chat(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(src) = self.chats.get(ix) else { return };

@@ -137,8 +137,7 @@ impl Drop for Chat {
         }
     }
 }
-
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AgentStatus {
     Running,
     Done,

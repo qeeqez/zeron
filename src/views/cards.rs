@@ -142,6 +142,7 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
         .child(
             div()
                 .id(("copy", ix))
+                .test_support()
                 .cursor_pointer()
                 .invisible()
                 .group_hover(group.clone(), |style| style.visible())
@@ -158,6 +159,7 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
                 d.child(
                     div()
                         .id(("retry", ix))
+                        .test_support()
                         .cursor_pointer()
                         .invisible()
                         .group_hover(group.clone(), |style| style.visible())
@@ -170,6 +172,7 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
                 .child(
                     div()
                         .id(("regen", ix))
+                        .test_support()
                         .cursor_pointer()
                         .invisible()
                         .group_hover(group.clone(), |style| style.visible())
@@ -184,6 +187,7 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
             .child(
                 div()
                     .id(("up", ix))
+                    .test_support()
                     .cursor_pointer()
                     .invisible()
                     .group_hover(group.clone(), |style| style.visible())
@@ -196,6 +200,7 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
             .child(
                 div()
                     .id(("down", ix))
+                    .test_support()
                     .cursor_pointer()
                     .invisible()
                     .group_hover(group.clone(), |style| style.visible())
@@ -208,6 +213,7 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
             .child(
                 div()
                     .id(("speak", ix))
+                    .test_support()
                     .cursor_pointer()
                     .invisible()
                     .group_hover(group.clone(), |style| style.visible())
@@ -217,7 +223,16 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
                         ws_speak.update(cx, |this, _cx| this.speak_message(ix));
                     }),
             )
-            .when_some(mc.duration, |d, dur| d.child(div().text_xs().text_color(muted).child(format!("Worked for {}s", dur.as_secs()))))
+            .when_some(mc.duration, |d, dur| {
+                d.child(
+                    div()
+                        .id(("worked", ix))
+                        .test_support()
+                        .text_xs()
+                        .text_color(muted)
+                        .child(format!("Worked for {}s", dur.as_secs())),
+                )
+            })
         })
         .child(div().flex_1())
         .when_some(msg.usage, |d, u| d.child(div().text_xs().text_color(muted).child(format!("{} in · {} out", u.input, u.output))))

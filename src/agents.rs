@@ -7,6 +7,13 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     pub fn cancel_agent(&mut self, id: u64, cx: &mut Context<Self>) {
+        // Chat-run rows hold no handles — the task and child live on the
+        // Chat. Resolve the link and stop that reply so the backend
+        // process actually dies.
+        if let Some(chat_id) = self.chats.iter().find(|c| c.run_agent == Some(id)).map(|c| c.id) {
+            self.stop_chat_reply(chat_id, cx);
+            return;
+        }
         let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) else { return };
         if agent.status != AgentStatus::Running {
             return;
@@ -28,6 +35,19 @@ impl Workspace {
     }
 
     pub fn stop_all_agents(&mut self, cx: &mut Context<Self>) {
+        // Chat-run rows first — their handles live on the Chat.
+        let chat_ids: Vec<u64> = self
+            .chats
+            .iter()
+            .filter(|c| {
+                c.run_agent
+                    .is_some_and(|id| self.agents.iter().any(|a| a.id == id && a.status == AgentStatus::Running))
+            })
+            .map(|c| c.id)
+            .collect();
+        for id in chat_ids {
+            self.stop_chat_reply(id, cx);
+        }
         for agent in &mut self.agents {
             if agent.status != AgentStatus::Running {
                 continue;
@@ -96,8 +116,7 @@ impl Workspace {
                 Ok(ev) => ev,
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    agent.status = AgentStatus::Done;
-                    agent.step = "finished".into();
+                    close_disconnected(agent);
                     closed = true;
                     break;
                 },
@@ -191,15 +210,57 @@ pub(crate) struct AgentLogEntry {
 
 /// Map one backend event to (log line, counts-as-step, terminal status).
 /// Text deltas are skipped — the panel shows activity, not prose.
+/// A failed tool call is item-level, not turn-level: it logs but does not
+/// close the row — the turn may recover and continue.
 fn task_event_line(ev: &crate::backend::AgentEvent) -> (Option<String>, bool, Option<AgentStatus>) {
     use crate::backend::AgentEvent as E;
     match ev {
         E::ToolCallStart { name, detail, .. } => (Some(format!("{name} {detail}")), true, None),
-        E::ToolCallEnd { ok, .. } => (None, false, (!ok).then_some(AgentStatus::Failed)),
+        E::ToolCallEnd { ok, .. } => ((!ok).then(|| "tool call failed".to_string()), false, None),
         E::Diff { path, added, removed, .. } => (Some(format!("diff {path} +{added} -{removed}")), false, None),
         E::Usage { input, output } => (Some(format!("usage {input}→{output}")), false, None),
         E::Done => (None, false, Some(AgentStatus::Done)),
         E::Error(msg) => (Some(format!("error: {msg}")), false, Some(AgentStatus::Failed)),
         E::TextStart | E::TextDelta(_) | E::ToolCallDelta { .. } => (None, false, None),
+    }
+}
+
+/// Stream ended without a terminal event — mark the row Done, unless an
+/// earlier Error already closed it as Failed (a producer that errors then
+/// drops its sender lands here).
+fn close_disconnected(agent: &mut Agent) {
+    if agent.status == AgentStatus::Running {
+        agent.status = AgentStatus::Done;
+    }
+    agent.step = "finished".into();
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::model::{Agent, AgentStatus};
+
+    use super::{close_disconnected, task_event_line};
+
+    #[test]
+    fn failed_tool_call_is_not_terminal() {
+        let (line, is_step, terminal) = task_event_line(&crate::backend::AgentEvent::ToolCallEnd { ix: 0, ok: false });
+        assert!(line.is_some());
+        assert!(!is_step);
+        assert!(terminal.is_none());
+    }
+
+    #[test]
+    fn disconnect_preserves_failed_status() {
+        let mut agent = Agent::new(1, "t", "sim", 0);
+        agent.status = AgentStatus::Failed;
+        close_disconnected(&mut agent);
+        assert_eq!(agent.status, AgentStatus::Failed);
+    }
+
+    #[test]
+    fn disconnect_closes_running_as_done() {
+        let mut agent = Agent::new(1, "t", "sim", 0);
+        close_disconnected(&mut agent);
+        assert_eq!(agent.status, AgentStatus::Done);
     }
 }

@@ -70,15 +70,35 @@ fn run_http(turn: &HttpTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) {
             return;
         },
     };
-    let reader = std::io::BufReader::new(resp.into_body().into_reader());
-    for line in reader.lines().map_while(Result::ok) {
-        if turn.cancelled.load(std::sync::atomic::Ordering::Relaxed) {
-            return;
-        }
-        for e in crate::backend_parse::parse_codex_line(&line) {
-            if tx.send(e).is_err() {
+    // `lines()` blocks until data arrives, so a quiet server would ignore
+    // cancellation until the global timeout. Bridge lines through a
+    // channel and poll `cancelled` between recv windows instead — the
+    // reader thread exits on its own once the request finishes or times
+    // out (300s cap above).
+    let (line_tx, line_rx) = std::sync::mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        let reader = std::io::BufReader::new(resp.into_body().into_reader());
+        for line in reader.lines().map_while(Result::ok) {
+            if line_tx.send(line).is_err() {
                 return;
             }
         }
+    });
+    loop {
+        if turn.cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        match line_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+            Ok(line) if !emit_line(&line, tx) => return,
+            Ok(_) => {},
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+        }
     }
+}
+
+/// Parse one NDJSON line and forward its events. Returns false when the
+/// receiver is gone — the caller should stop the turn.
+fn emit_line(line: &str, tx: &std::sync::mpsc::Sender<AgentEvent>) -> bool {
+    crate::backend_parse::parse_codex_line(line).iter().all(|e| tx.send(e.clone()).is_ok())
 }
