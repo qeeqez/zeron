@@ -21,7 +21,7 @@ impl Workspace {
         });
         let composer = self.composer.clone();
         cx.spawn(async move |this, cx| {
-            let _ = this.update_in(cx, |_this, window, cx| focus_new_chat(&composer, window, cx));
+            let _ = this.update_in(cx, |_this, window, cx| crate::chat_search::focus_new_chat(&composer, window, cx));
         })
         .detach();
         cx.notify();
@@ -146,6 +146,78 @@ impl Workspace {
 }
 
 impl Workspace {
+    pub fn toggle_backend(&mut self, cx: &mut Context<Self>) {
+        self.backend = if matches!(self.backend.name(), "codex-cli") {
+            std::sync::Arc::new(crate::backend::SimBackend)
+        } else {
+            std::sync::Arc::new(crate::backend::CodexCliBackend::new())
+        };
+        self.save_settings();
+        cx.notify();
+    }
+
+    pub fn toggle_pin(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(chat) = self.chats.get_mut(index) {
+            chat.pinned = !chat.pinned;
+        }
+        cx.notify();
+        self.save();
+    }
+
+    pub fn delete_chat(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if self.chats.len() <= 1 || index >= self.chats.len() {
+            return;
+        }
+        let title = self.chats[index].title.clone();
+        let rx = window.prompt(
+            gpui_kit::PromptLevel::Warning,
+            &format!("Delete “{title}”?"),
+            Some("This cannot be undone."),
+            &[gpui_kit::PromptButton::ok("Delete"), gpui_kit::PromptButton::cancel("Cancel")],
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            if rx.await != Ok(0) {
+                return;
+            }
+            let _ = this.update_in(cx, |this, window, cx| this.delete_chat_now(index, window, cx));
+        })
+        .detach();
+    }
+
+    fn delete_chat_now(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        // Re-check: the prompt is async — chats may have shrunk meanwhile.
+        if self.chats.len() <= 1 || index >= self.chats.len() {
+            return;
+        }
+        let was_active = index == self.active;
+        // Chat::drop kills the child slot and cancels the reply task.
+        self.chats.remove(index);
+        if self.active >= self.chats.len() {
+            self.active = self.chats.len() - 1;
+        } else if index < self.active {
+            self.active -= 1;
+        }
+        self.recall_ix = None;
+        self.recall_saved = None;
+        if was_active {
+            // Composer still holds the deleted chat's draft — restore the
+            // newly-active chat's draft instead.
+            let draft = self.chats[self.active].draft.clone();
+            self.composer.update(cx, |s, cx| {
+                s.set_value(draft, window, cx);
+            });
+        }
+        let count = self.filtered_count(cx);
+        self.scroller.update(cx, |s, cx| {
+            s.reset(count, cx);
+        });
+        cx.notify();
+        self.save();
+    }
+}
+
+impl Workspace {
     /// Rough token estimate: chars/4 across the active chat's messages.
     pub fn token_estimate(&self) -> usize {
         self.chats[self.active]
@@ -201,41 +273,4 @@ impl Workspace {
     pub fn running_agents(&self) -> usize {
         self.agents.iter().filter(|a| a.status == crate::model::AgentStatus::Running).count()
     }
-}
-
-impl Workspace {
-    /// Sidebar recency bucket: 0 pinned, 1 today, 2 last 7 days, 3 older.
-    pub(crate) fn chat_bucket(&self, ix: usize) -> usize {
-        let chat = &self.chats[ix];
-        if chat.pinned {
-            return 0;
-        }
-        let day = std::time::Duration::from_secs(86_400);
-        match std::time::SystemTime::now().duration_since(chat.created_at) {
-            Ok(d) if d < day => 1,
-            Ok(d) if d < day * 7 => 2,
-            _ => 3,
-        }
-    }
-
-    /// Chat indices in sidebar display order — pinned first, then recency
-    /// buckets, newest first within each. Archived chats are excluded and
-    /// `query` filters by title. Cmd+1..9 resolves against this order so
-    /// the shortcut matches what the sidebar shows.
-    pub(crate) fn sidebar_order(&self, query: &str) -> Vec<usize> {
-        let mut order: Vec<usize> = (0..self.chats.len())
-            .filter(|ix| !self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(query)))
-            .collect();
-        order.sort_by_key(|ix| (self.chat_bucket(*ix), std::cmp::Reverse(self.chats[*ix].created_at)));
-        order
-    }
-}
-
-/// Focus the cleared composer and set the window title for a fresh chat.
-fn focus_new_chat(composer: &Entity<gpui_kit::component::input::TextareaState>, window: &mut Window, cx: &mut App) {
-    composer.update(cx, |s, cx| {
-        s.set_value("", window, cx);
-        s.focus(window, cx);
-    });
-    window.set_window_title("New chat — Rixl Code");
 }
