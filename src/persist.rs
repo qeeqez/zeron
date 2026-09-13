@@ -117,6 +117,9 @@ pub fn load_chats(next_id: &mut u64) -> Vec<Chat> {
 pub struct Settings {
     pub model: String,
     pub mode: String,
+    /// Agent-mode filesystem access: "read-only" | "workspace-write" |
+    /// "full-access" — see `crate::backend::AccessMode`.
+    pub access: String,
     pub notify_on_done: bool,
     pub word_wrap: bool,
     /// Backend selector: "codex-cli" | "sim" | "http". Migrated from the
@@ -156,6 +159,7 @@ impl Default for Settings {
         Self {
             model: "default".into(),
             mode: "Agent".into(),
+            access: "workspace-write".into(),
             notify_on_done: true,
             word_wrap: true,
             backend: "codex-cli".into(),
