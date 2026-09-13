@@ -213,6 +213,10 @@ fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (C
 pub(crate) fn kill_slot(slot: &parking_lot::Mutex<Option<std::process::Child>>) {
     if let Some(mut c) = slot.lock().take() {
         let _ = c.kill();
-        let _ = c.wait();
+        // Reap off-thread — a child in uninterruptible sleep would block
+        // the UI on wait().
+        std::thread::spawn(move || {
+            let _ = c.wait();
+        });
     }
 }
