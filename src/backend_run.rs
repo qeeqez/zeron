@@ -32,11 +32,13 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
                 },
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
             };
-            let done = matches!(e, AgentEvent::Done | AgentEvent::Error(_));
-            let _ = this.update(cx, |this, cx| this.apply_event(chat_id, e, cx));
-            if done {
+            // Only Done ends the turn — item-level errors are non-terminal
+            // (codex continues), and every other exit path closes the
+            // channel, which surfaces as Disconnected.
+            if matches!(e, AgentEvent::Done) {
                 break 'outer;
             }
+            let _ = this.update(cx, |this, cx| this.apply_event(chat_id, e, cx));
         }
         let _ = this.update_in(cx, |this, window, cx| {
             this.finish_reply(chat_id, cx);
