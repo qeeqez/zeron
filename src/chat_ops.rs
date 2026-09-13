@@ -182,7 +182,9 @@ impl Workspace {
         if !self.chat_search_open || query.is_empty() {
             return real_ix;
         }
-        self.chats[self.active].messages[..real_ix].iter().filter(|m| msg_matches(m, &query)).count()
+        // Clamp — a stale ix from a truncated chat would panic the slice.
+        let end = real_ix.min(self.chats[self.active].messages.len());
+        self.chats[self.active].messages[..end].iter().filter(|m| msg_matches(m, &query)).count()
     }
 }
 
