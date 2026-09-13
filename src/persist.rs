@@ -111,6 +111,7 @@ pub fn load_chats(next_id: &mut u64) -> Vec<Chat> {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub model: String,
     pub mode: String,
