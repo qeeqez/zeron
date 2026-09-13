@@ -30,10 +30,14 @@ pub struct ReplyStream {
     /// with the chat so stop/delete can kill a hung child directly —
     /// dropping the stream alone only cancels once the pump wakes.
     pub child: Option<std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>>,
+    /// Set on drop so the backend's retry loop can't spawn a fresh child
+    /// after cancellation.
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Drop for ReplyStream {
     fn drop(&mut self) {
+        self.cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
         if let Some(slot) = &self.child {
             kill_slot(slot);
         }
@@ -73,7 +77,11 @@ impl AgentBackend for SimBackend {
         ] {
             let _ = tx.send(e);
         }
-        ReplyStream { events, child: None }
+        ReplyStream {
+            events,
+            child: None,
+            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
     }
 }
 /// Backend that shells out to `codex exec --json`.
@@ -98,10 +106,15 @@ impl AgentBackend for CodexCliBackend {
             model: model.to_string(),
             mode: mode.to_string(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         });
         let thread_turn = turn.clone();
         std::thread::spawn(move || run_codex(&thread_turn, &tx));
-        ReplyStream { events: rx, child: Some(turn.slot.clone()) }
+        ReplyStream {
+            events: rx,
+            child: Some(turn.slot.clone()),
+            cancelled: turn.cancelled.clone(),
+        }
     }
 }
 /// Everything one codex turn needs — bundled so the spawn helpers stay
@@ -111,11 +124,18 @@ struct CodexTurn {
     model: String,
     mode: String,
     slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
+    /// Set when the UI drops the stream — checked before each retry so a
+    /// cancelled turn can't spawn a fresh child.
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 fn run_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) {
     let mut emitted = false;
     for attempt in 0..3u64 {
+        // A dropped stream set the flag — don't spawn a fresh child.
+        if turn.cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
         if attempt > 0 {
             std::thread::sleep(std::time::Duration::from_millis(400 * attempt));
         }
