@@ -60,7 +60,10 @@ impl Workspace {
             },
         });
         let composer_text = self.composer.read(cx).value().to_string();
-        let mention_open = composer_text.contains('@');
+        // @-mention only at a word boundary — "user@host" must not pop it.
+        let mention_open = composer_text
+            .char_indices()
+            .any(|(i, c)| c == '@' && composer_text[..i].chars().next_back().is_none_or(|p| p.is_whitespace()));
         let mention_query = composer_text.rsplit('@').next().unwrap_or("").to_lowercase();
         let mention_items: Vec<AnyElement> = self
             .project_files
