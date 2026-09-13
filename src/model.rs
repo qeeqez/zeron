@@ -170,3 +170,9 @@ impl Agent {
         }
     }
 }
+
+impl Drop for Agent {
+    fn drop(&mut self) {
+        drop(self.task.take()); // non-detached Task cancels on drop
+    }
+}
