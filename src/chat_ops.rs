@@ -50,10 +50,14 @@ impl Workspace {
 }
 
 impl Workspace {
-    /// Stop the in-flight reply stream for the active chat. Dropping the
-    /// task drops the ReplyStream, which kills the backend child process.
+    /// Stop the in-flight reply stream for the active chat. Kills the
+    /// backend child directly — a hung child would otherwise leak because
+    /// the pump thread only drops the stream when it wakes on an event.
     pub fn stop_reply(&mut self, cx: &mut Context<Self>) {
         let chat = &mut self.chats[self.active];
+        if let Some(slot) = chat.child.take() {
+            crate::backend::kill_slot(&slot);
+        }
         if let Some(task) = chat.reply_task.take() {
             drop(task); // non-detached Task cancels on drop
         }

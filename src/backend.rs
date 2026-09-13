@@ -26,8 +26,10 @@ pub enum AgentEvent {
 pub struct ReplyStream {
     /// Events as they arrive; `Err` on recv means the producer is gone.
     pub events: std::sync::mpsc::Receiver<AgentEvent>,
-    /// Per-turn child slot; `None` for backends without a process.
-    child: Option<std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>>,
+    /// Per-turn child slot; `None` for backends without a process. Shared
+    /// with the chat so stop/delete can kill a hung child directly —
+    /// dropping the stream alone only cancels once the pump wakes.
+    pub child: Option<std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>>,
 }
 
 impl Drop for ReplyStream {
@@ -188,7 +190,7 @@ fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (C
 }
 
 /// Kill and reap the child in the slot, if any.
-fn kill_slot(slot: &parking_lot::Mutex<Option<std::process::Child>>) {
+pub(crate) fn kill_slot(slot: &parking_lot::Mutex<Option<std::process::Child>>) {
     if let Some(mut c) = slot.lock().take() {
         let _ = c.kill();
         let _ = c.wait();

@@ -73,6 +73,9 @@ pub struct Chat {
     pub created_at: SystemTime,
     pub started_at: Option<Instant>,
     pub reply_task: Option<Task<()>>,
+    /// Backend child slot for the in-flight turn — lets stop/delete kill a
+    /// hung process without waiting for the pump thread.
+    pub child: Option<std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>>,
     pub draft: String,
     pub unread: bool,
     pub archived: bool,
@@ -90,11 +93,20 @@ impl Chat {
             pinned: false,
             created_at: SystemTime::now(),
             started_at: None,
-            draft: String::new(),
-            unread: false,
-            archived: false,
             reply_task: None,
+            child: None,
             attachments: Vec::new(),
+            archived: false,
+            unread: false,
+            draft: String::new(),
+        }
+    }
+}
+
+impl Drop for Chat {
+    fn drop(&mut self) {
+        if let Some(slot) = &self.child {
+            crate::backend::kill_slot(slot);
         }
     }
 }

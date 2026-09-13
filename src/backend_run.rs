@@ -15,6 +15,10 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     let model = this.model.to_string();
     let mode = this.mode.to_string();
     let stream = this.backend.send(prompt, &model, &mode);
+    // Share the child slot with the chat so stop/delete can kill a hung
+    // process directly — dropping the stream only cancels once the pump
+    // thread wakes on the next event.
+    let child = stream.child.clone();
     let (tx, rx) = std::sync::mpsc::channel::<AgentEvent>();
     std::thread::spawn(move || pump_stream(stream, tx));
 
@@ -41,6 +45,7 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     });
     if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
         chat.reply_task = Some(task);
+        chat.child = child;
     }
 }
 impl Workspace {
@@ -177,6 +182,7 @@ impl Workspace {
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.running = false;
         chat.started_at = None;
+        chat.child = None;
         if !is_active {
             chat.unread = true;
         }
