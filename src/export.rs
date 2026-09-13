@@ -43,15 +43,20 @@ impl Workspace {
         self.export_chat(ix, cx);
     }
 
-    /// Copy the active chat's text messages to the clipboard.
+    /// Copy the active chat's messages to the clipboard as markdown.
     pub fn copy_transcript(&mut self, cx: &mut Context<Self>) {
         let chat = &self.chats[self.active];
         let text = chat
             .messages
             .iter()
-            .filter_map(|m| match &m.kind {
-                MessageKind::Text(t) => Some(format!("{}: {}", if m.role == Role::User { "You" } else { "Rixl" }, t)),
-                _ => None,
+            .map(|m| {
+                let role = if m.role == Role::User { "You" } else { "Rixl" };
+                let body = match &m.kind {
+                    MessageKind::Text(t) => t.to_string(),
+                    MessageKind::Tool(t) => format!("`{} {}`\n```\n{}\n```", t.name, t.detail, t.output),
+                    MessageKind::Diff(d) => format!("`{}` +{} -{}\n```diff\n{}\n```", d.path, d.added, d.removed, d.hunks),
+                };
+                format!("{role}: {body}")
             })
             .collect::<Vec<_>>()
             .join("\n\n");
