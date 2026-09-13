@@ -1,9 +1,12 @@
+#![recursion_limit = "1024"]
+
 mod agents;
 mod backend;
 mod backend_parse;
 mod backend_run;
 mod chat_msg;
 mod chat_ops;
+mod chat_ops_tests;
 mod export;
 mod files;
 mod lifecycle;
