@@ -13,6 +13,7 @@ pub fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
             name: "shell".into(),
             detail: item["command"].as_str().unwrap_or("").into(),
         }],
+        "item.started" if item["type"].as_str() == Some("agent_message") => vec![AgentEvent::TextStart],
         "item.completed" => match item["type"].as_str() {
             Some("command_execution") => {
                 let mut out = Vec::with_capacity(2);

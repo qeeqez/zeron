@@ -3,6 +3,10 @@ use gpui_kit::SharedString;
 /// Events streamed from an agent backend into a chat.
 #[derive(Clone, Debug)]
 pub enum AgentEvent {
+    /// Start a fresh assistant text bubble — the next TextDelta appends
+    /// to it instead of the previous one. Emitted on `item.started` for
+    /// `agent_message` so consecutive messages don't merge.
+    TextStart,
     /// Incremental text for the in-flight assistant message.
     TextDelta(SharedString),
     /// A tool call started; `ix` is the message index it will occupy.

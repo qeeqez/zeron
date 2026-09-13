@@ -65,6 +65,18 @@ impl Workspace {
         };
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         match ev {
+            AgentEvent::TextStart => {
+                Rc::make_mut(&mut chat.messages).push(ChatMessage {
+                    role: Role::Assistant,
+                    kind: MessageKind::Text("".into()),
+                    rating: None,
+                    usage: None,
+                    at: SystemTime::now(),
+                });
+                if crate::chat_ops::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
+                    self.scroller.update(cx, |s, cx| s.append(1, cx));
+                }
+            },
             AgentEvent::TextDelta(text) => self.apply_text_delta(chat_id, &text, cx),
             AgentEvent::ToolCallStart { ix, name, detail } => {
                 Rc::make_mut(&mut chat.messages).push(ChatMessage {
