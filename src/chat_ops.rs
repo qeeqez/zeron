@@ -4,6 +4,9 @@ use crate::model::{Chat, MessageKind};
 use crate::workspace::Workspace;
 impl Workspace {
     pub fn new_chat(&mut self, cx: &mut Context<Self>) {
+        // Stash the current draft before switching — the composer text
+        // belongs to the outgoing chat.
+        self.chats[self.active].draft = self.composer.read(cx).value().to_string();
         let id = self.next_chat_id;
         self.next_chat_id += 1;
         self.chats.push(Chat::new(id, "New chat"));
@@ -14,10 +17,7 @@ impl Workspace {
         });
         let composer = self.composer.clone();
         cx.spawn(async move |this, cx| {
-            let _ = this.update_in(cx, |_this, window, cx| {
-                composer.update(cx, |s, cx| s.focus(window, cx));
-                window.set_window_title("Rixl Code — New chat");
-            });
+            let _ = this.update_in(cx, |_this, window, cx| focus_new_chat(&composer, window, cx));
         })
         .detach();
         cx.notify();
@@ -266,4 +266,13 @@ impl Workspace {
         order.sort_by_key(|ix| (self.chat_bucket(*ix), std::cmp::Reverse(self.chats[*ix].created_at)));
         order
     }
+}
+
+/// Focus the cleared composer and set the window title for a fresh chat.
+fn focus_new_chat(composer: &Entity<gpui_kit::component::input::TextareaState>, window: &mut Window, cx: &mut App) {
+    composer.update(cx, |s, cx| {
+        s.set_value("", window, cx);
+        s.focus(window, cx);
+    });
+    window.set_window_title("Rixl Code — New chat");
 }
