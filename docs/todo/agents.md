@@ -10,7 +10,5 @@ Codex-style task & subagent surfaces.
 - [x] Stop-all + Clear-finished in panel header
 - [x] Badge count on panel toggle when agents running
 - [x] Real subagent backend — panel rows track live backend turns (tool calls, diffs, errors)
+- [x] True parallel subagent lanes — task input at panel bottom spawns standalone backend turns
 
-## Todo
-
-- [ ] True parallel subagent lanes — one row per turn today; no fan-out

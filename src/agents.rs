@@ -14,6 +14,7 @@ impl Workspace {
         if let Some(task) = agent.task.take() {
             drop(task); // non-detached Task cancels on drop
         }
+        drop(agent.stream.take()); // dropping the stream kills the turn
         agent.status = AgentStatus::Cancelled;
         agent.step = "cancelled".into();
         cx.notify();
@@ -34,6 +35,7 @@ impl Workspace {
             if let Some(task) = agent.task.take() {
                 drop(task);
             }
+            drop(agent.stream.take());
             agent.status = AgentStatus::Cancelled;
             agent.step = "cancelled".into();
         }
@@ -42,6 +44,87 @@ impl Workspace {
 
     pub fn clear_finished_agents(&mut self, cx: &mut Context<Self>) {
         self.agents.retain(|a| a.status == AgentStatus::Running);
+        cx.notify();
+    }
+
+    /// Spawn a standalone background task: a real backend turn that
+    /// reports into the panel without tying up a chat. The agent owns the
+    /// stream; cancel/stop-all drop it to kill the turn.
+    pub fn spawn_task_agent(&mut self, prompt: String, cx: &mut Context<Self>) {
+        let prompt = prompt.trim().to_string();
+        if prompt.is_empty() {
+            return;
+        }
+        let id = self.next_agent_id;
+        self.next_agent_id += 1;
+        let name = if prompt.chars().count() > 24 {
+            format!("{}…", prompt.chars().take(24).collect::<String>())
+        } else {
+            prompt.clone()
+        };
+        let mut agent = Agent::new(id, name, self.backend.name(), 0);
+        agent.step = "running".into();
+        agent.log.push("[0s] task started".into());
+        let stream = self.backend.send(&prompt, self.model.as_ref(), self.mode.as_ref());
+        agent.stream = Some(stream);
+        self.agents.push(agent);
+        cx.notify();
+        let task = cx.spawn(async move |this, cx| {
+            // Poll the stream's channel; the pump inside the backend
+            // already runs on its own thread.
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_millis(30)).await;
+                let _ = this.update(cx, |this, cx| this.drain_task_agent(id, cx));
+            }
+        });
+        if let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) {
+            agent.task = Some(task);
+        }
+    }
+
+    /// Pull pending events off a task agent's stream into its log. When
+    /// the stream ends (Done/Error/disconnect) the row closes and the
+    /// polling task is dropped.
+    fn drain_task_agent(&mut self, id: u64, cx: &mut Context<Self>) {
+        let Some(agent) = self.agents.iter_mut().find(|a| a.id == id && a.status == AgentStatus::Running) else {
+            return;
+        };
+        let Some(stream) = &mut agent.stream else { return };
+        let mut closed = false;
+        loop {
+            let ev = match stream.events.try_recv() {
+                Ok(ev) => ev,
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    agent.status = AgentStatus::Done;
+                    agent.step = "finished".into();
+                    closed = true;
+                    break;
+                },
+            };
+            let (line, is_step, terminal) = task_event_line(&ev);
+            if is_step {
+                agent.steps_done += 1;
+                agent.steps_total = agent.steps_done;
+            }
+            match (line, is_step) {
+                (Some(line), true) => {
+                    agent.step = line.clone().into();
+                    agent.log.push(format!("[{}s] {line}", agent.elapsed_secs).into());
+                },
+                (Some(line), false) => agent.log.push(format!("[{}s] {line}", agent.elapsed_secs).into()),
+                (None, _) => {},
+            }
+            if let Some(status) = terminal {
+                agent.status = status;
+                agent.step = "finished".into();
+                closed = true;
+            }
+        }
+        if closed {
+            agent.stream = None;
+            agent.task = None; // drops this polling task at the next await
+        }
         cx.notify();
     }
     /// Open a panel row for a real backend turn. `steps_total` stays 0 —
@@ -104,4 +187,19 @@ pub(crate) struct RunAgentSpec<'a> {
 pub(crate) struct AgentLogEntry {
     pub line: String,
     pub count_step: bool,
+}
+
+/// Map one backend event to (log line, counts-as-step, terminal status).
+/// Text deltas are skipped — the panel shows activity, not prose.
+fn task_event_line(ev: &crate::backend::AgentEvent) -> (Option<String>, bool, Option<AgentStatus>) {
+    use crate::backend::AgentEvent as E;
+    match ev {
+        E::ToolCallStart { name, detail, .. } => (Some(format!("{name} {detail}")), true, None),
+        E::ToolCallEnd { ok, .. } => (None, false, (!ok).then_some(AgentStatus::Failed)),
+        E::Diff { path, added, removed, .. } => (Some(format!("diff {path} +{added} -{removed}")), false, None),
+        E::Usage { input, output } => (Some(format!("usage {input}→{output}")), false, None),
+        E::Done => (None, false, Some(AgentStatus::Done)),
+        E::Error(msg) => (Some(format!("error: {msg}")), false, Some(AgentStatus::Failed)),
+        E::TextStart | E::TextDelta(_) | E::ToolCallDelta { .. } => (None, false, None),
+    }
 }

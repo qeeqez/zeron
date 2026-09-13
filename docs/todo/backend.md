@@ -12,8 +12,8 @@ Replace the in-process simulation with a real agent backend.
 - [x] Retry with backoff on transport errors (3 attempts, 400/800ms, only when nothing emitted)
 - [x] HTTP transport — POST + NDJSON stream, bearer token from env var (`http_url`/`http_key_env` settings)
 - [x] Backend selector setting — `backend: "codex-cli"|"sim"|"http"`, migrated from `use_codex_cli`
+- [x] Settings UI for `http_url`/`http_key_env` — inputs in the settings sheet
 
 ## Todo
 
 - [ ] MCP transport — needs a JSON-RPC client; no crate pinned yet
-- [ ] Settings UI for `http_url`/`http_key_env` (settings.json only today)

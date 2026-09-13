@@ -65,8 +65,8 @@ impl Workspace {
 
     pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let ws = cx.entity();
-        window.open_sheet(cx, move |sheet, _window, cx| {
-            let panel = cx.new(|cx| crate::views::settings::SettingsPanel::new(ws.clone(), cx));
+        window.open_sheet(cx, move |sheet, window, cx| {
+            let panel = cx.new(|cx| crate::views::settings::SettingsPanel::new(ws.clone(), window, cx));
             sheet.title("Settings").child(panel)
         });
     }

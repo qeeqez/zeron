@@ -32,6 +32,8 @@ pub struct Workspace {
     /// cycle steps past the newest message.
     pub recall_saved: Option<String>,
     pub chat_search: Entity<InputState>,
+    /// Agents-panel task input — Enter spawns a standalone backend turn.
+    pub task_input: Entity<InputState>,
     pub chat_search_open: bool,
     pub search_match_ix: usize,
     /// One-shot bypass for the close prompt — `remove_window` re-fires
@@ -93,6 +95,15 @@ impl Workspace {
             _ => {},
         })
         .detach();
+        let task_input = cx.new(|cx| InputState::new(window, cx).placeholder("New task…"));
+        cx.subscribe_in(&task_input, window, |this, s, event: &InputEvent, window, cx| {
+            if matches!(event, InputEvent::PressEnter { .. }) {
+                let prompt = s.read(cx).value().to_string();
+                s.update(cx, |s, cx| s.set_value("", window, cx));
+                this.spawn_task_agent(prompt, cx);
+            }
+        })
+        .detach();
         // Cmd+Q / QuitApp bypasses the window close gate — save drafts here.
         cx.on_app_quit(|this, cx| {
             this.chats[this.active].draft = this.composer.read(cx).value().to_string();
@@ -120,6 +131,7 @@ impl Workspace {
             } else {
                 "default".into()
             },
+            task_input,
             mode: if ["Agent", "Plan", "Ask"].contains(&settings.mode.as_str()) {
                 settings.mode.clone().into()
             } else {

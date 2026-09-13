@@ -152,10 +152,14 @@ pub struct Agent {
     pub lane: SharedString,
     pub status: AgentStatus,
     pub step: SharedString,
+    pub task: Option<Task<()>>,
+    /// Live backend turn for task agents — dropping it cancels the turn.
+    /// `None` for simulated agents and chat-turn rows (those are owned by
+    /// the chat's reply_task/child).
+    pub stream: Option<crate::backend::ReplyStream>,
     pub steps_done: usize,
     pub steps_total: usize,
     pub elapsed_secs: u64,
-    pub task: Option<Task<()>>,
     pub log: Vec<SharedString>,
     pub expanded: bool,
 }
@@ -168,10 +172,11 @@ impl Agent {
             lane: lane.into(),
             status: AgentStatus::Running,
             step: "starting".into(),
+            task: None,
+            stream: None,
             steps_done: 0,
             steps_total,
             elapsed_secs: 0,
-            task: None,
             log: Vec::new(),
             expanded: false,
         }
@@ -181,5 +186,6 @@ impl Agent {
 impl Drop for Agent {
     fn drop(&mut self) {
         drop(self.task.take()); // non-detached Task cancels on drop
+        drop(self.stream.take()); // dropping the stream kills the turn
     }
 }

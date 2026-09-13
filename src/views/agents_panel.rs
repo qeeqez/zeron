@@ -86,6 +86,13 @@ impl Workspace {
                         .children(finished)
                     }),
             )
+            .child(
+                div()
+                    .p_2()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .child(gpui_kit::component::input::Input::new(&self.task_input).appearance(true)),
+            )
     }
 }
 
