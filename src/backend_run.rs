@@ -233,7 +233,7 @@ impl Workspace {
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.running = false;
-        chat.started_at = None;
+        chat.complete_turn();
         chat.child = None;
         if !is_active {
             chat.unread = true;

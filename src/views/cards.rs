@@ -118,10 +118,13 @@ pub fn render_diff(ix: usize, diff: &DiffCard, ws: Entity<Workspace>, cx: &mut A
 pub struct MsgCtx {
     pub ix: usize,
     pub is_last: bool,
+    /// Duration of the completed turn — set only on the last real message
+    /// once the turn is done; drives the "Worked for Ns" label.
+    pub duration: Option<std::time::Duration>,
 }
 
 pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> Div {
-    let MsgCtx { ix, is_last } = mc;
+    let MsgCtx { ix, is_last, .. } = mc;
     let role = msg.role;
     let rating = msg.rating;
     let ws_copy = ws.clone();
@@ -129,6 +132,7 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
     let ws_regen = ws.clone();
     let ws_up = ws.clone();
     let ws_down = ws.clone();
+    let ws_speak = ws.clone();
     let muted = hsla(0.0, 0.0, 0.55, 1.0);
     let group = SharedString::from(format!("msg-{ix}"));
     div()
@@ -201,6 +205,21 @@ pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx:
                         ws_down.update(cx, |this, cx| this.rate_message(ix, false, cx));
                     }),
             )
+            .child(
+                div()
+                    .id(("speak", ix))
+                    .cursor_pointer()
+                    .invisible()
+                    .group_hover(group.clone(), |style| style.visible())
+                    .text_color(muted)
+                    .child(IconName::Volume2)
+                    .on_click(move |_, _, cx| {
+                        ws_speak.update(cx, |this, _cx| this.speak_message(ix));
+                    }),
+            )
+            .when_some(mc.duration, |d, dur| {
+                d.child(div().text_xs().text_color(muted).child(format!("Worked for {}s", dur.as_secs())))
+            })
         })
         .child(div().flex_1())
         .when_some(msg.usage, |d, u| d.child(div().text_xs().text_color(muted).child(format!("{} in · {} out", u.input, u.output))))

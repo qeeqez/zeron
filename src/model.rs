@@ -82,6 +82,10 @@ pub struct Chat {
     pub pinned: bool,
     pub created_at: SystemTime,
     pub started_at: Option<Instant>,
+    /// Wall-clock duration of the last completed turn — drives the
+    /// "Worked for Ns" label under the final assistant message. Set by
+    /// `complete_turn`; not persisted.
+    pub last_turn: Option<std::time::Duration>,
     pub reply_task: Option<Task<()>>,
     /// Backend child slot for the in-flight turn — lets stop/delete kill a
     /// hung process without waiting for the pump thread.
@@ -106,6 +110,7 @@ impl Chat {
             pinned: false,
             created_at: SystemTime::now(),
             started_at: None,
+            last_turn: None,
             reply_task: None,
             child: None,
             run_agent: None,
@@ -114,6 +119,14 @@ impl Chat {
             unread: false,
             draft: String::new(),
         }
+    }
+
+    /// Record how long the just-finished turn took and clear `started_at`.
+    /// Callers: `finish_reply` (backend_run.rs), `finish_stream`
+    /// (simulate.rs), `stop_reply` (chat_ops.rs) — each replaces its
+    /// `chat.started_at = None` with this.
+    pub fn complete_turn(&mut self) {
+        self.last_turn = self.started_at.take().map(|t| t.elapsed());
     }
 }
 
@@ -187,5 +200,26 @@ impl Drop for Agent {
     fn drop(&mut self) {
         drop(self.task.take()); // non-detached Task cancels on drop
         drop(self.stream.take()); // dropping the stream kills the turn
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn complete_turn_records_duration() {
+        let mut chat = Chat::new(1, "t");
+        chat.started_at = Some(Instant::now() - std::time::Duration::from_secs(3));
+        chat.complete_turn();
+        assert!(chat.started_at.is_none());
+        assert!(chat.last_turn.is_some_and(|d| d.as_secs() >= 3));
+    }
+
+    #[test]
+    fn complete_turn_without_start_records_nothing() {
+        let mut chat = Chat::new(1, "t");
+        chat.complete_turn();
+        assert!(chat.last_turn.is_none());
     }
 }

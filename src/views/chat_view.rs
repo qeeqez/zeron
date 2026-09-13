@@ -57,6 +57,7 @@ impl Workspace {
         let messages: Rc<Vec<ChatMessage>> = chat.messages.clone();
         let running = chat.running;
         let failed = chat.failed_flag;
+        let last_turn = chat.last_turn;
         let title = chat.title.clone();
         let pinned = chat.pinned;
         let ws = cx.entity();
@@ -82,11 +83,13 @@ impl Workspace {
         let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, _window, cx| {
             let real_ix = filtered.as_ref().map_or(ix, |f| *f.get(ix).unwrap_or(&ix));
             // Last visible message — under a filter that's the last match,
-            // not the last real index.
             let is_last = filtered.as_ref().map_or(real_ix == msg_count - 1, |f| ix == f.len() - 1);
+            // The "Worked for Ns" label belongs to the final real message —
+            // under a search filter the last match is not the turn's end.
+            let duration = if !running && real_ix == msg_count - 1 { last_turn } else { None };
             messages
                 .get(real_ix)
-                .map(|msg| render_message(MsgCtx { ix: real_ix, is_last }, msg, &ws, cx))
+                .map(|msg| render_message(MsgCtx { ix: real_ix, is_last, duration }, msg, &ws, cx))
                 .unwrap_or_else(|| div().into_any_element())
         })
         .jump_button(true)

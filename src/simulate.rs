@@ -188,7 +188,7 @@ impl Workspace {
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.running = false;
         // failed_flag survives so the retry banner stays until next send.
-        chat.started_at = None;
+        chat.complete_turn();
         if !is_active {
             chat.unread = true;
         }

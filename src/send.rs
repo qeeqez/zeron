@@ -167,6 +167,9 @@ impl Workspace {
 
     /// Append a local assistant note (command feedback, not a backend reply).
     pub(crate) fn push_note(&mut self, text: String, cx: &mut Context<Self>) {
+        // Notes aren't turns — don't let them inherit the last turn's
+        // "Worked for Ns" label.
+        self.chats[self.active].last_turn = None;
         std::rc::Rc::make_mut(&mut self.chats[self.active].messages).push(ChatMessage {
             role: Role::Assistant,
             kind: MessageKind::Text(text.into()),

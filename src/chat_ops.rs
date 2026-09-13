@@ -76,7 +76,7 @@ impl Workspace {
             drop(task); // non-detached Task cancels on drop
         }
         chat.running = false;
-        chat.started_at = None;
+        chat.complete_turn();
         if let Some(id) = chat.run_agent.take()
             && let Some(agent) = self.agents.iter_mut().find(|a| a.id == id)
         {
