@@ -15,7 +15,7 @@ pub fn scan_project_files() -> Vec<SharedString> {
         for entry in entries.flatten() {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') || SKIP.contains(&name.as_str()) {
+            if SKIP.contains(&name.as_str()) {
                 continue;
             }
             if path.is_dir() {
