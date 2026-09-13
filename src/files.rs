@@ -8,7 +8,10 @@ pub fn scan_project_files() -> Vec<SharedString> {
     let mut out = Vec::new();
     let mut stack = vec![(root.clone(), 0usize)];
     while let Some((dir, depth)) = stack.pop() {
-        if depth > 4 || out.len() >= 500 {
+        if out.len() >= 500 {
+            break;
+        }
+        if depth > 4 {
             continue;
         }
         let Ok(entries) = std::fs::read_dir(&dir) else { continue };
