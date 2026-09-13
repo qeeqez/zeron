@@ -17,6 +17,9 @@ fn toggle_expanded(ws: Entity<Workspace>, ix: usize) -> impl Fn(&ClickEvent, &mu
                 MessageKind::Diff(diff) => diff.expanded = !diff.expanded,
                 MessageKind::Text(_) => {},
             }
+            // Height changed — the virtual scroller must re-measure or the
+            // expanded body renders clipped.
+            this.scroller.update(cx, |s, cx| s.remeasure_items(ix..ix + 1, cx));
             cx.notify();
         });
     }
