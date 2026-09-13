@@ -135,6 +135,7 @@ impl Workspace {
                 self.recall_saved = None;
                 let count = self.filtered_count(cx);
                 self.scroller.update(cx, |s, cx| s.reset(count, cx));
+                self.save();
                 self.push_note(format!("Compacted — kept the last {keep} messages."), cx);
             },
             "help" => {
