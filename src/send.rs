@@ -142,6 +142,7 @@ impl Workspace {
                 Rc::make_mut(&mut chat.messages).drain(..drain_to);
                 self.recall_ix = None;
                 self.recall_saved = None;
+                self.search_match_ix = 0;
                 let count = self.filtered_count(cx);
                 self.scroller.update(cx, |s, cx| s.reset(count, cx));
                 self.save();
