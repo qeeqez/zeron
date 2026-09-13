@@ -124,6 +124,9 @@ impl Workspace {
                 }
             },
             "compact" => {
+                if self.chats[self.active].running {
+                    self.stop_reply(cx);
+                }
                 let chat = &mut self.chats[self.active];
                 let keep = 4.min(chat.messages.len());
                 chat.messages.drain(..chat.messages.len() - keep);
