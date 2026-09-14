@@ -56,6 +56,8 @@ mod root;
 mod send;
 mod send_queue;
 #[cfg(test)]
+mod sidebar_resize_tests;
+#[cfg(test)]
 mod sidebar_ui_tests;
 mod simulate;
 #[cfg(test)]

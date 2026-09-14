@@ -16,6 +16,14 @@ impl Render for Workspace {
         let title = self.chats[self.active].title.clone();
         window.set_window_title(&format!("{title} — Rixl Code"));
         window.set_window_edited(!self.composer.read(cx).value().is_empty());
+        // Keep the sidebar's native vibrancy view in lockstep with the
+        // rendered sidebar: installed only while frosted + expanded, sized to
+        // sidebar_width so it tracks resize drags (no-op on headless windows).
+        crate::window::sync_sidebar_vibrancy(
+            window,
+            self.sidebar_width,
+            crate::window::sidebar_vibrancy_active(self.sidebar_frosted, self.sidebar_collapsed),
+        );
         let ws_new = cx.entity();
         let ws_del = cx.entity();
         let ws_side = cx.entity();
@@ -139,7 +147,8 @@ impl Render for Workspace {
             .flex_col()
             .on_mouse_move(cx.listener(|this, ev: &gpui_kit::MouseMoveEvent, _, cx| {
                 if this.resizing_sidebar && ev.dragging() {
-                    this.sidebar_width = f32::from(ev.position.x).clamp(180.0, 480.0);
+                    this.sidebar_width =
+                        f32::from(ev.position.x).clamp(crate::window::SIDEBAR_WIDTH_MIN, crate::window::SIDEBAR_WIDTH_MAX);
                     cx.notify();
                 }
             }))

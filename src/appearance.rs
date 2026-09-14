@@ -17,10 +17,10 @@ pub(crate) const CONTRAST_MAX: u16 = 200;
 /// Minimum foreground/background lightness separation the contrast floor
 /// guarantees — below this text stops being legible.
 pub(crate) const MIN_LEGIBLE_DELTA: f32 = 0.45;
-/// Alpha of the sidebar's translucent fill when frosted glass is on.
-/// High enough to read as frosted glass over the blurred window, low
-/// enough that the blur still shows through.
-pub(crate) const FROSTED_SIDEBAR_ALPHA: f32 = 0.7;
+/// Alpha of the sidebar's translucent fill when frosted glass is on. The
+/// native `Sidebar`-material vibrancy view (window.rs) supplies the actual
+/// blur; this tint keeps rows legible over it without hiding the frost.
+pub(crate) const FROSTED_SIDEBAR_ALPHA: f32 = 0.5;
 
 impl Workspace {
     /// Resolve the configured appearance and apply it. "system" maps the OS
@@ -115,22 +115,23 @@ impl Workspace {
 }
 
 /// The window's background appearance: `Blurred` while the frosted sidebar
-/// is on (the sidebar's translucent fill sits over the blur), `Opaque`
-/// otherwise. `open_workspace_window` uses this for `WindowOptions` so a
-/// window opened with frosting off never starts blurred.
+/// is on — it makes the window transparent so the sidebar's vibrancy view
+/// (window.rs) composites through — `Opaque` otherwise.
+/// `open_workspace_window` uses this for `WindowOptions` so a window opened
+/// with frosting off never starts blurred.
 pub(crate) fn window_background_appearance(frosted: bool) -> WindowBackgroundAppearance {
     if frosted { WindowBackgroundAppearance::Blurred } else { WindowBackgroundAppearance::Opaque }
 }
 
 /// The `Root` layer's background while the frosted sidebar is on: transparent,
-/// so the window's `Blurred` background shows through the sidebar region.
+/// so the sidebar's vibrancy view shows through the sidebar region.
 /// `None` restores the stock theme fill.
 pub(crate) fn frosted_root_background(frosted: bool) -> Option<Fill> {
     frosted.then(|| Fill::from(transparent_black()))
 }
 
-/// The sidebar column's fill: translucent over the blurred window when
-/// frosted (real vibrancy), the stock opaque color otherwise.
+/// The sidebar column's fill: translucent over the vibrancy view when
+/// frosted (real frosted glass), the stock opaque color otherwise.
 pub(crate) fn sidebar_fill(theme: &Theme, frosted: bool) -> Hsla {
     if frosted { theme.sidebar.opacity(FROSTED_SIDEBAR_ALPHA) } else { theme.sidebar }
 }

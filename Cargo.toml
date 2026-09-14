@@ -13,6 +13,16 @@ serde_json = "1"
 parking_lot = "0.12"
 ureq = { version = "3", features = ["json"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# Sidebar vibrancy: gpui-pre's Blurred window background is hardwired to
+# NSVisualEffectMaterial::Selection (the weakest material), so window.rs
+# installs its own NSVisualEffectView with the Sidebar material behind the
+# sidebar region. Versions match gpui-pre-macos so no duplicates build.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSView", "NSVisualEffectView", "NSGraphics", "NSResponder"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSGeometry"] }
+raw-window-handle = "0.6"
+
 [dev-dependencies]
 # `gpui` is the published gpui-pre crate under its canonical name — the
 # `#[gpui_kit::test]` macro expands to `gpui::` paths, so it must resolve.

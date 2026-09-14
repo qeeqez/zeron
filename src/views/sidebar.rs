@@ -126,9 +126,16 @@ impl Workspace {
                         // The component paints its own opaque `tokens.sidebar`
                         // — clear it so the wrap's fill (translucent when
                         // frosted) shows through.
+                        //
+                        // `collapsible(None)`, not `Offcanvas`: collapse is
+                        // handled by unmounting the sidebar in `render`, and
+                        // Offcanvas wraps the column in a 200ms width
+                        // transition that restarts on every mouse-move of a
+                        // resize drag — the edge chases the cursor and the
+                        // view reads as shifting left/right.
                         Sidebar::new("sidebar")
                             .w(px(self.sidebar_width))
-                            .collapsible(SidebarCollapsible::Offcanvas)
+                            .collapsible(SidebarCollapsible::None)
                             .collapsed(collapsed)
                             .bg(transparent_black())
                             .header(header)
@@ -143,8 +150,13 @@ impl Workspace {
                 d.child(
                     div()
                         .id("sidebar-resize")
+                        .test_support()
                         .absolute()
-                        .top_0()
+                        // Below the titlebar drag strip: the strip's top
+                        // TOP_BAR_H is a window-move zone, so the handle must
+                        // not cover it or a grab near the top would fight the
+                        // window drag.
+                        .top(px(crate::window::TOP_BAR_H))
                         .right_0()
                         .bottom_0()
                         .w(px(5.))

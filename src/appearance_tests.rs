@@ -221,6 +221,26 @@ fn sidebar_frosted_toggle_flips_rendering_mode() {
     });
 }
 
+#[test]
+fn sidebar_vibrancy_view_syncs_with_frosted_expanded_state() {
+    // The real frosted glass is a native NSVisualEffectView (Sidebar
+    // material) that window.rs installs behind the sidebar — gpui's own
+    // Blurred background uses the faint Selection material. The view must
+    // exist only while the sidebar is frosted AND mounted.
+    assert!(crate::window::sidebar_vibrancy_active(true, false));
+    assert!(!crate::window::sidebar_vibrancy_active(true, true), "collapsed unmounts the sidebar");
+    assert!(!crate::window::sidebar_vibrancy_active(false, false), "unfrosted removes the view");
+    assert!(!crate::window::sidebar_vibrancy_active(false, true));
+
+    // Headless windows have no native handle — sync must no-op, not panic.
+    let mut app = TestAppContext::single();
+    let (_ws, cx) = mount(&mut app);
+    cx.update(|window, _cx| {
+        crate::window::sync_sidebar_vibrancy(window, 255., true);
+        crate::window::sync_sidebar_vibrancy(window, 255., false);
+    });
+}
+
 /// Drive the contrast slider through `set_contrast` — the same path slider
 /// events take — and return the resulting theme colors. `ThemeColor` has no
 /// `PartialEq`, so callers compare `format!("{colors:?}")` snapshots.
