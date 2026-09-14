@@ -115,16 +115,17 @@ pub fn render_diff(ix: usize, diff: &DiffCard, ws: Entity<Workspace>, cx: &mut A
 }
 
 #[derive(Clone, Copy)]
-pub struct MsgCtx {
+pub struct MsgCtx<'a> {
     pub ix: usize,
     pub is_last: bool,
     /// Duration of the completed turn — set only on the last real message
     /// once the turn is done; drives the "Worked for Ns" label.
     pub duration: Option<std::time::Duration>,
+    pub msg: &'a ChatMessage,
 }
 
-pub fn message_footer(mc: MsgCtx, msg: &ChatMessage, ws: &Entity<Workspace>, cx: &mut App) -> Div {
-    let MsgCtx { ix, is_last, .. } = mc;
+pub fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, cx: &mut App) -> Div {
+    let MsgCtx { ix, is_last, msg, .. } = mc;
     let role = msg.role;
     let rating = msg.rating;
     let ws_copy = ws.clone();

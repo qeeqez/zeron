@@ -5,6 +5,7 @@ mod chat_view;
 mod composer;
 mod composer_helpers;
 mod empty;
+mod markdown;
 mod message;
 pub mod settings;
 pub mod settings_nav;

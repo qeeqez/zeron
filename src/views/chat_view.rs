@@ -80,7 +80,7 @@ impl Workspace {
         } else {
             Some((0..msg_count).filter(|&ix| crate::chat_search::msg_matches(&messages[ix], &query)).collect())
         };
-        let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, _window, cx| {
+        let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, window, cx| {
             let real_ix = filtered.as_ref().map_or(ix, |f| *f.get(ix).unwrap_or(&ix));
             // Last visible message — under a filter that's the last match,
             let is_last = filtered.as_ref().map_or(real_ix == msg_count - 1, |f| ix == f.len() - 1);
@@ -89,7 +89,7 @@ impl Workspace {
             let duration = if !running && real_ix == msg_count - 1 { last_turn } else { None };
             messages
                 .get(real_ix)
-                .map(|msg| render_message(MsgCtx { ix: real_ix, is_last, duration }, msg, &ws, cx))
+                .map(|msg| render_message(MsgCtx { ix: real_ix, is_last, duration, msg }, &ws, window, cx))
                 .unwrap_or_else(|| div().into_any_element())
         })
         .jump_button(true)
