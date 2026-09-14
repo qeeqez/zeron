@@ -19,8 +19,9 @@ impl Workspace {
         .detach();
         // Scan project files off the UI thread — a large tree would block
         // launch; the @-mention picker just stays empty until it lands.
+        let root = self.project.root().to_path_buf();
         cx.spawn(async move |this, cx| {
-            let files = cx.background_executor().spawn(async { crate::files::scan_project_files() }).await;
+            let files = cx.background_executor().spawn(async move { crate::files::scan_project_files(&root) }).await;
             let _ = this.update(cx, |this, cx| {
                 this.project_files = files;
                 cx.notify();

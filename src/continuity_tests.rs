@@ -1,6 +1,6 @@
-//! Headless UI tests for conversation continuity: chats saved to
-//! `~/.rixl/rixlcode/chats/` reappear when a new `Workspace` mounts, so a
-//! restart resumes prior conversations. Same `TestAppContext::single()`
+//! Headless UI tests for conversation continuity: chats saved to the
+//! project's store under `~/.rixl/rixlcode/projects/` reappear when a new
+//! `Workspace` mounts, so a restart resumes prior conversations. Same
 //! pattern as `ui_tests.rs` — `#[gpui_kit::test]` and a bare
 //! `use gpui_kit::*` crash the proc-macro on this nightly.
 
@@ -47,8 +47,9 @@ fn saved_chats_reopen_on_launch() {
         attachments: vec![],
         at: std::time::SystemTime::now(),
     }]);
-    crate::persist::save_chats(&[first, Chat::new(1, "second chat")]);
-    crate::persist::save_settings(&crate::persist::Settings { active_chat: 1, ..Default::default() });
+    let project = crate::project::Project::current();
+    crate::persist::save_chats(&project.chats_dir(), &[first, Chat::new(1, "second chat")]);
+    project.save_state(&crate::project::ProjectState { active_chat: 1 });
 
     let mut app = TestAppContext::single();
     let (ws, cx) = open_workspace(&mut app);

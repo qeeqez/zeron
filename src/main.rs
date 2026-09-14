@@ -30,6 +30,9 @@ mod notify_tests;
 mod palette;
 mod persist;
 mod persist_tests;
+mod project;
+#[cfg(test)]
+mod project_tests;
 mod root;
 mod send;
 mod simulate;

@@ -22,19 +22,19 @@ struct StoredChat {
     created_at: std::time::SystemTime,
 }
 
+/// Chats dir for the current project — kept for `RevealChats` in root.rs.
 pub(crate) fn chats_dir() -> PathBuf {
-    dirs_home().join(".rixl/rixlcode/chats")
+    crate::project::Project::current().chats_dir()
 }
 
-fn dirs_home() -> PathBuf {
+pub(crate) fn dirs_home() -> PathBuf {
     std::env::var("HOME").map_or_else(|_| PathBuf::from("/tmp"), PathBuf::from)
 }
 
-/// Save all chats to disk (atomic tmp+rename per file). Files for chats
+/// Save all chats to `dir` (atomic tmp+rename per file). Files for chats
 /// that no longer exist are removed so deletions survive restarts.
-pub fn save_chats(chats: &[Chat]) {
-    let dir = chats_dir();
-    let _ = fs::create_dir_all(&dir);
+pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
+    let _ = fs::create_dir_all(dir);
     for (ix, chat) in chats.iter().enumerate() {
         let stored = StoredChat {
             v: 1,
@@ -58,7 +58,7 @@ pub fn save_chats(chats: &[Chat]) {
         }
     }
     // Remove files beyond the live set — deleted chats must not resurrect.
-    if let Ok(entries) = fs::read_dir(&dir) {
+    if let Ok(entries) = fs::read_dir(dir) {
         for path in entries.flatten().map(|e| e.path()) {
             let stale = path
                 .file_stem()
@@ -73,13 +73,12 @@ pub fn save_chats(chats: &[Chat]) {
     }
 }
 
-/// Load chats from disk; returns empty vec on any error. Files are read in
+/// Load chats from `dir`; returns empty vec on any error. Files are read in
 /// numeric-name order — the same order `save_chats` wrote — so the persisted
 /// `active_chat` index still points at the same conversation. Each chat gets
 /// a fresh id from `next_id` so reply tasks can target chats stably.
-pub fn load_chats(next_id: &mut u64) -> Vec<Chat> {
-    let dir = chats_dir();
-    let Ok(entries) = fs::read_dir(&dir) else { return Vec::new() };
+pub fn load_chats(dir: &std::path::Path, next_id: &mut u64) -> Vec<Chat> {
+    let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
     let mut files: Vec<(usize, PathBuf)> = entries
         .filter_map(|e| {
             let path = e.ok()?.path();
@@ -149,6 +148,9 @@ pub struct Settings {
     pub window_bounds: Option<[f32; 4]>,
     pub sidebar_width: f32,
     pub sidebar_collapsed: bool,
+    /// Legacy field: per-project now (`projects/<id>/state.json`). Read for
+    /// migration, never written back.
+    #[serde(skip_serializing)]
     pub active_chat: usize,
     /// Appearance: "system" | "light" | "dark".
     pub theme: String,

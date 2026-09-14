@@ -1,0 +1,138 @@
+//! Unit tests for `project::Project` — store layout, per-project isolation,
+//! state round-trip and the legacy global-chats migration. Everything runs
+//! under temp dirs; `sandbox_home` redirects `dirs_home` so project stores
+//! never touch the real `~/.rixl/rixlcode`.
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use crate::model::Chat;
+    use crate::project::{Project, ProjectState};
+
+    /// Redirect `~` into a throwaway dir so project stores stay off the real
+    /// profile. nextest runs each test in its own process, so no other
+    /// thread can observe HOME mid-write.
+    fn sandbox_home() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("rixlcode-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        unsafe { std::env::set_var("HOME", &dir) };
+        dir
+    }
+
+    /// A fresh project root under the system temp dir; `leaf` is the
+    /// folder's own name so `Project::name` assertions stay meaningful.
+    fn temp_root(leaf: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("rixlcode-proj-{}", std::process::id())).join(leaf);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.canonicalize().unwrap()
+    }
+
+    #[test]
+    fn open_resolves_root_name_and_store() {
+        sandbox_home();
+        let root = temp_root("my app");
+        let project = Project::open(&root);
+        assert_eq!(project.root(), root.as_path());
+        assert_eq!(project.name(), "my app");
+        // Store dir lives under ~/.rixl/rixlcode/projects/ and is named
+        // after the folder — spaces slugged, hash suffix for uniqueness.
+        let id = project.dir().file_name().unwrap().to_str().unwrap();
+        assert!(id.starts_with("my-app-"), "store id should slug the folder name, got {id}");
+        assert!(project.dir().starts_with(crate::persist::dirs_home().join(".rixl/rixlcode/projects")));
+        assert_eq!(project.chats_dir(), project.dir().join("chats"));
+    }
+
+    #[test]
+    fn open_is_stable_and_collision_free() {
+        sandbox_home();
+        let a = temp_root("same");
+        let b = temp_root("nested").join("same");
+        std::fs::create_dir_all(&b).unwrap();
+        let b = b.canonicalize().unwrap();
+        // Same folder opened twice → same store; same-named folders in
+        // different parents → different stores.
+        assert_eq!(Project::open(&a).dir(), Project::open(&a).dir());
+        assert_ne!(Project::open(&a).dir(), Project::open(&b).dir());
+        // A file path opens its parent directory.
+        let file = a.join("README.md");
+        std::fs::write(&file, "hi").unwrap();
+        assert_eq!(Project::open(&file).root(), a.as_path());
+    }
+
+    #[test]
+    fn chats_are_isolated_per_project() {
+        sandbox_home();
+        let a = Project::open(temp_root("alpha"));
+        let b = Project::open(temp_root("beta"));
+        crate::persist::save_chats(&a.chats_dir(), &[Chat::new(0, "alpha chat")]);
+        crate::persist::save_chats(&b.chats_dir(), &[Chat::new(0, "beta chat"), Chat::new(1, "beta two")]);
+
+        let mut next_id = 0;
+        let a_chats = crate::persist::load_chats(&a.chats_dir(), &mut next_id);
+        let b_chats = crate::persist::load_chats(&b.chats_dir(), &mut next_id);
+        assert_eq!(a_chats.len(), 1);
+        assert_eq!(a_chats[0].title, "alpha chat");
+        assert_eq!(b_chats.len(), 2);
+        assert_eq!(b_chats[0].title, "beta chat");
+    }
+
+    #[test]
+    fn project_state_roundtrips() {
+        sandbox_home();
+        let project = Project::open(temp_root("stateful"));
+        assert_eq!(project.load_state().active_chat, 0, "missing state defaults to 0");
+        project.save_state(&ProjectState { active_chat: 3 });
+        assert_eq!(project.load_state().active_chat, 3);
+        // The marker makes the hash-named dir self-describing.
+        let marker: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(project.dir().join("project.json")).unwrap()).unwrap();
+        assert_eq!(marker["name"], "stateful");
+        assert_eq!(marker["root"], serde_json::to_value(project.root()).unwrap());
+    }
+
+    #[test]
+    fn legacy_chats_migrate_into_launch_project() {
+        let home = sandbox_home();
+        let legacy = home.join(".rixl/rixlcode/chats");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("0.json"), r#"{"v":1,"title":"old chat","messages":[]}"#).unwrap();
+        std::fs::write(legacy.join("1.json"), r#"{"v":1,"title":"older","messages":[]}"#).unwrap();
+
+        let project = Project::open(temp_root("migrated"));
+        project.migrate_legacy_chats(1);
+
+        let mut next_id = 0;
+        let chats = crate::persist::load_chats(&project.chats_dir(), &mut next_id);
+        assert_eq!(chats.len(), 2, "legacy chats must land in the project store");
+        assert_eq!(chats[0].title, "old chat");
+        assert_eq!(project.load_state().active_chat, 1, "legacy active_chat seeds project state");
+        assert!(!legacy.exists(), "emptied legacy dir is removed");
+    }
+
+    #[test]
+    fn migration_never_clobbers_existing_project_chats() {
+        let home = sandbox_home();
+        let legacy = home.join(".rixl/rixlcode/chats");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("0.json"), r#"{"v":1,"title":"legacy","messages":[]}"#).unwrap();
+
+        let project = Project::open(temp_root("occupied"));
+        crate::persist::save_chats(&project.chats_dir(), &[Chat::new(0, "already here")]);
+        project.migrate_legacy_chats(0);
+
+        let mut next_id = 0;
+        let chats = crate::persist::load_chats(&project.chats_dir(), &mut next_id);
+        assert_eq!(chats.len(), 1);
+        assert_eq!(chats[0].title, "already here", "existing project chats must win");
+        assert!(legacy.join("0.json").exists(), "unmigrated legacy file stays put");
+    }
+
+    #[test]
+    fn open_missing_path_falls_back_to_cwd() {
+        sandbox_home();
+        let project = Project::open(Path::new("/definitely/not/a/real/dir"));
+        assert_eq!(project.root(), std::env::current_dir().unwrap().as_path());
+    }
+}

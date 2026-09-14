@@ -58,6 +58,9 @@ pub struct Workspace {
     pub theme: String,
     /// Project-relative file paths for the @-mention picker.
     pub project_files: Vec<SharedString>,
+    /// The folder this window runs against — chats, @-mentions, git and
+    /// the backend all scope to it (see `crate::project`).
+    pub project: crate::project::Project,
 
     pub backend: std::sync::Arc<dyn crate::backend::AgentBackend>,
     /// HTTP transport config — kept on the workspace so `toggle_backend`
@@ -68,6 +71,9 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Resolve the project first — `enter` re-roots the process cwd so
+        // the backend, git and file scans all agree on the opened folder.
+        let project = crate::project::Project::launch();
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(1, 8)
@@ -127,6 +133,7 @@ impl Workspace {
         .detach();
 
         let settings = crate::persist::load_settings();
+        project.migrate_legacy_chats(settings.active_chat);
         // Built eagerly — creating it inside open_settings would re-enter the
         // workspace borrow (the click listener already holds it).
         let ws = cx.entity();
@@ -177,16 +184,17 @@ impl Workspace {
             font_size: settings.font_size.clamp(10, 24),
             theme: settings.theme.clone(),
             project_files: Vec::new(),
+            project,
             http_url: settings.http_url.clone(),
             http_key_env: settings.http_key_env.clone(),
         };
         crate::backend::set_access_mode(this.access);
-        let loaded = crate::persist::load_chats(&mut this.next_chat_id);
+        let loaded = crate::persist::load_chats(&this.project.chats_dir(), &mut this.next_chat_id);
         if loaded.is_empty() {
             this.new_chat(cx);
         } else {
             this.chats = loaded;
-            this.active = settings.active_chat.min(this.chats.len().saturating_sub(1));
+            this.active = this.project.load_state().active_chat.min(this.chats.len().saturating_sub(1));
         }
         this.apply_theme(window, cx);
         // "system" follows the OS — re-resolve when the appearance flips.
@@ -225,7 +233,8 @@ impl Workspace {
             });
             self.active = self.active.saturating_sub(dropped_before_active).min(self.chats.len().saturating_sub(1));
         }
-        crate::persist::save_chats(&self.chats);
+        crate::persist::save_chats(&self.project.chats_dir(), &self.chats);
+        self.project.save_state(&crate::project::ProjectState { active_chat: self.active });
     }
 
     /// How many chats `retain` will drop before `self.active` — the first
@@ -259,7 +268,7 @@ impl Workspace {
             window_bounds: prev.window_bounds,
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
-            active_chat: self.active,
+            active_chat: 0,
             theme: self.theme.clone(),
         });
     }

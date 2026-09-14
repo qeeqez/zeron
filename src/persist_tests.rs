@@ -10,14 +10,13 @@ mod tests {
     use crate::model::{Chat, ChatMessage, MessageKind, Role, ToolCall, ToolStatus, Usage};
     use crate::persist::{load_chats, save_chats};
 
-    /// Redirect persistence into a throwaway dir so tests never read or write
-    /// the real `~/.rixl/rixlcode` chats.
-    fn sandbox_home() {
-        let dir = std::env::temp_dir().join(format!("rixlcode-test-{}", std::process::id()));
+    /// A fresh throwaway chats dir per test — save/load take the dir
+    /// explicitly, so tests never touch the real `~/.rixl/rixlcode`.
+    fn temp_chats_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("rixlcode-test-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        // SAFETY: nextest runs each test in its own process, so no other
-        // thread can observe HOME mid-write.
-        unsafe { std::env::set_var("HOME", &dir) };
+        dir
     }
 
     fn msg(role: Role, kind: MessageKind) -> ChatMessage {
@@ -33,7 +32,7 @@ mod tests {
 
     #[test]
     fn messages_roundtrip_through_disk() {
-        sandbox_home();
+        let dir = temp_chats_dir("roundtrip");
         let mut chat = Chat::new(0, "saved chat");
         chat.messages = Rc::new(vec![
             ChatMessage {
@@ -57,10 +56,10 @@ mod tests {
                 ..msg(Role::Assistant, MessageKind::Text("done".into()))
             },
         ]);
-        save_chats(&[chat]);
+        save_chats(&dir, &[chat]);
 
         let mut next_id = 0;
-        let loaded = load_chats(&mut next_id);
+        let loaded = load_chats(&dir, &mut next_id);
         assert_eq!(loaded.len(), 1);
         let chat = &loaded[0];
         assert_eq!(chat.title, "saved chat");
@@ -79,7 +78,7 @@ mod tests {
 
     #[test]
     fn running_state_does_not_survive_reload() {
-        sandbox_home();
+        let dir = temp_chats_dir("running");
         // A chat saved mid-turn reopens idle: the turn's task and child died
         // with the process, so `running` and any in-flight tool call must not
         // resurrect.
@@ -99,10 +98,10 @@ mod tests {
                 }),
             ),
         ]);
-        save_chats(&[chat]);
+        save_chats(&dir, &[chat]);
 
         let mut next_id = 0;
-        let loaded = load_chats(&mut next_id);
+        let loaded = load_chats(&dir, &mut next_id);
         assert_eq!(loaded.len(), 1);
         assert!(!loaded[0].running, "a dead turn must not restore as running");
         assert!(
@@ -113,24 +112,22 @@ mod tests {
 
     #[test]
     fn deleted_chat_files_do_not_resurrect() {
-        sandbox_home();
-        save_chats(&[Chat::new(0, "a"), Chat::new(1, "b")]);
-        save_chats(&[Chat::new(0, "a")]);
+        let dir = temp_chats_dir("deleted");
+        save_chats(&dir, &[Chat::new(0, "a"), Chat::new(1, "b")]);
+        save_chats(&dir, &[Chat::new(0, "a")]);
         let mut next_id = 0;
-        let loaded = load_chats(&mut next_id);
+        let loaded = load_chats(&dir, &mut next_id);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].title, "a");
     }
 
     #[test]
     fn unknown_version_file_is_kept_as_bak() {
-        sandbox_home();
-        let dir = crate::persist::chats_dir();
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = temp_chats_dir("bak");
         let path = dir.join("0.json");
         std::fs::write(&path, r#"{"v":99,"title":"future","messages":[]}"#).unwrap();
         let mut next_id = 0;
-        assert!(load_chats(&mut next_id).is_empty());
+        assert!(load_chats(&dir, &mut next_id).is_empty());
         assert!(!path.exists());
         assert!(path.with_extension("json.bak").exists(), "unreadable file must be preserved");
     }
