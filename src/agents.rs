@@ -221,7 +221,7 @@ fn task_event_line(ev: &crate::backend::AgentEvent) -> (Option<String>, bool, Op
         E::Usage { input, output } => (Some(format!("usage {input}→{output}")), false, None),
         E::Done => (None, false, Some(AgentStatus::Done)),
         E::Error(msg) => (Some(format!("error: {msg}")), false, Some(AgentStatus::Failed)),
-        E::TextStart | E::TextDelta(_) | E::ToolCallDelta { .. } => (None, false, None),
+        E::TextStart | E::TextDelta(_) | E::ToolCallDelta { .. } | E::ToolCallSet { .. } => (None, false, None),
     }
 }
 

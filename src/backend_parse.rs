@@ -45,7 +45,7 @@ pub fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
 
 /// Stable per-item key — codex's `item.id` string hashed so parallel
 /// tool calls route deltas to the right card. Process-local only.
-fn item_ix(item: &serde_json::Value) -> usize {
+pub(crate) fn item_ix(item: &serde_json::Value) -> usize {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     item["id"].as_str().unwrap_or("").hash(&mut h);
@@ -81,7 +81,7 @@ fn reasoning_events(item: &serde_json::Value) -> Vec<AgentEvent> {
 
 /// Turn a completed `file_change` item into `Diff` cards by asking git for
 /// the working-tree diff of each touched path.
-fn file_change_events(item: &serde_json::Value) -> Vec<AgentEvent> {
+pub(crate) fn file_change_events(item: &serde_json::Value) -> Vec<AgentEvent> {
     if item["status"].as_str() != Some("completed") {
         return vec![];
     }

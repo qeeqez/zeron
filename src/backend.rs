@@ -1,7 +1,12 @@
 use gpui_kit::SharedString;
 
+mod appserver;
 mod codex;
 mod http;
+mod rpc;
+
+#[cfg(test)]
+mod appserver_tests;
 
 pub use codex::CodexCliBackend;
 pub use http::HttpBackend;
@@ -90,6 +95,9 @@ pub enum AgentEvent {
     ToolCallStart { ix: usize, name: SharedString, detail: SharedString },
     /// Streaming args/output for the tool call at `ix`.
     ToolCallDelta { ix: usize, output: SharedString },
+    /// Replace the tool call's output wholesale — for items whose updates
+    /// arrive as full snapshots (the turn plan checklist), not deltas.
+    ToolCallSet { ix: usize, output: SharedString },
     /// Tool call finished; `ok` flips status to Done/Failed.
     ToolCallEnd { ix: usize, ok: bool },
     /// A diff card to append.

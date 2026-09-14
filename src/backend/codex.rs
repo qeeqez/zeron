@@ -1,8 +1,18 @@
-//! `codex exec --json` transport: spawn, stream JSONL, retry, kill.
+//! `codex app-server` transport: spawn, NDJSON-RPC handshake, stream deltas.
+//!
+//! The real Codex desktop app talks to `codex app-server` over stdio
+//! JSON-RPC — unlike `codex exec --json`, it streams `agentMessage` and
+//! command-output deltas, so replies render token-by-token.
 
+use std::io::Write;
+
+use serde_json::{Value, json};
+
+use super::appserver::TurnDecoder;
+use super::rpc::{initialize_req, thread_start_req, turn_start_req};
 use super::{AgentBackend, AgentEvent, ReplyStream, kill_slot};
 
-/// Backend that shells out to `codex exec --json`.
+/// Backend that shells out to `codex app-server` (the desktop transport).
 pub struct CodexCliBackend;
 
 impl CodexCliBackend {
@@ -83,12 +93,21 @@ enum CodexOutcome {
     Failed(String),
 }
 
-/// One `codex exec` attempt: spawn, read JSONL until EOF, reap, classify.
-/// Returns the outcome plus whether any event was emitted.
+/// Handshake phase: which request id we're waiting on next.
+enum Phase {
+    Init,
+    Thread,
+    Turn,
+    Run,
+}
+
+/// One `codex app-server` attempt: spawn, handshake, stream notifications
+/// until `turn/completed` or EOF, reap, classify.
 fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (CodexOutcome, bool) {
     let mut cmd = std::process::Command::new("codex");
-    cmd.args(codex_args(turn))
+    cmd.arg("app-server")
         .current_dir(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")))
+        .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
@@ -97,6 +116,7 @@ fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (C
         Err(e) => return (CodexOutcome::Failed(format!("codex spawn: {e}")), false),
     };
     let stdout = child.stdout.take().expect("piped");
+    let mut stdin = child.stdin.take().expect("piped");
     // Drain stderr on a thread from spawn — a chatty child blocks on a
     // full pipe before stdout EOF, and we want the text on failure.
     let stderr = child.stderr.take().map(|mut s| {
@@ -107,23 +127,60 @@ fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (C
         })
     });
     *turn.slot.lock() = Some(child);
+
+    let send_req =
+        |stdin: &mut dyn Write, v: &Value| -> Result<(), String> { writeln!(stdin, "{v}").map_err(|e| format!("codex stdin: {e}")) };
+    if let Err(e) = send_req(&mut stdin, &initialize_req(1)) {
+        kill_slot(&turn.slot);
+        return (CodexOutcome::Failed(e), false);
+    }
+
     use std::io::BufRead;
     let reader = std::io::BufReader::new(stdout);
+    let mut decoder = TurnDecoder::new();
+    let mut phase = Phase::Init;
     let (mut done, mut emitted) = (false, false);
     for line in reader.lines().map_while(Result::ok) {
-        for e in crate::backend_parse::parse_codex_line(&line) {
-            done |= matches!(e, AgentEvent::Done);
+        // Responses to our handshake requests advance the phase machine.
+        if let Ok(msg) = serde_json::from_str::<Value>(&line)
+            && msg.get("method").is_none()
+            && msg.get("id").is_some()
+        {
+            match advance_phase(&mut phase, turn, &msg, &mut stdin) {
+                Ok(true) => {},
+                Ok(false) => continue,
+                Err(e) => {
+                    kill_slot(&turn.slot);
+                    return (CodexOutcome::Failed(e), emitted);
+                },
+            }
+            continue;
+        }
+        let decoded = decoder.line(&line);
+        if let Some(resp) = decoded.response {
+            // Server request (approval, elicitation): answer it so the
+            // turn can't hang waiting on a UI we don't have.
+            if send_req(&mut stdin, &resp).is_err() {
+                kill_slot(&turn.slot);
+                return (CodexOutcome::Dead, emitted);
+            }
+        }
+        done |= decoded.turn_over;
+        for e in decoded.events {
             emitted = true;
             if tx.send(e).is_err() {
                 kill_slot(&turn.slot);
                 return (CodexOutcome::Dead, emitted);
             }
         }
+        if done {
+            break;
+        }
     }
     if done {
         return (CodexOutcome::Done, emitted);
     }
-    // EOF without turn.completed: killed by cancel() or crashed.
+    // EOF without turn/completed: killed by cancel() or crashed.
     let Some(mut child) = turn.slot.lock().take() else { return (CodexOutcome::Cancelled, emitted) };
     let outcome = match child.wait() {
         Ok(s) if s.success() => CodexOutcome::Failed("codex exited without completing".into()),
@@ -140,17 +197,49 @@ fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (C
     (outcome, emitted)
 }
 
-/// The `codex exec` argv for one turn. Plan/Ask stay read-only no matter
-/// what the access setting says; Agent turns honor it — without this flag
-/// `codex exec` defaults to read-only and can never write files.
-fn codex_args(turn: &CodexTurn) -> Vec<&str> {
-    let mut args = vec!["exec", "--json", "--skip-git-repo-check"];
-    if turn.model != "default" {
-        args.extend(["-m", turn.model.as_str()]);
+/// Handle a response to one of our handshake requests: send the next
+/// request in the sequence. Returns Ok(true) when the line was consumed.
+fn advance_phase(phase: &mut Phase, turn: &CodexTurn, msg: &Value, stdin: &mut dyn Write) -> Result<bool, String> {
+    let id = msg["id"].as_i64().unwrap_or(-1);
+    if let Some(err) = msg.get("error") {
+        let m = err["message"].as_str().unwrap_or("request failed");
+        return Err(format!("codex: {m}"));
     }
-    args.extend(["-s", if turn.mode == "Agent" { turn.access.sandbox_arg() } else { "read-only" }]);
-    args.push(turn.prompt.as_str());
-    args
+    match (std::mem::replace(phase, Phase::Run), id) {
+        (Phase::Init, 1) => {
+            // `initialized` notification, then start an ephemeral thread.
+            writeln!(stdin, "{}", json!({"method": "initialized", "params": {}}))
+                .and_then(|()| writeln!(stdin, "{}", thread_start_req(2, &turn.model, sandbox_of(turn))))
+                .map_err(|e| format!("codex stdin: {e}"))?;
+            *phase = Phase::Thread;
+            Ok(true)
+        },
+        (Phase::Thread, 2) => {
+            let tid = msg["result"]["thread"]["id"].as_str().ok_or("codex: no thread id")?.to_string();
+            writeln!(stdin, "{}", turn_start_req(3, &tid, &turn.prompt)).map_err(|e| format!("codex stdin: {e}"))?;
+            *phase = Phase::Turn;
+            Ok(true)
+        },
+        (Phase::Turn, 3) => {
+            if msg["result"]["turn"]["id"].is_null() {
+                return Err("codex: no turn id".into());
+            }
+            *phase = Phase::Run;
+            Ok(true)
+        },
+        // Not a handshake response — restore the phase and let the
+        // decoder see the line.
+        (old, _) => {
+            *phase = old;
+            Ok(false)
+        },
+    }
+}
+
+/// Sandbox for `thread/start` — Agent honors the access setting, Plan/Ask
+/// stay read-only, mirroring the old `codex exec -s` mapping.
+fn sandbox_of(turn: &CodexTurn) -> &'static str {
+    if turn.mode == "Agent" { turn.access.sandbox_arg() } else { "read-only" }
 }
 
 #[cfg(test)]
@@ -170,23 +259,15 @@ mod tests {
         }
     }
 
-    /// The value passed to `-s`, and a check that it appears exactly once.
-    fn sandbox_of<'a>(args: &[&'a str]) -> Option<&'a str> {
-        assert_eq!(args.iter().filter(|a| **a == "-s").count(), 1);
-        args.windows(2).find(|w| w[0] == "-s").map(|w| w[1])
-    }
-
     #[test]
-    fn agent_mode_gets_write_capable_sandbox() {
-        // The bug this fixes: Agent sent no `-s` flag, so `codex exec`
-        // defaulted to read-only and file_change events never happened.
+    fn agent_mode_maps_access_to_sandbox() {
         let cases = [
             (AccessMode::ReadOnly, "read-only"),
             (AccessMode::WorkspaceWrite, "workspace-write"),
             (AccessMode::FullAccess, "danger-full-access"),
         ];
         for (access, want) in cases {
-            assert_eq!(sandbox_of(&codex_args(&turn("Agent", access))), Some(want));
+            assert_eq!(sandbox_of(&turn("Agent", access)), want);
         }
     }
 
@@ -194,18 +275,8 @@ mod tests {
     fn plan_and_ask_stay_read_only() {
         for mode in ["Plan", "Ask"] {
             for access in AccessMode::ALL {
-                assert_eq!(sandbox_of(&codex_args(&turn(mode, access))), Some("read-only"));
+                assert_eq!(sandbox_of(&turn(mode, access)), "read-only");
             }
         }
-    }
-
-    #[test]
-    fn model_flag_only_when_not_default() {
-        let mut t = turn("Agent", AccessMode::WorkspaceWrite);
-        assert!(!codex_args(&t).contains(&"-m"));
-        t.model = "gpt-5".into();
-        let args = codex_args(&t);
-        let ix = args.iter().position(|a| *a == "-m").unwrap();
-        assert_eq!(args[ix + 1], "gpt-5");
     }
 }

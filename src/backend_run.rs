@@ -131,6 +131,18 @@ impl Workspace {
                     self.scroller.update(cx, |s, cx| s.remeasure_items(sp..sp + 1, cx));
                 }
             },
+            AgentEvent::ToolCallSet { ix, output } => {
+                let pos = chat.messages.iter().rposition(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix));
+                if let Some(pos) = pos
+                    && let MessageKind::Tool(t) = &mut Rc::make_mut(&mut chat.messages)[pos].kind
+                {
+                    t.output = output;
+                }
+                if is_active && let Some(pos) = pos {
+                    let sp = self.filtered_pos(pos, cx);
+                    self.scroller.update(cx, |s, cx| s.remeasure_items(sp..sp + 1, cx));
+                }
+            },
             AgentEvent::ToolCallEnd { ix, ok } => {
                 let status = if ok { ToolStatus::Done } else { ToolStatus::Failed };
                 let pos = chat.messages.iter().rposition(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix));
