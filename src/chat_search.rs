@@ -63,6 +63,55 @@ impl Workspace {
         self.chats[self.active].messages[..end].iter().filter(|m| msg_matches(m, &query)).count()
     }
 }
+impl Workspace {
+    pub fn open_chat_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.chat_search_open = !self.chat_search_open;
+        self.search_match_ix = 0;
+        if self.chat_search_open {
+            let input = self.chat_search.clone();
+            window.defer(cx, move |window, cx| {
+                input.update(cx, |s, cx| s.focus(window, cx));
+            });
+        } else {
+            self.chat_search.update(cx, |s, cx| s.set_value("", window, cx));
+        }
+        let count = self.filtered_count(cx);
+        self.scroller.update(cx, |s, cx| s.reset(count, cx));
+        cx.notify();
+    }
+
+    /// Number of messages matching the chat-search query.
+    fn match_count(&self, cx: &App) -> usize {
+        let query = self.chat_search.read(cx).value().to_lowercase();
+        if query.is_empty() {
+            return 0;
+        }
+        self.chats[self.active]
+            .messages
+            .iter()
+            .filter(|m| msg_matches(m, &query))
+            .count()
+    }
+
+    /// Enter in chat search: jump to next match; Shift+Enter: previous.
+    /// `search_match_ix` is the position within the filtered list, which is
+    /// what the scroller indexes.
+    pub fn jump_to_match(&mut self, back: bool, cx: &mut Context<Self>) {
+        let matches = self.match_count(cx);
+        if matches == 0 {
+            return;
+        }
+        self.search_match_ix = if back {
+            self.search_match_ix.checked_sub(1).unwrap_or(matches - 1)
+        } else {
+            (self.search_match_ix + 1) % matches
+        };
+        self.scroller.update(cx, |s, cx| {
+            s.scroll_to_item(self.search_match_ix, cx);
+        });
+        cx.notify();
+    }
+}
 
 impl Workspace {
     /// Sidebar recency bucket: 0 pinned, 1 today, 2 last 7 days, 3 older.

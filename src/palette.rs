@@ -1,22 +1,40 @@
 use gpui_kit::component::WindowExt;
-use gpui_kit::component::command::{Command, CommandItem};
+use gpui_kit::component::command::Command;
+use gpui_kit::component::IndexPath;
 use gpui_kit::component::input::Input;
+use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::*;
 
+use crate::palette_items::Entry;
 use crate::workspace::Workspace;
 
 impl Workspace {
+    /// Cmd+K: fuzzy command palette — commands plus chat navigation, like
+    /// Codex's. Pressing it again (or with any dialog up) closes the dialog.
     pub fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if window.has_active_dialog(cx) {
+            window.close_dialog(cx);
+            return;
+        }
+        // Fresh query each open — the state entity persists across dialogs.
+        self.palette.update(cx, |state, cx| state.set_query("", window, cx));
+        // Snapshot chats now: the dialog builder runs while `render` holds
+        // the workspace lease, so it can't read `self` — it rebuilds groups
+        // from this snapshot + the live query on every render.
+        let chats = self.palette_chats();
+        let palette = self.palette.clone();
         let ws = cx.entity();
         window.open_dialog(cx, move |dialog, _window, cx| {
-            let palette = ws.read(cx).palette.clone();
-            dialog.close_button(false).overlay_closable(true).child(
-                Command::new(&palette)
-                    .placeholder("Type a command…")
-                    .items(palette_items())
-                    .on_cancel(|window, cx| window.close_dialog(cx)),
-            )
+            dialog
+                .close_button(false)
+                .overlay_closable(true)
+                .child(palette_command(&palette, &chats, &ws, cx))
         });
+        // The dialog focuses its own handle on open; the palette needs its
+        // query field focused so typing and ↑↓/Enter reach the Command
+        // context. Synchronous: it runs after open_dialog's focus, so the
+        // input wins; the node registers on the next draw.
+        self.palette.update(cx, |state, cx| state.focus(window, cx));
     }
 
     pub fn open_rename(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -75,22 +93,6 @@ impl Workspace {
         cx.notify();
     }
 
-    pub fn open_chat_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.chat_search_open = !self.chat_search_open;
-        self.search_match_ix = 0;
-        if self.chat_search_open {
-            let input = self.chat_search.clone();
-            window.defer(cx, move |window, cx| {
-                input.update(cx, |s, cx| s.focus(window, cx));
-            });
-        } else {
-            self.chat_search.update(cx, |s, cx| s.set_value("", window, cx));
-        }
-        let count = self.filtered_count(cx);
-        self.scroller.update(cx, |s, cx| s.reset(count, cx));
-        cx.notify();
-    }
-
     /// Esc: stop a running reply, close chat search, close the side panels.
     pub fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.chats[self.active].running {
@@ -116,38 +118,6 @@ impl Workspace {
         }
     }
 
-    /// Number of messages matching the chat-search query.
-    fn match_count(&self, cx: &App) -> usize {
-        let query = self.chat_search.read(cx).value().to_lowercase();
-        if query.is_empty() {
-            return 0;
-        }
-        self.chats[self.active]
-            .messages
-            .iter()
-            .filter(|m| crate::chat_search::msg_matches(m, &query))
-            .count()
-    }
-
-    /// Enter in chat search: jump to next match; Shift+Enter: previous.
-    /// `search_match_ix` is the position within the filtered list, which is
-    /// what the scroller indexes.
-    pub fn jump_to_match(&mut self, back: bool, cx: &mut Context<Self>) {
-        let matches = self.match_count(cx);
-        if matches == 0 {
-            return;
-        }
-        self.search_match_ix = if back {
-            self.search_match_ix.checked_sub(1).unwrap_or(matches - 1)
-        } else {
-            (self.search_match_ix + 1) % matches
-        };
-        self.scroller.update(cx, |s, cx| {
-            s.scroll_to_item(self.search_match_ix, cx);
-        });
-        cx.notify();
-    }
-
     /// Cmd-/: keyboard shortcut cheat sheet.
     pub fn shortcuts_help(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         window.open_sheet(cx, |sheet, _window, _cx| {
@@ -170,18 +140,84 @@ fn cancel_rename(ws: &Entity<Workspace>, cx: &mut App) -> bool {
     true
 }
 
-fn palette_items() -> Vec<CommandItem> {
-    vec![
-        CommandItem::new().label("New Chat").action(Box::new(crate::NewChat)),
-        CommandItem::new().label("Delete Chat").action(Box::new(crate::DeleteChat)),
-        CommandItem::new().label("Toggle Sidebar").action(Box::new(crate::ToggleSidebar)),
-        CommandItem::new().label("Toggle Agents Panel").action(Box::new(crate::ToggleAgents)),
-        CommandItem::new().label("Search in Chat").action(Box::new(crate::SearchChat)),
-        CommandItem::new().label("Copy Transcript").action(Box::new(crate::CopyTranscript)),
-        CommandItem::new().label("Open Settings").action(Box::new(crate::OpenSettings)),
-        CommandItem::new().label("Reveal Chats Folder").action(Box::new(crate::RevealChats)),
-        CommandItem::new().label("Keyboard Shortcuts").action(Box::new(crate::ShortcutsHelp)),
-        CommandItem::new().label("Switch to Light Theme").action(Box::new(crate::ThemeLight)),
-        CommandItem::new().label("Switch to Dark Theme").action(Box::new(crate::ThemeDark)),
-    ]
+/// The palette's `Command` element, rebuilt by the dialog layer on every
+/// workspace render — `on_query` notifies the workspace so each keystroke
+/// re-runs this builder with fresh groups for the new query.
+fn palette_command(
+    palette: &Entity<gpui_kit::component::command::CommandState>,
+    chats: &[crate::palette_items::ChatSnapshot],
+    ws: &Entity<Workspace>,
+    cx: &mut App,
+) -> Command {
+    let ws_confirm = ws.clone();
+    let ws_query = ws.clone();
+    let (commands, chat_group) =
+        crate::palette_items::palette_groups(chats, &palette.read(cx).query(cx));
+    Command::new(palette)
+        .placeholder("Type a command or search chats…")
+        // Local filtering is substring-only; ranking is fuzzy and happens
+        // in `palette_items`.
+        .filterable(false)
+        .group(commands)
+        .group(chat_group)
+        .empty(|_, _, cx| {
+            div()
+                .py_6()
+                .w_full()
+                .text_center()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child("No matching commands or chats")
+        })
+        .footer(|_, _, cx| {
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .px_3()
+                .py_2()
+                .border_t_1()
+                .border_color(cx.theme().border)
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("↑↓ navigate")
+                .child("↵ select")
+                .child("esc close")
+        })
+        // The dialog builder re-runs on workspace renders — notifying
+        // rebuilds the list for the new query.
+        .on_query(move |_, _, cx| {
+            ws_query.update(cx, |_, cx| cx.notify());
+        })
+        .on_confirm({
+            let ws = ws_confirm.clone();
+            move |path, window, cx| {
+                ws.update(cx, |this, cx| this.confirm_palette_entry(path, window, cx));
+            }
+        })
+        .on_cancel(|window, cx| window.close_dialog(cx))
 }
+
+impl Workspace {
+    /// Resolve a confirmed palette row to its entry and run it: commands
+    /// execute their effect, chats switch. Runs after the dialog closes so
+    /// commands that open their own surface land on the right layer.
+    fn confirm_palette_entry(&mut self, path: IndexPath, window: &mut Window, cx: &mut Context<Self>) {
+        window.close_dialog(cx);
+        let query = self.palette.read(cx).query(cx);
+        match crate::palette_items::entry_at(&self.palette_chats(), &query, path) {
+            Some(Entry::Command(spec)) => {
+                if let crate::palette_items::Effect::Run(run) = spec.effect {
+                    run(self, window, cx);
+                }
+            },
+            Some(Entry::Chat(chat)) => {
+                if let Some(ix) = self.chat_index(chat.id) {
+                    self.select_chat(ix, window, cx);
+                }
+            },
+            None => {},
+        }
+    }
+}
+

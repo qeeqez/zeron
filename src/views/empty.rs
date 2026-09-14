@@ -1,9 +1,13 @@
+use gpui_kit::assets::IconName;
+use gpui_kit::component::Icon;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::workspace::Workspace;
 
+/// The empty/new-chat state — Codex-style: a quiet brand mark, a prompt, and
+/// a 2×2 grid of suggestion chips that fill the composer and send.
 pub fn render_empty_state(ws: Entity<Workspace>, cx: &mut App) -> impl IntoElement {
     let suggestions = [
         "Explain this codebase",
@@ -17,46 +21,47 @@ pub fn render_empty_state(ws: Entity<Workspace>, cx: &mut App) -> impl IntoEleme
         .size_full()
         .items_center()
         .justify_center()
-        .gap_4()
-        .child(div().text_lg().text_color(cx.theme().muted_foreground).child("What should we work on?"))
+        .gap_6()
         .child(
             div()
-                .id("empty-new-chat")
-                .cursor_pointer()
-                .px_4()
-                .py_2()
-                .rounded_lg()
-                .bg(cx.theme().accent)
-                .text_color(cx.theme().accent_foreground)
-                .text_sm()
-                .child("New chat")
-                .on_click({
-                    let ws = ws.clone();
-                    move |_, _, cx| {
-                        ws.update(cx, |this, cx| this.new_chat(cx));
-                    }
-                }),
-        )
-        .child(div().flex().flex_col().gap_2().items_center().children(suggestions.iter().map(|s| {
-            let ws = ws.clone();
-            let prompt = *s;
-            div()
-                .id(SharedString::from(format!("suggestion-{prompt}")))
-                .cursor_pointer()
-                .px_4()
-                .py_2()
-                .rounded_lg()
-                .border_1()
-                .border_color(cx.theme().border)
-                .text_sm()
+                .flex()
+                .items_center()
+                .justify_center()
+                .size_10()
+                .rounded_xl()
+                .bg(cx.theme().secondary)
                 .text_color(cx.theme().muted_foreground)
-                .hover(|style| style.bg(cx.theme().secondary))
-                .child(prompt)
-                .on_click(move |_, window, cx| {
-                    ws.update(cx, |this, cx| {
-                        this.composer.update(cx, |s, cx| s.set_value(prompt, window, cx));
-                        this.send(window, cx);
-                    });
-                })
-        })))
+                .child(Icon::new(IconName::Bot).size_5()),
+        )
+        .child(div().text_lg().font_weight(FontWeight::MEDIUM).child("What should we work on?"))
+        .child(
+            div()
+                .flex()
+                .flex_wrap()
+                .justify_center()
+                .gap_2()
+                .max_w(px(520.))
+                .children(suggestions.iter().map(|s| {
+                    let ws = ws.clone();
+                    let prompt = *s;
+                    div()
+                        .id(SharedString::from(format!("suggestion-{prompt}")))
+                        .cursor_pointer()
+                        .px_3()
+                        .py_1p5()
+                        .rounded_full()
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .hover(|style| style.bg(cx.theme().secondary).text_color(cx.theme().foreground))
+                        .child(prompt)
+                        .on_click(move |_, window, cx| {
+                            ws.update(cx, |this, cx| {
+                                this.composer.update(cx, |s, cx| s.set_value(prompt, window, cx));
+                                this.send(window, cx);
+                            });
+                        })
+                })),
+        )
 }

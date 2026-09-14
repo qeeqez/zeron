@@ -34,6 +34,10 @@ mod notify;
 #[cfg(test)]
 mod notify_tests;
 mod palette;
+mod palette_fuzzy;
+mod palette_items;
+#[cfg(test)]
+mod palette_tests;
 mod persist;
 mod persist_tests;
 mod project;
