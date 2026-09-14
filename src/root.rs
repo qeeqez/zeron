@@ -8,7 +8,6 @@ use crate::{
 };
 use gpui_kit::component::Root;
 
-use gpui_kit::component::theme::{Theme, ThemeMode};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
@@ -57,16 +56,13 @@ impl Render for Workspace {
             .on_action({
                 let ws = cx.entity();
                 move |_: &ThemeLight, window, cx| {
-                    Theme::change(ThemeMode::Light, Some(window), cx);
-                    // `Theme::change` resets fonts/contrast — re-apply them.
-                    ws.update(cx, |this, cx| this.apply_appearance(window, cx));
+                    ws.update(cx, |this, cx| this.set_theme("light", window, cx));
                 }
             })
             .on_action({
                 let ws = cx.entity();
                 move |_: &ThemeDark, window, cx| {
-                    Theme::change(ThemeMode::Dark, Some(window), cx);
-                    ws.update(cx, |this, cx| this.apply_appearance(window, cx));
+                    ws.update(cx, |this, cx| this.set_theme("dark", window, cx));
                 }
             })
             .on_action({

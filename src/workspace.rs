@@ -65,6 +65,10 @@ pub struct Workspace {
     pub sidebar_frosted: bool,
     /// Appearance: "system" | "light" | "dark". "system" follows the OS.
     pub theme: String,
+    /// The theme value this window last wrote to settings.json — lets
+    /// `save_settings` tell "this window changed the theme" (persist it)
+    /// apart from "another window changed it" (preserve the file's value).
+    pub(crate) theme_persisted: String,
     /// Project-relative file paths for the @-mention picker.
     pub project_files: Vec<SharedString>,
     /// The folder this window runs against — chats, @-mentions, git and
@@ -195,6 +199,7 @@ impl Workspace {
             contrast: settings.contrast.clamp(crate::appearance::CONTRAST_MIN, crate::appearance::CONTRAST_MAX),
             sidebar_frosted: settings.sidebar_frosted,
             theme: settings.theme.clone(),
+            theme_persisted: settings.theme.clone(),
             project_files: Vec::new(),
             project,
             http_url: settings.http_url.clone(),
@@ -249,33 +254,6 @@ impl Workspace {
             }
         }
         dropped
-    }
-
-    pub(crate) fn save_settings(&self) {
-        // Preserve window bounds saved at close.
-        let prev = crate::persist::load_settings();
-        crate::persist::save_settings(&crate::persist::Settings {
-            model: self.model.to_string(),
-            mode: self.mode.to_string(),
-            access: self.access.name().into(),
-            word_wrap: self.word_wrap,
-            font_size: self.font_size,
-            font_family: self.font_family.clone(),
-            code_font_family: self.code_font_family.clone(),
-            code_font_size: self.code_font_size,
-            contrast: self.contrast,
-            sidebar_frosted: self.sidebar_frosted,
-            notify_on_done: self.notify_on_done,
-            backend: self.backend.name().into(),
-            http_url: self.http_url.clone(),
-            http_key_env: self.http_key_env.clone(),
-            use_codex_cli: None,
-            window_bounds: prev.window_bounds,
-            sidebar_width: self.sidebar_width,
-            sidebar_collapsed: self.sidebar_collapsed,
-            active_chat: 0,
-            theme: self.theme.clone(),
-        });
     }
 
     /// Change the Agent-mode access level, publish it to the backend, and

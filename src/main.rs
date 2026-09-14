@@ -57,7 +57,10 @@ mod views;
 mod window;
 #[cfg(test)]
 mod window_chrome_tests;
+#[cfg(test)]
+mod workspace_tests;
 mod workspace;
+mod workspace_settings;
 
 use gpui_kit::*;
 

@@ -12,7 +12,7 @@ use gpui_kit::*;
 use crate::views::settings::SettingsPanel;
 
 /// "Back to app" row at the top of the nav — closes settings.
-fn back_row(ws: &Entity<crate::workspace::Workspace>, cx: &App) -> impl IntoElement {
+fn back_row(ws: &WeakEntity<crate::workspace::Workspace>, cx: &App) -> impl IntoElement {
     let theme = cx.theme();
     let ws = ws.clone();
     div()
@@ -30,7 +30,7 @@ fn back_row(ws: &Entity<crate::workspace::Workspace>, cx: &App) -> impl IntoElem
         .child(IconName::ArrowLeft)
         .child("Back to app")
         .on_click(move |_, _, cx| {
-            ws.update(cx, |this, cx| this.close_settings(cx));
+            let _ = ws.update(cx, |this, cx| this.close_settings(cx));
         })
 }
 

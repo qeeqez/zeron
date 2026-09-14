@@ -13,7 +13,10 @@ use gpui_kit::*;
 /// as a full-window overlay from `Workspace::render` (sheets/dialogs can't
 /// host a two-pane layout and weren't mounted anyway).
 pub struct SettingsPanel {
-    pub(crate) ws: Entity<Workspace>,
+    /// Weak on purpose: `Workspace` owns this panel, so a strong handle here
+    /// (and in the subscriptions below) would cycle and leak the whole
+    /// workspace — chats, running subprocesses and all — on window close.
+    pub(crate) ws: WeakEntity<Workspace>,
     pub(crate) section: Section,
     pub(crate) search: Entity<InputState>,
     url_input: Entity<InputState>,
@@ -33,6 +36,7 @@ impl SettingsPanel {
     /// holds it.
     pub fn new(ws: Entity<Workspace>, settings: &crate::persist::Settings, window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&ws, |_, _, cx| cx.notify()).detach();
+        let ws = ws.downgrade();
         let url_input = cx.new(|cx| {
             let mut s = InputState::new(window, cx).placeholder("https://…");
             s.set_value(settings.http_url.clone(), window, cx);
@@ -67,13 +71,13 @@ impl SettingsPanel {
         let ws_font = ws.clone();
         cx.subscribe_in(&font_select, window, move |_, _, event: &SelectEvent<Vec<String>>, window, cx| {
             let SelectEvent::Confirm(family) = event;
-            ws_font.update(cx, |this, cx| this.set_interface_font(family.clone(), window, cx));
+            let _ = ws_font.update(cx, |this, cx| this.set_interface_font(family.clone(), window, cx));
         })
         .detach();
         let ws_code = ws.clone();
         cx.subscribe_in(&code_font_select, window, move |_, _, event: &SelectEvent<Vec<String>>, window, cx| {
             let SelectEvent::Confirm(family) = event;
-            ws_code.update(cx, |this, cx| this.set_code_font(family.clone(), window, cx));
+            let _ = ws_code.update(cx, |this, cx| this.set_code_font(family.clone(), window, cx));
         })
         .detach();
 
@@ -86,7 +90,7 @@ impl SettingsPanel {
         });
         let ws_slider = ws.clone();
         cx.subscribe_in(&contrast_slider, window, move |_, _, event: &SliderEvent, window, cx| {
-            ws_slider.update(cx, |this, cx| this.set_contrast(event, window, cx));
+            let _ = ws_slider.update(cx, |this, cx| this.set_contrast(event, window, cx));
         })
         .detach();
 
@@ -116,7 +120,7 @@ fn on_http_field(ctx: &FieldCtx, state: &Entity<InputState>, event: &InputEvent,
         return;
     }
     let value = state.read(cx).value().to_string();
-    ctx.ws.update(cx, |this, _cx| {
+    let _ = ctx.ws.update(cx, |this, _cx| {
         match ctx.field {
             Field::Url => this.http_url = value.clone(),
             Field::KeyEnv => this.http_key_env = value.clone(),
@@ -134,7 +138,7 @@ fn on_http_field(ctx: &FieldCtx, state: &Entity<InputState>, event: &InputEvent,
 /// closure and handler stay under the argument-count lint.
 struct FieldCtx {
     field: Field,
-    ws: Entity<Workspace>,
+    ws: WeakEntity<Workspace>,
 }
 
 /// Which http config field an input writes — keeps the subscribe loop
@@ -147,7 +151,10 @@ enum Field {
 
 impl Render for SettingsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let s = self.ws.read(cx);
+        let Some(ws) = self.ws.upgrade() else {
+            return div().id("settings-screen").test_support();
+        };
+        let s = ws.read(cx);
         let view = crate::views::settings_sections::SettingsView {
             notify: s.notify_on_done,
             font_size: s.font_size,
@@ -158,7 +165,7 @@ impl Render for SettingsPanel {
             access: s.access,
             word_wrap: s.word_wrap,
             theme: s.theme.clone(),
-            ws: self.ws.clone(),
+            ws: ws.clone(),
             url_input: self.url_input.clone(),
             key_input: self.key_input.clone(),
             font_select: self.font_select.clone(),
@@ -213,6 +220,7 @@ impl Render for SettingsPanel {
 
 impl SettingsPanel {
     fn render_content(&self, view: &crate::views::settings_sections::SettingsView, cx: &App) -> impl IntoElement {
+
         div().id("settings-content").test_support().flex_1().min_w_0().h_full().overflow_y_scroll().child(
             div()
                 .flex()
