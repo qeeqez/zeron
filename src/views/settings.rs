@@ -210,7 +210,13 @@ impl Render for SettingsPanel {
                         .text_sm()
                         .child(div().text_color(theme.muted_foreground).child("Settings"))
                         .child(div().text_color(theme.muted_foreground).child(IconName::ChevronRight))
-                        .child(self.section.label()),
+                        .child(self.section.label())
+                        // Collapsed sidebar → no nav rail, so the "Back to
+                        // app" row is gone; give the header its own close
+                        // control. Expanded → the nav row already closes.
+                        .when(s.sidebar_collapsed, |d| {
+                            d.child(div().flex_1()).child(crate::views::settings_nav::close_button(&self.ws, cx))
+                        }),
                 )
                 .test_support(),
             )
@@ -220,7 +226,6 @@ impl Render for SettingsPanel {
 
 impl SettingsPanel {
     fn render_content(&self, view: &crate::views::settings_sections::SettingsView, cx: &App) -> impl IntoElement {
-
         div().id("settings-content").test_support().flex_1().min_w_0().h_full().overflow_y_scroll().child(
             div()
                 .flex()

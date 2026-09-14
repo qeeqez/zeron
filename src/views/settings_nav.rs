@@ -34,6 +34,24 @@ fn back_row(ws: &WeakEntity<crate::workspace::Workspace>, cx: &App) -> impl Into
         })
 }
 
+/// Small X in the settings content header — the only pointer close when the
+/// sidebar is collapsed (the nav rail with `back_row` isn't rendered then).
+/// `stop_propagation` keeps the press off the titlebar drag strip.
+pub fn close_button(ws: &WeakEntity<crate::workspace::Workspace>, cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    let ws = ws.clone();
+    div()
+        .id("settings-close")
+        .test_support()
+        .cursor_pointer()
+        .text_color(theme.muted_foreground)
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(IconName::X)
+        .on_click(move |_, _, cx| {
+            let _ = ws.update(cx, |this, cx| this.close_settings(cx));
+        })
+}
+
 /// A nav row for one section — icon + label, highlights when selected.
 fn nav_item(section: Section, selected: bool, panel: &Entity<SettingsPanel>, cx: &App) -> impl IntoElement {
     let theme = cx.theme();

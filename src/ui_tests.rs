@@ -173,3 +173,42 @@ fn sheet_and_dialog_layers_render() {
         assert!(window.find("dialog-marker").visible(), "dialog layer should render");
     });
 }
+
+/// Closing settings by pointer: expanded sidebar → the nav rail's "Back to
+/// app" row (no duplicate header control); collapsed sidebar → no nav rail,
+/// so the header's own close button must be there instead.
+#[test]
+fn settings_close_control_matches_sidebar_state() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.click("settings-btn", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.find("settings-screen").visible());
+        assert!(window.find("settings-back").visible(), "nav back row should show with the sidebar open");
+        assert!(window.try_find("settings-close").is_none(), "no header close when the nav row exists");
+
+        window.click("settings-back", cx);
+        window.draw(cx).clear(cx);
+        assert!(!ws.read(cx).settings_open, "back row should close settings");
+        assert!(window.try_find("settings-screen").is_none());
+    });
+
+    // Collapse the sidebar, then open settings the way Cmd-,/menu does.
+    cx.update(|window, cx| {
+        window.click("sidebar-toggle", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.try_find("sidebar-wrap").is_none());
+        ws.update(cx, |this, cx| this.open_settings(window, cx));
+        window.draw(cx).clear(cx);
+        assert!(window.find("settings-screen").visible());
+        assert!(window.try_find("settings-back").is_none(), "no nav rail when collapsed");
+        assert!(window.find("settings-close").visible(), "header close must exist when collapsed");
+
+        window.click("settings-close", cx);
+        window.draw(cx).clear(cx);
+        assert!(!ws.read(cx).settings_open, "header close should close settings");
+        assert!(window.try_find("settings-screen").is_none());
+    });
+}

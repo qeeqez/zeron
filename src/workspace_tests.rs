@@ -111,3 +111,29 @@ fn unrelated_save_preserves_persisted_theme() {
         assert_eq!(crate::persist::load_settings().theme, "light", "own theme change should persist");
     });
 }
+
+/// Multi-window: window A persisted "dark", window B then wrote "light".
+/// When A explicitly picks dark again, `theme == theme_persisted` — but the
+/// pick is deliberate, so it must overwrite the file, not adopt B's value.
+#[test]
+fn explicit_theme_reselect_wins_over_disk() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    cx.update(|window, cx| {
+        ws.update(cx, |this, cx| this.set_theme("dark", window, cx));
+    });
+    assert_eq!(crate::persist::load_settings().theme, "dark");
+
+    // Window B writes light — A's theme and theme_persisted still say dark.
+    let mut settings = crate::persist::load_settings();
+    settings.theme = "light".into();
+    crate::persist::save_settings(&settings);
+
+    cx.update(|window, cx| {
+        ws.update(cx, |this, cx| this.set_theme("dark", window, cx));
+    });
+    cx.update(|_window, cx| {
+        assert_eq!(crate::persist::load_settings().theme, "dark", "explicit re-select must overwrite the file");
+        assert_eq!(ws.read(cx).theme, "dark", "explicit re-select must not adopt the file's value");
+    });
+}

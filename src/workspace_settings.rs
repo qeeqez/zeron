@@ -7,11 +7,19 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     pub(crate) fn save_settings(&mut self) {
+        self.save_settings_inner(false);
+    }
+
+    /// `force_theme`: an explicit theme pick (`set_theme`) always writes its
+    /// value, even when it equals `theme_persisted` — another window may have
+    /// overwritten the file since, and value equality can't tell "unchanged"
+    /// from "deliberately re-chosen".
+    fn save_settings_inner(&mut self, force_theme: bool) {
         // Preserve fields this window doesn't own: window bounds are saved
         // at close, and the theme may have been changed by another window
         // since this one loaded its snapshot.
         let prev = crate::persist::load_settings();
-        let theme = if self.theme != self.theme_persisted {
+        let theme = if force_theme || self.theme != self.theme_persisted {
             // This window changed the theme — persist its choice.
             self.theme.clone()
         } else {
@@ -50,7 +58,7 @@ impl Workspace {
     /// the palette's theme commands both land here.
     pub fn set_theme(&mut self, theme: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.theme = theme.to_string();
-        self.save_settings();
+        self.save_settings_inner(true);
         self.apply_theme(window, cx);
     }
 }
