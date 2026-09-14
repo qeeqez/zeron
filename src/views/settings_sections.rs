@@ -5,7 +5,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::select::SelectState;
+use gpui_kit::component::select::{SearchableVec, SelectState};
 use gpui_kit::component::slider::SliderState;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -29,8 +29,8 @@ pub struct SettingsView {
     pub url_input: Entity<InputState>,
     pub key_input: Entity<InputState>,
     pub access: AccessMode,
-    pub font_select: Entity<SelectState<Vec<String>>>,
-    pub code_font_select: Entity<SelectState<Vec<String>>>,
+    pub font_select: Entity<SelectState<SearchableVec<String>>>,
+    pub code_font_select: Entity<SelectState<SearchableVec<String>>>,
     pub contrast_slider: Entity<SliderState>,
 }
 

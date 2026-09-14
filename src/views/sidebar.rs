@@ -100,13 +100,7 @@ impl Workspace {
             .relative()
             .flex()
             .flex_col()
-            .bg(if self.sidebar_frosted {
-                // Translucent over the window's blurred background → real
-                // frosted glass (the window runs WindowBackgroundAppearance::Blurred).
-                cx.theme().sidebar.opacity(0.6)
-            } else {
-                cx.theme().sidebar
-            })
+            .bg(crate::appearance::sidebar_fill(cx.theme(), self.sidebar_frosted))
             .border_r_1()
             .border_color(cx.theme().sidebar_border)
             // Full-height sidebar: its top strip is a transparent window-drag
@@ -124,10 +118,14 @@ impl Workspace {
                             .child(crate::views::settings_nav::settings_nav(&self.settings_panel, cx))
                             .into_any_element()
                     } else {
+                        // The component paints its own opaque `tokens.sidebar`
+                        // — clear it so the wrap's translucent fill (and the
+                        // blurred window behind it) shows through.
                         Sidebar::new("sidebar")
                             .w(px(self.sidebar_width))
                             .collapsible(SidebarCollapsible::Offcanvas)
                             .collapsed(collapsed)
+                            .when(self.sidebar_frosted, |this| this.bg(transparent_black()))
                             .header(header)
                             .child(actions)
                             .children(groups)

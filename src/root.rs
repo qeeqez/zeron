@@ -254,9 +254,16 @@ pub fn open_workspace_window(cx: &mut gpui_kit::AsyncApp) -> gpui_kit::Result<gp
         |window, cx| {
             let view = cx.new(|cx| Workspace::new(window, cx));
             let ws = view.clone();
+            let frosted = ws.read(cx).sidebar_frosted;
             let handle = window.window_handle();
             window.on_window_should_close(cx, move |window, cx| crate::window::confirm_close(&ws, handle, window, cx));
-            cx.new(|cx| Root::new(view, window, cx))
+            cx.new(|cx| {
+                let mut root = Root::new(view, window, cx);
+                // Frosted sidebar needs the window's blurred background to
+                // show through — Root's opaque theme fill would hide it.
+                root.style().background = crate::appearance::frosted_root_background(frosted);
+                root
+            })
         },
     )?;
     Ok(handle)

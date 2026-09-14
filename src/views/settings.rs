@@ -3,7 +3,7 @@ use crate::workspace::Workspace;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::select::{SelectEvent, SelectState};
+use gpui_kit::component::select::{SearchableVec, SelectEvent, SelectState};
 use gpui_kit::component::slider::{SliderEvent, SliderState};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -21,11 +21,11 @@ pub struct SettingsPanel {
     pub(crate) search: Entity<InputState>,
     url_input: Entity<InputState>,
     key_input: Entity<InputState>,
-    /// Interface font family picker — `Vec<String>` delegate over the
-    /// installed font names.
-    pub(crate) font_select: Entity<SelectState<Vec<String>>>,
+    /// Interface font family picker — `SearchableVec<String>` delegate over
+    /// the installed font names (a plain `Vec` delegate never filters).
+    pub(crate) font_select: Entity<SelectState<SearchableVec<String>>>,
     /// Code (mono) font family picker.
-    pub(crate) code_font_select: Entity<SelectState<Vec<String>>>,
+    pub(crate) code_font_select: Entity<SelectState<SearchableVec<String>>>,
     /// Contrast slider, 50–200%.
     pub(crate) contrast_slider: Entity<SliderState>,
 }
@@ -69,13 +69,13 @@ impl SettingsPanel {
         let font_select = font_picker(&fonts, &settings.font_family, window, cx);
         let code_font_select = font_picker(&fonts, &settings.code_font_family, window, cx);
         let ws_font = ws.clone();
-        cx.subscribe_in(&font_select, window, move |_, _, event: &SelectEvent<Vec<String>>, window, cx| {
+        cx.subscribe_in(&font_select, window, move |_, _, event: &SelectEvent<SearchableVec<String>>, window, cx| {
             let SelectEvent::Confirm(family) = event;
             let _ = ws_font.update(cx, |this, cx| this.set_interface_font(family.clone(), window, cx));
         })
         .detach();
         let ws_code = ws.clone();
-        cx.subscribe_in(&code_font_select, window, move |_, _, event: &SelectEvent<Vec<String>>, window, cx| {
+        cx.subscribe_in(&code_font_select, window, move |_, _, event: &SelectEvent<SearchableVec<String>>, window, cx| {
             let SelectEvent::Confirm(family) = event;
             let _ = ws_code.update(cx, |this, cx| this.set_code_font(family.clone(), window, cx));
         })
@@ -108,10 +108,12 @@ impl SettingsPanel {
 }
 
 /// A searchable font-family picker; `current` selects the matching row when
-/// it's a real family name (empty = default → no selection).
-fn font_picker(fonts: &[String], current: &str, window: &mut Window, cx: &mut Context<SettingsPanel>) -> Entity<SelectState<Vec<String>>> {
+/// it's a real family name (empty = default → no selection). The delegate is
+/// `SearchableVec`, not `Vec` — only it implements `perform_search`, so a
+/// plain `Vec` would render the search box but never filter the list.
+fn font_picker(fonts: &[String], current: &str, window: &mut Window, cx: &mut Context<SettingsPanel>) -> Entity<SelectState<SearchableVec<String>>> {
     let selected = fonts.iter().position(|f| f == current).map(gpui_kit::component::IndexPath::new);
-    cx.new(|cx| SelectState::new(fonts.to_vec(), selected, window, cx).searchable(true))
+    cx.new(|cx| SelectState::new(SearchableVec::new(fonts.to_vec()), selected, window, cx).searchable(true))
 }
 
 /// Write a changed http config field to the workspace and persist it.

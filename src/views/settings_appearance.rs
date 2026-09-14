@@ -80,11 +80,7 @@ fn theme_card(label: &'static str, mode: &'static str, s: &SettingsView, cx: &Ap
         )
         .child(div().text_xs().child(label))
         .on_click(move |_, window, cx| {
-            ws.update(cx, |this, cx| {
-                this.theme = mode.to_string();
-                this.save_settings();
-                this.apply_theme(window, cx);
-            });
+            ws.update(cx, |this, cx| this.set_theme(mode, window, cx));
         })
 }
 
