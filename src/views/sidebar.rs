@@ -10,7 +10,7 @@ use gpui_kit::*;
 use crate::workspace::Workspace;
 
 impl Workspace {
-    pub fn render_sidebar(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let collapsed = self.sidebar_collapsed;
         let header = div()
             .flex()
@@ -112,7 +112,15 @@ impl Workspace {
                     // One shared sidebar column: when settings is open it
                     // shows the settings nav; otherwise the chat list.
                     if self.settings_open {
-                        crate::views::settings_nav::settings_nav(&self.settings_panel, px(self.sidebar_width), collapsed, cx)
+                        crate::views::settings_nav::settings_nav(
+                            crate::views::settings_nav::SettingsNav {
+                                panel: &self.settings_panel,
+                                width: px(self.sidebar_width),
+                                collapsed,
+                            },
+                            window,
+                            cx,
+                        )
                             .into_any_element()
                     } else {
                         // The component paints its own opaque `tokens.sidebar`

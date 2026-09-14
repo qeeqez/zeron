@@ -6,9 +6,8 @@
 //! `settings.rs`/`settings_sections.rs` to stay under the 250-SLOC cap.
 
 use gpui_kit::assets::IconName;
-use gpui_kit::base::StyledExt;
 use gpui_kit::component::input::Input;
-use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible, SidebarGroup};
+use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarItem};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -59,28 +58,37 @@ fn nav_item(section: Section, selected: bool, panel: &Entity<SettingsPanel>) -> 
 /// The settings nav column for the shared sidebar — a real `Sidebar` with the
 /// same header/search slot and grouped `NavRow` items as the chat list.
 /// `width`/`collapsed` mirror the chat sidebar's geometry.
-pub fn settings_nav(panel: &Entity<SettingsPanel>, width: Pixels, collapsed: bool, cx: &App) -> impl IntoElement {
+pub(crate) struct SettingsNav<'a> {
+    pub panel: &'a Entity<SettingsPanel>,
+    pub width: Pixels,
+    pub collapsed: bool,
+}
+
+pub fn settings_nav(nav: SettingsNav<'_>, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    let SettingsNav { panel, width, collapsed } = nav;
     let (ws, search, section, query) = {
         let p = panel.read(cx);
         (p.ws.clone(), p.search.clone(), p.section, p.search.read(cx).value().to_lowercase())
     };
 
+    // "Back to app" sits at the very top of the rail, above the full-width
+    // search field — same header slot the chat sidebar uses.
     let header = div()
         .flex()
         .flex_col()
         .gap_2()
-        .child(div().flex().items_center().gap_2().text_sm().font_bold().child(IconName::Settings).child("Settings"))
-        .child(Input::new(&search).prefix(IconName::Search).appearance(true));
+        .child(back_row(&ws).render("settings-back-wrap", window, cx))
+        .child(div().w_full().child(Input::new(&search).prefix(IconName::Search).appearance(true).w_full()));
 
-    let mut groups: Vec<SidebarGroup<NavRow>> = vec![SidebarGroup::new("").child(back_row(&ws))];
-    if query.is_empty() {
-        groups.extend(Section::GROUPS.iter().map(|(name, sections)| {
-            SidebarGroup::new(*name).children(sections.iter().map(|s| nav_item(*s, *s == section, panel)))
-        }));
+    let groups: Vec<SidebarGroup<NavRow>> = if query.is_empty() {
+        Section::GROUPS
+            .iter()
+            .map(|(name, sections)| SidebarGroup::new(*name).children(sections.iter().map(|s| nav_item(*s, *s == section, panel))))
+            .collect()
     } else {
         let matches = Section::ALL.iter().filter(|s| s.label().to_lowercase().contains(query.as_str()));
-        groups.push(SidebarGroup::new("").children(matches.map(|s| nav_item(*s, *s == section, panel))));
-    }
+        vec![SidebarGroup::new("").children(matches.map(|s| nav_item(*s, *s == section, panel)))]
+    };
 
     // The component paints its own opaque `tokens.sidebar` — clear it so the
     // wrap's fill (translucent when frosted) shows through, same as the chat
