@@ -9,6 +9,7 @@ mod diff;
 mod empty;
 mod markdown;
 mod message;
+pub(crate) mod nav_row;
 pub mod settings;
 pub mod settings_appearance;
 pub mod settings_nav;

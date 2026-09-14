@@ -239,7 +239,7 @@ pub fn open_workspace_window(cx: &mut gpui_kit::AsyncApp) -> gpui_kit::Result<gp
         WindowOptions {
             window_min_size: Some(Size { width: px(800.), height: px(600.) }),
             window_bounds: crate::window::saved_window_bounds(),
-            window_background: gpui_kit::WindowBackgroundAppearance::Blurred,
+            window_background: crate::appearance::window_background_appearance(crate::persist::load_settings().sidebar_frosted),
             // The app draws its own TitleBar and moves the window via
             // start_window_move, so AppKit must not treat the strip as a system
             // window-move region (which would swallow the toggle's clicks).

@@ -1,37 +1,27 @@
 //! Nav-rail content for the settings screen, rendered inside the shared
 //! sidebar column (`sidebar-wrap`) when settings is open — so there's one
-//! sidebar, not two. Split from `settings.rs`/`settings_sections.rs` to stay
-//! under the 250-SLOC cap.
+//! sidebar, not two. Rows go through the same `NavRow` component as the chat
+//! list, inside the same `Sidebar`/`SidebarGroup` chrome, so padding, colors,
+//! hover and selected states are identical on both screens. Split from
+//! `settings.rs`/`settings_sections.rs` to stay under the 250-SLOC cap.
 
 use gpui_kit::assets::IconName;
+use gpui_kit::base::StyledExt;
 use gpui_kit::component::input::Input;
+use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible, SidebarGroup};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::views::nav_row::NavRow;
 use crate::views::settings::SettingsPanel;
 
 /// "Back to app" row at the top of the nav — closes settings.
-fn back_row(ws: &WeakEntity<crate::workspace::Workspace>, cx: &App) -> impl IntoElement {
-    let theme = cx.theme();
+fn back_row(ws: &WeakEntity<crate::workspace::Workspace>) -> NavRow {
     let ws = ws.clone();
-    div()
-        .id("settings-back")
-        .test_support()
-        .flex()
-        .items_center()
-        .gap_2()
-        .px_2()
-        .py_1()
-        .rounded_md()
-        .cursor_pointer()
-        .text_sm()
-        .text_color(theme.muted_foreground)
-        .child(IconName::ArrowLeft)
-        .child("Back to app")
-        .on_click(move |_, _, cx| {
-            let _ = ws.update(cx, |this, cx| this.close_settings(cx));
-        })
+    NavRow::new("settings-back", "Back to app").icon(IconName::ArrowLeft).on_click(move |_, _, cx| {
+        let _ = ws.update(cx, |this, cx| this.close_settings(cx));
+    })
 }
 
 /// Small X in the settings content header — the only pointer close when the
@@ -53,24 +43,11 @@ pub fn close_button(ws: &WeakEntity<crate::workspace::Workspace>, cx: &App) -> i
 }
 
 /// A nav row for one section — icon + label, highlights when selected.
-fn nav_item(section: Section, selected: bool, panel: &Entity<SettingsPanel>, cx: &App) -> impl IntoElement {
-    let theme = cx.theme();
+fn nav_item(section: Section, selected: bool, panel: &Entity<SettingsPanel>) -> NavRow {
     let panel = panel.clone();
-    div()
-        .id(SharedString::from(format!("settings-nav-{}", section.name())))
-        .test_support()
-        .flex()
-        .items_center()
-        .gap_2()
-        .px_2()
-        .py_1()
-        .rounded_md()
-        .cursor_pointer()
-        .text_sm()
-        .when(!selected, |d| d.text_color(theme.muted_foreground))
-        .when(selected, |d| d.bg(theme.list_active))
-        .child(section.icon())
-        .child(section.label())
+    NavRow::new(SharedString::from(format!("settings-nav-{}", section.name())), section.label())
+        .icon(section.icon())
+        .active(selected)
         .on_click(move |_, _, cx| {
             panel.update(cx, |this, cx| {
                 this.section = section;
@@ -79,48 +56,42 @@ fn nav_item(section: Section, selected: bool, panel: &Entity<SettingsPanel>, cx:
         })
 }
 
-/// The settings nav column for the shared sidebar — back row + search field +
-/// the grouped section items, scrollable. Fills the sidebar's width.
-pub fn settings_nav(panel: &Entity<SettingsPanel>, cx: &App) -> impl IntoElement {
-    let theme = cx.theme();
+/// The settings nav column for the shared sidebar — a real `Sidebar` with the
+/// same header/search slot and grouped `NavRow` items as the chat list.
+/// `width`/`collapsed` mirror the chat sidebar's geometry.
+pub fn settings_nav(panel: &Entity<SettingsPanel>, width: Pixels, collapsed: bool, cx: &App) -> impl IntoElement {
     let (ws, search, section, query) = {
         let p = panel.read(cx);
         (p.ws.clone(), p.search.clone(), p.section, p.search.read(cx).value().to_lowercase())
     };
-    let items: Vec<AnyElement> = if query.is_empty() {
-        Section::GROUPS
-            .iter()
-            .map(|(name, sections)| {
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .pt_3()
-                    .child(div().px_2().pb_1().text_xs().text_color(theme.muted_foreground).child(*name))
-                    .children(sections.iter().map(|s| nav_item(*s, *s == section, panel, cx)))
-                    .into_any_element()
-            })
-            .collect()
-    } else {
-        Section::ALL
-            .iter()
-            .filter(|s| s.label().to_lowercase().contains(query.as_str()))
-            .map(|s| nav_item(*s, *s == section, panel, cx).into_any_element())
-            .collect()
-    };
-    div()
-        .id("settings-nav")
-        .test_support()
-        .w_full()
-        .h_full()
+
+    let header = div()
         .flex()
         .flex_col()
-        .gap_1()
-        .p_3()
-        .overflow_y_scroll()
-        .child(back_row(&ws, cx))
-        .child(Input::new(&search).prefix(IconName::Search).appearance(true))
-        .children(items)
+        .gap_2()
+        .child(div().flex().items_center().gap_2().text_sm().font_bold().child(IconName::Settings).child("Settings"))
+        .child(Input::new(&search).prefix(IconName::Search).appearance(true));
+
+    let mut groups: Vec<SidebarGroup<NavRow>> = vec![SidebarGroup::new("").child(back_row(&ws))];
+    if query.is_empty() {
+        groups.extend(Section::GROUPS.iter().map(|(name, sections)| {
+            SidebarGroup::new(*name).children(sections.iter().map(|s| nav_item(*s, *s == section, panel)))
+        }));
+    } else {
+        let matches = Section::ALL.iter().filter(|s| s.label().to_lowercase().contains(query.as_str()));
+        groups.push(SidebarGroup::new("").children(matches.map(|s| nav_item(*s, *s == section, panel))));
+    }
+
+    // The component paints its own opaque `tokens.sidebar` — clear it so the
+    // wrap's fill (translucent when frosted) shows through, same as the chat
+    // sidebar.
+    Sidebar::new("settings-nav")
+        .w(width)
+        .collapsible(SidebarCollapsible::Offcanvas)
+        .collapsed(collapsed)
+        .bg(transparent_black())
+        .header(header)
+        .children(groups)
 }
 
 /// A nav-rail section. `name` feeds element ids; `label` is what renders.

@@ -1,7 +1,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::input::Input;
-use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible, SidebarGroup, SidebarMenuItem};
+use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible, SidebarGroup};
 
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -38,7 +38,7 @@ impl Workspace {
                     }),
             );
 
-        let new_chat = SidebarMenuItem::new("New chat")
+        let new_chat = crate::views::nav_row::NavRow::new("new-chat", "New chat")
             .icon(IconName::Plus)
             .on_click(cx.listener(|this, _, _, cx| this.new_chat(cx)));
 
@@ -48,23 +48,23 @@ impl Workspace {
             .filter(|ix| self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query)))
             .collect();
         let bucket = |ix: usize| self.chat_bucket(ix);
-        let mut row_of = |ix: usize| super::sidebar_row::SidebarRow::Chat(super::sidebar_row::chat_row(&self.chats[ix], ix, self, cx));
+        let mut row_of = |ix: usize| super::sidebar_row::chat_row(&self.chats[ix], ix, self, cx);
 
         let group_names = ["Pinned", "Today", "Previous 7 Days", "Older"];
-        let mut groups: Vec<SidebarGroup<super::sidebar_row::SidebarRow>> = Vec::new();
+        let mut groups: Vec<SidebarGroup<crate::views::nav_row::NavRow>> = Vec::new();
         for (bucket_ix, name) in group_names.iter().enumerate() {
-            let items: Vec<super::sidebar_row::SidebarRow> =
+            let items: Vec<crate::views::nav_row::NavRow> =
                 filtered.iter().copied().filter(|ix| bucket(*ix) == bucket_ix).map(&mut row_of).collect();
             if !items.is_empty() {
                 groups.push(SidebarGroup::new(*name).children(items));
             }
         }
         if !archived.is_empty() {
-            let items: Vec<super::sidebar_row::SidebarRow> = archived.iter().copied().map(row_of).collect();
+            let items: Vec<crate::views::nav_row::NavRow> = archived.iter().copied().map(row_of).collect();
             groups.push(SidebarGroup::new("Archived").children(items));
         }
 
-        let actions = SidebarGroup::new("").child(super::sidebar_row::SidebarRow::Item(Box::new(new_chat)));
+        let actions = SidebarGroup::new("").child(new_chat);
 
         let footer = div()
             .flex()
@@ -112,20 +112,17 @@ impl Workspace {
                     // One shared sidebar column: when settings is open it
                     // shows the settings nav; otherwise the chat list.
                     if self.settings_open {
-                        div()
-                            .w(px(self.sidebar_width))
-                            .h_full()
-                            .child(crate::views::settings_nav::settings_nav(&self.settings_panel, cx))
+                        crate::views::settings_nav::settings_nav(&self.settings_panel, px(self.sidebar_width), collapsed, cx)
                             .into_any_element()
                     } else {
                         // The component paints its own opaque `tokens.sidebar`
-                        // — clear it so the wrap's translucent fill (and the
-                        // blurred window behind it) shows through.
+                        // — clear it so the wrap's fill (translucent when
+                        // frosted) shows through.
                         Sidebar::new("sidebar")
                             .w(px(self.sidebar_width))
                             .collapsible(SidebarCollapsible::Offcanvas)
                             .collapsed(collapsed)
-                            .when(self.sidebar_frosted, |this| this.bg(transparent_black()))
+                            .bg(transparent_black())
                             .header(header)
                             .child(actions)
                             .children(groups)

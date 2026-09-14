@@ -55,6 +55,8 @@ mod project_tests;
 mod root;
 mod send;
 mod send_queue;
+#[cfg(test)]
+mod sidebar_ui_tests;
 mod simulate;
 #[cfg(test)]
 mod ui_tests;

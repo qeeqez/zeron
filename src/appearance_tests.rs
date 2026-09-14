@@ -181,7 +181,13 @@ fn sidebar_frosted_toggle_flips_rendering_mode() {
         let root_bg = Root::update(window, cx, |root, _, _| root.style().background.clone());
         assert_eq!(root_bg, Some(Fill::from(transparent_black())), "frosted needs a transparent Root fill");
         let fill = crate::appearance::sidebar_fill(cx.global::<Theme>(), true);
-        assert!(fill.a < 1., "frosted sidebar fill must be translucent, got alpha {}", fill.a);
+        assert!(fill.a > 0. && fill.a < 1., "frosted sidebar fill must be translucent, got alpha {}", fill.a);
+        assert!(fill.a >= 0.5, "frosted fill must stay legible over the blur, got alpha {}", fill.a);
+        assert_eq!(
+            crate::appearance::window_background_appearance(true),
+            gpui_kit::WindowBackgroundAppearance::Blurred,
+            "frosted needs a blurred window behind the translucent fill"
+        );
     });
     open_appearance(cx);
     cx.update(|window, cx| {
@@ -198,6 +204,11 @@ fn sidebar_frosted_toggle_flips_rendering_mode() {
         assert_eq!(root_bg, None, "unfrosted restores the stock Root fill");
         let fill = crate::appearance::sidebar_fill(cx.global::<Theme>(), false);
         assert_eq!(fill.a, 1., "unfrosted sidebar fill must be opaque");
+        assert_eq!(
+            crate::appearance::window_background_appearance(false),
+            gpui_kit::WindowBackgroundAppearance::Opaque,
+            "unfrosted restores an opaque window"
+        );
 
         window.click("toggle-sidebar-frosted", cx);
     });

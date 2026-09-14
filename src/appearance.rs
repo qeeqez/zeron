@@ -18,7 +18,9 @@ pub(crate) const CONTRAST_MAX: u16 = 200;
 /// guarantees — below this text stops being legible.
 pub(crate) const MIN_LEGIBLE_DELTA: f32 = 0.45;
 /// Alpha of the sidebar's translucent fill when frosted glass is on.
-pub(crate) const FROSTED_SIDEBAR_ALPHA: f32 = 0.6;
+/// High enough to read as frosted glass over the blurred window, low
+/// enough that the blur still shows through.
+pub(crate) const FROSTED_SIDEBAR_ALPHA: f32 = 0.7;
 
 impl Workspace {
     /// Resolve the configured appearance and apply it. "system" maps the OS
@@ -71,11 +73,7 @@ impl Workspace {
     /// own opaque one).
     fn apply_window_chrome(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let frosted = self.sidebar_frosted;
-        window.set_background_appearance(if frosted {
-            WindowBackgroundAppearance::Blurred
-        } else {
-            WindowBackgroundAppearance::Opaque
-        });
+        window.set_background_appearance(window_background_appearance(frosted));
         if let Some(root) = window.root::<Root>().flatten() {
             root.update(cx, |root, cx| {
                 root.style().background = frosted_root_background(frosted);
@@ -114,6 +112,14 @@ impl Workspace {
         }
         self.apply_appearance(window, cx);
     }
+}
+
+/// The window's background appearance: `Blurred` while the frosted sidebar
+/// is on (the sidebar's translucent fill sits over the blur), `Opaque`
+/// otherwise. `open_workspace_window` uses this for `WindowOptions` so a
+/// window opened with frosting off never starts blurred.
+pub(crate) fn window_background_appearance(frosted: bool) -> WindowBackgroundAppearance {
+    if frosted { WindowBackgroundAppearance::Blurred } else { WindowBackgroundAppearance::Opaque }
 }
 
 /// The `Root` layer's background while the frosted sidebar is on: transparent,
