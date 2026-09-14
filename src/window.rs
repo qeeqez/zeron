@@ -46,6 +46,11 @@ pub(crate) const TOP_BAR_H: f32 = 32.;
 pub(crate) const SIDEBAR_WIDTH_MIN: f32 = 180.;
 pub(crate) const SIDEBAR_WIDTH_MAX: f32 = 480.;
 
+/// Opacity of the sidebar's vibrancy view — the `Sidebar` material's blur
+/// amount is fixed, so this is how strongly the frost applies. <1 softens it.
+#[cfg(target_os = "macos")]
+const SIDEBAR_VIBRANCY_ALPHA: f64 = 0.6;
+
 /// Whether the sidebar's native vibrancy view should be installed: only
 /// while the frosted sidebar is on AND the sidebar is actually mounted —
 /// collapsed unmounts it, and a leftover vibrancy strip would glow behind
@@ -123,6 +128,9 @@ fn install_sidebar_vibrancy(content_view: &NSView, native_view: &NSView, frame: 
     view.setMaterial(NSVisualEffectMaterial::Sidebar);
     view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
     view.setState(NSVisualEffectState::Active);
+    // Fade the effect view itself — the material's blur amount is fixed, so
+    // alpha is how much of it applies. <1 softens the frost.
+    view.setAlphaValue(SIDEBAR_VIBRANCY_ALPHA);
     view.setAutoresizingMask(NSAutoresizingMaskOptions::ViewHeightSizable);
     content_view.addSubview_positioned_relativeTo(&view, NSWindowOrderingMode::Below, Some(native_view));
 }
