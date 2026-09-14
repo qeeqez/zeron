@@ -23,6 +23,10 @@ pub struct Workspace {
     /// Working-tree git changes shown in the Changes panel — refreshed on
     /// open and via the panel's refresh button.
     pub changes: Vec<crate::git::FileChange>,
+    /// Bumped per `refresh_changes` request; a collection or row-diff result
+    /// stamped with an older generation is discarded, so a slow earlier
+    /// refresh can't overwrite a newer snapshot.
+    pub(crate) changes_generation: u64,
     pub sidebar_width: f32,
     pub resizing_sidebar: bool,
     pub composer: Entity<TextareaState>,
@@ -168,6 +172,7 @@ impl Workspace {
             agents_panel_open: false,
             changes_panel_open: false,
             changes: Vec::new(),
+            changes_generation: 0,
             composer,
             search,
             scroller,

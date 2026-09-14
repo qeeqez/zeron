@@ -18,6 +18,11 @@ pub struct FileChange {
     /// `None` means collapsed. Collection never fills this; the workspace
     /// owns no extra per-file state, so the row doubles as the cache.
     pub diff: Option<crate::changes_diff::FileDiff>,
+    /// Token of the in-flight diff load, 0 when none. Collapse clears it so
+    /// a result that lands late is discarded instead of reopening the row;
+    /// a fresh token per expand keeps an older load from attaching after a
+    /// collapse+re-expand. UI-only — collection leaves it 0.
+    pub diff_load: u64,
 }
 
 /// Display status derived from the two-column porcelain code.
@@ -30,9 +35,12 @@ pub enum ChangeStatus {
     Conflicted,
 }
 
-/// Git's well-known empty-tree object — the diff base when HEAD is unborn
-/// (a fresh repo with no commits), giving the same net worktree delta.
-pub(crate) const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+/// The repo's empty-tree object — the diff base when HEAD is unborn (a fresh
+/// repo with no commits), giving the same net worktree delta. Derived via
+/// `hash-object` because the well-known SHA-1 id is invalid in SHA-256 repos.
+pub(crate) fn empty_tree_id(dir: &std::path::Path) -> Option<String> {
+    git(dir, &["hash-object", "-t", "tree", "/dev/null"]).map(|id| id.trim().to_string())
+}
 
 /// Collect changes under `dir`: porcelain status for the file list, numstat
 /// for line counts, filesystem line count for untracked.
@@ -49,7 +57,7 @@ pub(crate) fn collect(dir: &std::path::Path) -> Vec<FileChange> {
     // whichever half was merged last. On an unborn HEAD there is nothing to
     // diff against — fall back to the empty tree.
     let numstat = git(dir, &["diff", "HEAD", "--numstat", "-z"])
-        .or_else(|| git(dir, &["diff", EMPTY_TREE, "--numstat", "-z"]))
+        .or_else(|| git(dir, &["diff", &empty_tree_id(dir)?, "--numstat", "-z"]))
         .unwrap_or_default();
     let counts = parse_numstat(&numstat);
     for change in &mut changes {
@@ -136,6 +144,7 @@ pub(crate) fn parse_status(raw: &str) -> Vec<FileChange> {
             added: 0,
             deleted: 0,
             diff: None,
+            diff_load: 0,
         });
     }
     out

@@ -11,6 +11,28 @@ mod tests {
         diff.lines.iter().map(|l| l.kind).collect()
     }
 
+    /// Run `git` in `dir`; true on exit 0. Real-repo tests skip when it fails.
+    fn git_ok(dir: &std::path::Path, args: &[&str]) -> bool {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
+    fn change(path: &str, status: ChangeStatus, added: u32, deleted: u32) -> FileChange {
+        FileChange {
+            path: path.into(),
+            source: None,
+            status,
+            added,
+            deleted,
+            diff: None,
+            diff_load: 0,
+        }
+    }
+
     #[test]
     fn parses_hunks_with_line_numbers() {
         let raw = "diff --git a/src/a.rs b/src/a.rs\nindex 111..222 100644\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -10,3 +10,4 @@ fn main() {\n ctx\n-old();\n+new();\n+extra();\n tail\n";
@@ -92,14 +114,7 @@ mod tests {
     fn diff_for_file_reads_real_repo() {
         let dir = std::env::temp_dir().join(format!("rixlcode-diff-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let run = |args: &[&str]| {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(&dir)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-        };
+        let run = |args: &[&str]| git_ok(&dir, args);
         if run(&["init", "-q"]) {
             std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
             run(&["add", "a.txt"]);
@@ -107,28 +122,12 @@ mod tests {
             std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\n").unwrap();
             std::fs::write(dir.join("new.txt"), "fresh\n").unwrap();
 
-            let modified = FileChange {
-                path: "a.txt".into(),
-                source: None,
-                status: ChangeStatus::Modified,
-                added: 2,
-                deleted: 1,
-                diff: None,
-            };
-            let diff = diff_for_file(&dir, &modified).unwrap();
+            let diff = diff_for_file(&dir, &change("a.txt", ChangeStatus::Modified, 2, 1)).unwrap();
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Removed && l.text == "two"));
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text == "TWO"));
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text == "three"));
 
-            let untracked = FileChange {
-                path: "new.txt".into(),
-                source: None,
-                status: ChangeStatus::Added,
-                added: 1,
-                deleted: 0,
-                diff: None,
-            };
-            let diff = diff_for_file(&dir, &untracked).unwrap();
+            let diff = diff_for_file(&dir, &change("new.txt", ChangeStatus::Added, 1, 0)).unwrap();
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text == "fresh"));
         }
         let _ = std::fs::remove_dir_all(&dir);
@@ -141,14 +140,7 @@ mod tests {
     fn diff_for_rename_shows_delta_not_all_added() {
         let dir = std::env::temp_dir().join(format!("rixlcode-diff-rename-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let run = |args: &[&str]| {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(&dir)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-        };
+        let run = |args: &[&str]| git_ok(&dir, args);
         if run(&["init", "-q"]) {
             std::fs::write(dir.join("old.txt"), "one\ntwo\nthree\n").unwrap();
             run(&["add", "old.txt"]);
@@ -156,14 +148,8 @@ mod tests {
             run(&["mv", "old.txt", "new.txt"]);
             std::fs::write(dir.join("new.txt"), "one\nTWO\nthree\n").unwrap();
 
-            let renamed = FileChange {
-                path: "new.txt".into(),
-                source: Some("old.txt".into()),
-                status: ChangeStatus::Renamed,
-                added: 1,
-                deleted: 1,
-                diff: None,
-            };
+            let mut renamed = change("new.txt", ChangeStatus::Renamed, 1, 1);
+            renamed.source = Some("old.txt".into());
             let diff = diff_for_file(&dir, &renamed).unwrap();
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Removed && l.text == "two"));
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text == "TWO"));
@@ -179,31 +165,42 @@ mod tests {
     fn diff_for_unborn_head_shows_net_worktree() {
         let dir = std::env::temp_dir().join(format!("rixlcode-diff-unborn-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let run = |args: &[&str]| {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(&dir)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-        };
+        let run = |args: &[&str]| git_ok(&dir, args);
         if run(&["init", "-q"]) {
             std::fs::write(dir.join("f.txt"), "a\nb\n").unwrap();
             run(&["add", "f.txt"]);
             std::fs::write(dir.join("f.txt"), "a\nB\nc\n").unwrap();
 
-            let staged = FileChange {
-                path: "f.txt".into(),
-                source: None,
-                status: ChangeStatus::Added,
-                added: 3,
-                deleted: 0,
-                diff: None,
-            };
-            let diff = diff_for_file(&dir, &staged).unwrap();
+            let diff = diff_for_file(&dir, &change("f.txt", ChangeStatus::Added, 3, 0)).unwrap();
             let added: Vec<&str> = diff.lines.iter().filter(|l| l.kind == DiffLineKind::Added).map(|l| l.text.as_str()).collect();
             assert_eq!(added, ["a", "B", "c"], "net worktree content, no header junk");
             assert!(diff.lines.iter().all(|l| l.kind != DiffLineKind::Removed));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// In a SHA-256 repo the empty tree is `6ef19b…`, not the SHA-1
+    /// `4b825dc…` — the unborn-HEAD fallback must derive it from the repo's
+    /// object format or `git diff` exits 128. Skips when `git` is unavailable
+    /// or too old for `--object-format=sha256`.
+    #[test]
+    fn diff_for_unborn_head_works_in_sha256_repo() {
+        let dir = std::env::temp_dir().join(format!("rixlcode-diff-sha256-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| git_ok(&dir, args);
+        if run(&["init", "-q", "--object-format=sha256"]) {
+            assert_eq!(
+                crate::git::empty_tree_id(&dir).as_deref(),
+                Some("6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"),
+                "empty tree derived in the repo's object format"
+            );
+            std::fs::write(dir.join("f.txt"), "a\nb\n").unwrap();
+            run(&["add", "f.txt"]);
+            std::fs::write(dir.join("f.txt"), "a\nB\nc\n").unwrap();
+
+            let diff = diff_for_file(&dir, &change("f.txt", ChangeStatus::Added, 3, 0)).unwrap();
+            let added: Vec<&str> = diff.lines.iter().filter(|l| l.kind == DiffLineKind::Added).map(|l| l.text.as_str()).collect();
+            assert_eq!(added, ["a", "B", "c"], "net worktree content via the sha256 empty tree");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -215,14 +212,7 @@ mod tests {
     fn oversized_diff_is_capped_at_the_pipe() {
         let dir = std::env::temp_dir().join(format!("rixlcode-diff-cap-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let run = |args: &[&str]| {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(&dir)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-        };
+        let run = |args: &[&str]| git_ok(&dir, args);
         if run(&["init", "-q"]) {
             std::fs::write(dir.join("big.txt"), "x\n").unwrap();
             run(&["add", "big.txt"]);
@@ -230,15 +220,7 @@ mod tests {
             // One ~600KB line — over the 512KB byte cap in a single row.
             std::fs::write(dir.join("big.txt"), "a".repeat(600 * 1024)).unwrap();
 
-            let change = FileChange {
-                path: "big.txt".into(),
-                source: None,
-                status: ChangeStatus::Modified,
-                added: 1,
-                deleted: 1,
-                diff: None,
-            };
-            let diff = diff_for_file(&dir, &change).unwrap();
+            let diff = diff_for_file(&dir, &change("big.txt", ChangeStatus::Modified, 1, 1)).unwrap();
             assert!(diff.truncated, "byte cap marks the diff truncated");
             assert!(diff.lines.len() <= 400);
         }

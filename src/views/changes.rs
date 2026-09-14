@@ -7,33 +7,54 @@ use gpui_kit::*;
 use crate::git::{ChangeStatus, FileChange};
 use crate::workspace::Workspace;
 
+/// Token source for in-flight row-diff loads — each expand stamps the row
+/// with a fresh id so a stale result can't attach after collapse+re-expand.
+static NEXT_DIFF_LOAD: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// What a background diff load was issued under: `(change-list generation,
+/// row load token)`. Both must still match when the result lands — a refresh
+/// bumps the generation, collapse/re-expand changes the token — or the diff
+/// is stale and gets discarded.
+type DiffStamp = (u64, u64);
+
 impl Workspace {
-    /// Expand/collapse a row's inline diff. Expanding loads the working-tree
-    /// diff on the background executor and caches it on the row; collapsing
-    /// drops it.
+    /// Expand/collapse a row's inline diff. Expanding stamps the row with a
+    /// load token and fetches the working-tree diff on the background
+    /// executor; collapsing drops the cached diff and clears the token so a
+    /// still-running load is discarded when it lands.
     pub fn toggle_change_diff(&mut self, ix: usize, cx: &mut Context<Self>) {
-        if self.changes.get(ix).is_some_and(|c| c.diff.is_some()) {
-            self.changes[ix].diff = None;
+        if self.changes.get(ix).is_some_and(|c| c.diff.is_some() || c.diff_load != 0) {
+            let row = &mut self.changes[ix];
+            row.diff = None;
+            row.diff_load = 0;
             cx.notify();
             return;
         }
-        let Some(change) = self.changes.get(ix).cloned() else { return };
+        let stamp: DiffStamp = (self.changes_generation, NEXT_DIFF_LOAD.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+        let row = &mut self.changes[ix];
+        row.diff_load = stamp.1;
+        let change = row.clone();
         let dir = self.project.root().to_path_buf();
-        let path = change.path.clone();
         cx.spawn(async move |this, cx| {
             let diff = cx
                 .background_executor()
                 .spawn(async move { crate::changes_diff::diff_for_file(&dir, &change) })
                 .await;
-            let _ = this.update(cx, |this, cx| this.land_change_diff(&path, diff, cx));
+            let _ = this.update(cx, |this, cx| this.land_change_diff(stamp, diff, cx));
         })
         .detach();
     }
 
-    /// Store a loaded diff on the row for `path` — skipped when the list
-    /// refreshed under the load and that file is no longer listed.
-    fn land_change_diff(&mut self, path: &str, diff: Option<crate::changes_diff::FileDiff>, cx: &mut Context<Self>) {
-        let Some(row) = self.changes.iter_mut().find(|r| r.path == path) else { return };
+    /// Store a loaded diff on the row stamped with the stamp's token —
+    /// skipped when the list generation moved on (a refresh landed or is in
+    /// flight) or no row still waits on that token (collapsed or re-expanded
+    /// under the load). The token is unique per load, so it identifies the row.
+    pub(crate) fn land_change_diff(&mut self, stamp: DiffStamp, diff: Option<crate::changes_diff::FileDiff>, cx: &mut Context<Self>) {
+        if stamp.0 != self.changes_generation {
+            return;
+        }
+        let Some(row) = self.changes.iter_mut().find(|r| r.diff_load == stamp.1) else { return };
+        row.diff_load = 0;
         row.diff = diff;
         cx.notify();
     }
@@ -42,15 +63,25 @@ impl Workspace {
     /// several git processes and reads untracked files, so it runs on the
     /// background executor and publishes the result back when done.
     pub fn refresh_changes(&mut self, cx: &mut Context<Self>) {
+        self.changes_generation += 1;
+        let generation = self.changes_generation;
         let root = self.project.root().to_path_buf();
         cx.spawn(async move |this, cx| {
             let changes = cx.background_executor().spawn(async move { crate::git::collect(&root) }).await;
-            let _ = this.update(cx, |this, cx| {
-                this.changes = changes;
-                cx.notify();
-            });
+            let _ = this.update(cx, |this, cx| this.land_changes(generation, changes, cx));
         })
         .detach();
+    }
+
+    /// Publish a collected change list — skipped when a newer refresh was
+    /// requested while this one ran, so an older result can't revert the
+    /// panel to a stale snapshot.
+    pub(crate) fn land_changes(&mut self, generation: u64, changes: Vec<FileChange>, cx: &mut Context<Self>) {
+        if generation != self.changes_generation {
+            return;
+        }
+        self.changes = changes;
+        cx.notify();
     }
 
     pub fn render_changes_panel(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

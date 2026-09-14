@@ -58,14 +58,8 @@ pub(crate) fn diff_for_file(dir: &Path, change: &FileChange) -> Option<FileDiff>
         // against the empty tree for the same net result — concatenating the
         // staged and unstaged halves would feed the second patch's headers
         // to `parse_diff` as content.
-        let mut args = vec!["diff", "HEAD", "--", change.path.as_str()];
-        if let Some(source) = &change.source {
-            args.push(source.as_str());
-        }
-        git_diff(dir, &args, MAX_DIFF_BYTES).or_else(|| {
-            args[1] = crate::git::EMPTY_TREE;
-            git_diff(dir, &args, MAX_DIFF_BYTES)
-        })?
+        git_diff(dir, &diff_args("HEAD", change), MAX_DIFF_BYTES)
+            .or_else(|| git_diff(dir, &diff_args(&crate::git::empty_tree_id(dir)?, change), MAX_DIFF_BYTES))?
     };
     let mut diff = parse_diff(&raw);
     diff.truncated |= capped;
@@ -75,6 +69,17 @@ pub(crate) fn diff_for_file(dir: &Path, change: &FileChange) -> Option<FileDiff>
 /// Whether `path` has an index entry — untracked files need `--no-index`.
 fn tracked(dir: &Path, path: &str) -> bool {
     git(dir, &["ls-files", "--error-unmatch", "--", path]).is_some()
+}
+
+/// `git diff <base> -- <path> [source]` — a rename needs both names in the
+/// pathspec (the source alone is gone from the worktree, the destination
+/// alone diffs as a new file).
+fn diff_args<'a>(base: &'a str, change: &'a FileChange) -> Vec<&'a str> {
+    let mut args = vec!["diff", base, "--", change.path.as_str()];
+    if let Some(source) = &change.source {
+        args.push(source.as_str());
+    }
+    args
 }
 
 /// Parse unified-diff output into numbered lines. File headers (`diff --git`,
