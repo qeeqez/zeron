@@ -214,6 +214,30 @@ impl Workspace {
         let ix = self.active;
         self.open_rename(ix, window, cx);
     }
+
+    /// Begin an inline rename on chat `ix` — the sidebar row swaps its title
+    /// for `self.rename`, seeded with the current title fully selected.
+    pub fn start_inline_rename(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(chat) = self.chats.get(ix) else { return };
+        self.renaming = Some(chat.id);
+        self.rename.update(cx, |state, cx| {
+            state.set_value(chat.title.clone(), window, cx);
+            state.select_all(window, cx);
+        });
+        // The editor only exists after this render — focus it next frame.
+        let input = self.rename.clone();
+        window.defer(cx, move |window, cx| {
+            input.update(cx, |state, cx| state.focus(window, cx));
+        });
+        cx.notify();
+    }
+
+    /// Abandon the in-flight inline rename without touching the title.
+    pub fn cancel_inline_rename(&mut self, cx: &mut Context<Self>) {
+        if self.renaming.take().is_some() {
+            cx.notify();
+        }
+    }
 }
 
 impl Workspace {

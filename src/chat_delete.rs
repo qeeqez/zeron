@@ -32,6 +32,10 @@ impl Workspace {
             return;
         }
         let was_active = index == self.active;
+        // Deleting the chat mid-rename must end the edit — the row is gone.
+        if self.renaming == Some(self.chats[index].id) {
+            self.renaming = None;
+        }
         // Chat::drop kills the child slot and cancels the reply task.
         self.chats.remove(index);
         if self.active >= self.chats.len() {
@@ -73,6 +77,7 @@ impl Workspace {
             let _ = this.update(cx, |this, cx| {
                 this.chats.clear();
                 this.search_match_ix = 0;
+                this.renaming = None;
                 this.new_chat(cx);
             });
         })

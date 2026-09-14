@@ -20,6 +20,8 @@ mod changes_ui_tests;
 mod chat_delete;
 mod chat_msg;
 mod chat_ops;
+#[cfg(test)]
+mod chat_ops_tests;
 mod chat_search;
 mod chat_search_tests;
 #[cfg(test)]

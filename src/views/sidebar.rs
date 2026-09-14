@@ -48,30 +48,23 @@ impl Workspace {
             .filter(|ix| self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query)))
             .collect();
         let bucket = |ix: usize| self.chat_bucket(ix);
+        let mut row_of = |ix: usize| super::sidebar_row::SidebarRow::Chat(super::sidebar_row::chat_row(&self.chats[ix], ix, self, cx));
 
         let group_names = ["Pinned", "Today", "Previous 7 Days", "Older"];
-        let mut groups: Vec<SidebarGroup<SidebarMenuItem>> = Vec::new();
+        let mut groups: Vec<SidebarGroup<super::sidebar_row::SidebarRow>> = Vec::new();
         for (bucket_ix, name) in group_names.iter().enumerate() {
-            let items: Vec<SidebarMenuItem> = filtered
-                .iter()
-                .copied()
-                .filter(|ix| bucket(*ix) == bucket_ix)
-                .map(|ix| super::sidebar_row::chat_row(&self.chats[ix], ix, self.active, cx))
-                .collect();
+            let items: Vec<super::sidebar_row::SidebarRow> =
+                filtered.iter().copied().filter(|ix| bucket(*ix) == bucket_ix).map(&mut row_of).collect();
             if !items.is_empty() {
                 groups.push(SidebarGroup::new(*name).children(items));
             }
         }
         if !archived.is_empty() {
-            let items: Vec<SidebarMenuItem> = archived
-                .iter()
-                .copied()
-                .map(|ix| super::sidebar_row::chat_row(&self.chats[ix], ix, self.active, cx))
-                .collect();
+            let items: Vec<super::sidebar_row::SidebarRow> = archived.iter().copied().map(row_of).collect();
             groups.push(SidebarGroup::new("Archived").children(items));
         }
 
-        let actions = SidebarGroup::new("").child(new_chat);
+        let actions = SidebarGroup::new("").child(super::sidebar_row::SidebarRow::Item(Box::new(new_chat)));
 
         let footer = div()
             .flex()
