@@ -12,6 +12,8 @@ mod backend_parse;
 #[cfg(test)]
 mod backend_parse_tests;
 mod backend_run;
+#[cfg(test)]
+mod backend_run_tests;
 mod changes_diff;
 #[cfg(test)]
 mod changes_diff_tests;

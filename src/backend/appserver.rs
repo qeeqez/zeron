@@ -9,7 +9,11 @@ use serde_json::{Value, json};
 
 use super::rpc::request_reply;
 use crate::backend::AgentEvent;
-use crate::backend_parse::{file_change_events, item_ix};
+use crate::backend_parse::{file_change_events, item_id, item_ix, mcp_result_text, reasoning_text};
+
+/// Item id of the synthetic plan card — `turn/plan/updated` has no item
+/// id of its own, so the checklist lives under this key.
+const PLAN_ID: &str = "__turn_plan__";
 
 /// Per-turn decoder: tracks which items have started/streamed so completed
 /// payloads don't double-emit what deltas already delivered.
@@ -40,7 +44,7 @@ impl TurnDecoder {
         Self {
             started: std::collections::HashSet::new(),
             streamed: std::collections::HashSet::new(),
-            plan_item: json!({"id": "__turn_plan__"}),
+            plan_item: json!({"id": PLAN_ID}),
             errored: false,
         }
     }
@@ -199,7 +203,7 @@ impl TurnDecoder {
         let Some(steps) = params["plan"].as_array() else { return vec![] };
         let ix = item_ix(&self.plan_item);
         let mut out = vec![];
-        if self.started.insert("__turn_plan__".to_string()) {
+        if self.started.insert(PLAN_ID.to_string()) {
             out.push(AgentEvent::ToolCallStart { ix, name: "plan".into(), detail: "".into() });
         }
         let text = steps
@@ -244,18 +248,27 @@ impl TurnDecoder {
 
     /// `turn/completed` ends the turn. `failed` surfaces the turn error
     /// (unless one was already emitted); `interrupted` is a clean stop —
-    /// the user cancelled, so no error bubble.
+    /// the user cancelled, so no error bubble. A live plan card gets its
+    /// `ToolCallEnd` here — `turn/plan/updated` has no item/completed, so
+    /// without this the checklist card spins forever.
     fn turn_completed(&mut self, turn: &Value) -> Vec<AgentEvent> {
+        let ok = turn["status"].as_str() == Some("completed");
+        let mut out = vec![];
+        if self.started.remove(PLAN_ID) {
+            out.push(AgentEvent::ToolCallEnd { ix: item_ix(&self.plan_item), ok });
+        }
         match turn["status"].as_str() {
             Some("failed") if !self.errored => {
                 let err = &turn["error"];
                 let message = err["message"].as_str().unwrap_or("turn failed");
                 let detail = err["additionalDetails"].as_str().filter(|d| !d.is_empty());
                 let text = detail.map_or_else(|| message.to_string(), |d| format!("{message} ({d})"));
-                vec![AgentEvent::Error(text.into()), AgentEvent::Done]
+                out.push(AgentEvent::Error(text.into()));
             },
-            _ => vec![AgentEvent::Done],
+            _ => {},
         }
+        out.push(AgentEvent::Done);
+        out
     }
 
     /// Emit `ToolCallStart` unless this item already opened a card.
@@ -273,38 +286,4 @@ enum DeltaKind {
     /// Tool output; the name labels the card if the delta opens it before
     /// `item/started` arrives.
     Tool(&'static str),
-}
-
-/// Item id as a String — app-server ids are already globally unique.
-fn item_id(item: &Value) -> String {
-    item["id"].as_str().unwrap_or("").to_string()
-}
-
-/// Reasoning text from a completed item: summary lines plus content.
-fn reasoning_text(item: &Value) -> String {
-    let mut parts: Vec<&str> = item["summary"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
-    if let Some(content) = item["content"].as_array() {
-        parts.extend(content.iter().filter_map(Value::as_str));
-    }
-    parts.join("\n")
-}
-
-/// Human-readable result of a completed MCP/dynamic tool call.
-fn mcp_result_text(item: &Value) -> String {
-    if let Some(err) = item["error"]["message"].as_str() {
-        return format!("error: {err}");
-    }
-    let result = &item["result"];
-    if let Some(text) = result["structuredContent"].as_str() {
-        return text.to_string();
-    }
-    result["content"]
-        .as_array()
-        .map(|c| {
-            c.iter()
-                .filter_map(|b| b["text"].as_str().map(str::to_string).or_else(|| Some(b.to_string())))
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
-        .unwrap_or_default()
 }

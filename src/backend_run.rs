@@ -19,10 +19,16 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     // process directly — dropping the stream only cancels once the pump
     // thread wakes on the next event.
     let child = stream.child.clone();
+    // The task's future owns this guard: dropping the task (stop, chat
+    // delete, quit) drops the future and sets `cancelled` right away —
+    // the pump thread's stream drop only fires once it wakes on an event.
+    let cancel = stream.cancel_guard();
     let (tx, rx) = std::sync::mpsc::channel::<AgentEvent>();
     std::thread::spawn(move || pump_stream(stream, tx));
 
     let task = cx.spawn(async move |this, cx| {
+        let _cancel = cancel;
+
         'outer: loop {
             let e = match rx.try_recv() {
                 Ok(e) => e,

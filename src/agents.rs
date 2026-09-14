@@ -12,14 +12,10 @@ use crate::workspace::Workspace;
 impl Workspace {
     pub fn cancel_agent(&mut self, id: u64, cx: &mut Context<Self>) {
         // Chat-run rows hold no handles — the task and child live on the
-        // Chat. Snapshot the turn's tool calls while the link still
-        // resolves, then stop that reply so the backend process dies.
+        // Chat. `stop_chat_reply` snapshots the turn's tool calls onto the
+        // row before clearing the link, then stops the backend.
         if let Some(chat_id) = self.chats.iter().find(|c| c.run_agent == Some(id)).map(|c| c.id) {
-            self.snapshot_chat_tools(chat_id);
             self.stop_chat_reply(chat_id, cx);
-            if let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) {
-                settle_tools(agent);
-            }
             return;
         }
         let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) else { return };
@@ -65,7 +61,6 @@ impl Workspace {
             .map(|c| c.id)
             .collect();
         for id in chat_ids {
-            self.snapshot_chat_tools(id);
             self.stop_chat_reply(id, cx);
         }
         for agent in &mut self.agents {
@@ -131,7 +126,12 @@ impl Workspace {
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         let Some(id) = chat.run_agent else { return };
         let status = if ok { ToolStatus::Done } else { ToolStatus::Failed };
-        for msg in Rc::make_mut(&mut chat.messages).iter_mut() {
+        // Settle only this turn's tools — messages after the last user
+        // message, same scope as `turn_tools`. Sweeping the whole history
+        // would rewrite a still-Running tool from an earlier cancelled
+        // turn with this turn's outcome.
+        let start = turn_start(chat);
+        for msg in Rc::make_mut(&mut chat.messages)[start..].iter_mut() {
             if let MessageKind::Tool(t) = &mut msg.kind
                 && t.status == ToolStatus::Running
             {
@@ -153,7 +153,7 @@ impl Workspace {
 
     /// Copy the chat's current-turn tool calls onto its agent row. Must run
     /// while `chat.run_agent` still points at the row.
-    fn snapshot_chat_tools(&mut self, chat_id: u64) {
+    pub(crate) fn snapshot_chat_tools(&mut self, chat_id: u64) {
         let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
         let Some(id) = chat.run_agent else { return };
         let tools: Vec<ToolCall> = turn_tools(chat).into_iter().cloned().collect();
@@ -173,12 +173,16 @@ pub(crate) fn agent_tools<'a>(ws: &'a Workspace, agent: &'a Agent) -> Vec<&'a To
     }
 }
 
+/// Index where the current turn begins: just after the last user message.
+fn turn_start(chat: &Chat) -> usize {
+    chat.messages.iter().rposition(|m| m.role == Role::User).map_or(0, |i| i + 1)
+}
+
 /// The current turn's tool calls: Tool messages after the last user
 /// message. Scoping matters — a chat's earlier turns would otherwise leak
 /// their tool calls into the live row.
 fn turn_tools(chat: &Chat) -> Vec<&ToolCall> {
-    let start = chat.messages.iter().rposition(|m| m.role == Role::User).map_or(0, |i| i + 1);
-    chat.messages[start..]
+    chat.messages[turn_start(chat)..]
         .iter()
         .filter_map(|m| match &m.kind {
             MessageKind::Tool(t) => Some(t),
@@ -224,7 +228,6 @@ pub(crate) struct AgentLogEntry {
     pub line: String,
     pub count_step: bool,
 }
-
 
 #[cfg(test)]
 mod tests {

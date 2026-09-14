@@ -52,6 +52,50 @@ pub(crate) fn item_ix(item: &serde_json::Value) -> usize {
     h.finish() as usize
 }
 
+/// Item id as a String — app-server ids are already globally unique.
+pub(crate) fn item_id(item: &serde_json::Value) -> String {
+    item["id"].as_str().unwrap_or("").to_string()
+}
+
+/// Reasoning text from a completed app-server item: summary lines plus
+/// content.
+pub(crate) fn reasoning_text(item: &serde_json::Value) -> String {
+    let mut parts: Vec<&str> = item["summary"]
+        .as_array()
+        .map(|a| a.iter().filter_map(serde_json::Value::as_str).collect())
+        .unwrap_or_default();
+    if let Some(content) = item["content"].as_array() {
+        parts.extend(content.iter().filter_map(serde_json::Value::as_str));
+    }
+    parts.join("\n")
+}
+
+/// Human-readable result of a completed MCP/dynamic tool call. A
+/// structured-only result (`structuredContent` object/array with empty
+/// `content`) still renders — serialized, not dropped as blank output.
+pub(crate) fn mcp_result_text(item: &serde_json::Value) -> String {
+    if let Some(err) = item["error"]["message"].as_str() {
+        return format!("error: {err}");
+    }
+    let result = &item["result"];
+    let structured = &result["structuredContent"];
+    if let Some(text) = structured.as_str() {
+        return text.to_string();
+    }
+    if !structured.is_null() {
+        return serde_json::to_string_pretty(structured).unwrap_or_else(|_| structured.to_string());
+    }
+    result["content"]
+        .as_array()
+        .map(|c| {
+            c.iter()
+                .filter_map(|b| b["text"].as_str().map(str::to_string).or_else(|| Some(b.to_string())))
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default()
+}
+
 /// Turn a completed `reasoning` item into a collapsible "thinking" card.
 /// `text` is a string on some codex versions, an array of {text:…} on others.
 fn reasoning_events(item: &serde_json::Value) -> Vec<AgentEvent> {

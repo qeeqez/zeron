@@ -194,52 +194,23 @@ fn error_will_retry_is_transient() {
 }
 
 #[test]
-fn turn_completed_variants() {
-    // Clean completion.
-    let mut d = TurnDecoder::new();
-    let dec =
-        d.line(r#"{"method":"turn/completed","params":{"threadId":"t","turn":{"id":"u","status":"completed","error":null,"items":[]}}}"#);
-    assert!(dec.turn_over);
-    assert!(matches!(&dec.events[0], AgentEvent::Done));
-
-    // Failed turn surfaces the error, then Done.
-    let mut d = TurnDecoder::new();
-    let dec = d.line(
-        r#"{"method":"turn/completed","params":{"threadId":"t","turn":{"id":"u","status":"failed","error":{"message":"boom","additionalDetails":null},"items":[]}}}"#,
-    );
-    assert!(dec.turn_over);
-    assert!(matches!(&dec.events[0], AgentEvent::Error(e) if e == "boom"));
-    assert!(matches!(&dec.events[1], AgentEvent::Done));
-
-    // Interrupted (user cancel) is a clean stop — no error bubble.
-    let mut d = TurnDecoder::new();
-    let dec =
-        d.line(r#"{"method":"turn/completed","params":{"threadId":"t","turn":{"id":"u","status":"interrupted","error":null,"items":[]}}}"#);
-    assert!(dec.turn_over);
-    assert_eq!(dec.events.len(), 1);
-    assert!(matches!(&dec.events[0], AgentEvent::Done));
-
-    // A turn error already emitted isn't duplicated at completion.
+fn mcp_structured_only_result_renders() {
+    // `structuredContent` as an object with an empty `content` array must
+    // still produce output — `as_str()` alone would render it blank.
     let mut d = TurnDecoder::new();
     events(
         &mut d,
-        r#"{"method":"error","params":{"error":{"message":"boom","additionalDetails":null},"willRetry":false,"threadId":"t","turnId":"u"}}"#,
+        r#"{"method":"item/started","params":{"item":{"type":"mcpToolCall","id":"m1","server":"db","tool":"query","status":"inProgress","arguments":{}},"threadId":"t","turnId":"u","startedAtMs":1}}"#,
     );
-    let dec = d.line(
-        r#"{"method":"turn/completed","params":{"threadId":"t","turn":{"id":"u","status":"failed","error":{"message":"boom","additionalDetails":null},"items":[]}}}"#,
-    );
-    assert_eq!(dec.events.len(), 1);
-    assert!(matches!(&dec.events[0], AgentEvent::Done));
-}
-
-#[test]
-fn usage_reads_last_turn_slice() {
-    let mut d = TurnDecoder::new();
     let evs = events(
         &mut d,
-        r#"{"method":"thread/tokenUsage/updated","params":{"threadId":"t","turnId":"u","tokenUsage":{"total":{"inputTokens":100,"outputTokens":50},"last":{"inputTokens":40,"outputTokens":10},"modelContextWindow":200000}}}"#,
+        r#"{"method":"item/completed","params":{"item":{"type":"mcpToolCall","id":"m1","server":"db","tool":"query","status":"completed","result":{"content":[],"structuredContent":{"rows":3,"ok":true}},"error":null},"threadId":"t","turnId":"u","completedAtMs":2}}"#,
     );
-    assert!(matches!(&evs[0], AgentEvent::Usage { input: 40, output: 10 }));
+    assert!(
+        evs.iter()
+            .any(|e| matches!(e, AgentEvent::ToolCallDelta { output, .. } if output.contains("\"rows\": 3")))
+    );
+    assert!(evs.iter().any(|e| matches!(e, AgentEvent::ToolCallEnd { ok: true, .. })));
 }
 
 #[test]

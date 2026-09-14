@@ -7,6 +7,8 @@ mod rpc;
 
 #[cfg(test)]
 mod appserver_tests;
+#[cfg(test)]
+mod appserver_turn_tests;
 
 pub use codex::CodexCliBackend;
 pub use http::HttpBackend;
@@ -130,6 +132,27 @@ impl Drop for ReplyStream {
         if let Some(slot) = &self.child {
             kill_slot(slot);
         }
+    }
+}
+
+/// Sets the stream's `cancelled` flag when dropped. The reply task holds
+/// one so stopping a chat signals the backend immediately — the pump
+/// thread's own `ReplyStream` drop only fires once it wakes on an event,
+/// which a silent HTTP response never sends.
+pub(crate) struct CancelOnDrop(pub std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl ReplyStream {
+    /// A handle that cancels this turn on drop — retain it on the UI side
+    /// (inside the reply task's future) so cancel doesn't depend on the
+    /// pump thread observing another backend event.
+    pub(crate) fn cancel_guard(&self) -> CancelOnDrop {
+        CancelOnDrop(self.cancelled.clone())
     }
 }
 

@@ -1,6 +1,8 @@
+use std::rc::Rc;
+
 use gpui_kit::*;
 
-use crate::model::{Chat, MessageKind};
+use crate::model::{Chat, MessageKind, Role, ToolStatus};
 use crate::workspace::Workspace;
 impl Workspace {
     pub fn new_chat(&mut self, cx: &mut Context<Self>) {
@@ -74,6 +76,10 @@ impl Workspace {
     /// directly — a hung child would otherwise leak because the pump
     /// thread only drops the stream when it wakes on an event.
     pub(crate) fn stop_chat_reply(&mut self, chat_id: u64, cx: &mut Context<Self>) {
+        // Snapshot the turn's tool calls onto the agent row while the link
+        // still resolves — clearing `run_agent` first would leave the
+        // cancelled card with no tool rows.
+        self.snapshot_chat_tools(chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         if let Some(slot) = chat.child.take() {
             crate::backend::kill_slot(&slot);
@@ -83,11 +89,22 @@ impl Workspace {
         }
         chat.running = false;
         chat.complete_turn();
+        // A cancelled call never produced a result — close this turn's
+        // tool rows so they don't spin forever.
+        let start = chat.messages.iter().rposition(|m| m.role == Role::User).map_or(0, |i| i + 1);
+        for msg in Rc::make_mut(&mut chat.messages)[start..].iter_mut() {
+            if let MessageKind::Tool(t) = &mut msg.kind
+                && t.status == ToolStatus::Running
+            {
+                t.status = ToolStatus::Failed;
+            }
+        }
         if let Some(id) = chat.run_agent.take()
             && let Some(agent) = self.agents.iter_mut().find(|a| a.id == id)
         {
             agent.status = crate::model::AgentStatus::Cancelled;
             agent.step = "cancelled".into();
+            crate::agents::settle_tools(agent);
         }
         self.search_match_ix = 0;
         cx.notify();
