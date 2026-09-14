@@ -17,8 +17,6 @@ pub mod settings_sections;
 mod sidebar;
 mod sidebar_row;
 
-pub use composer_helpers::{
-    Drain, apply_pick, attachment_chips, draining_begin, draining_end, enqueue, mention_item, queued, queued_item, slash_item,
-};
+pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_item, slash_item};
 pub use empty::render_empty_state;
 pub use message::render_message;

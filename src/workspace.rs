@@ -4,6 +4,7 @@ use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::*;
 
 use crate::model::{Agent, Chat};
+use crate::send_queue::SendQueue;
 
 pub struct Workspace {
     pub chats: Vec<Chat>,
@@ -14,6 +15,9 @@ pub struct Workspace {
     pub next_agent_id: u64,
     /// Monotonic id source for chats — survives deletions.
     pub next_chat_id: u64,
+    /// Messages queued while a reply runs — per-workspace, so windows never
+    /// share queues even when their chats reuse the same ids.
+    pub send_queue: SendQueue,
     pub agents_panel_open: bool,
     pub changes_panel_open: bool,
     /// Working-tree git changes shown in the Changes panel — refreshed on
@@ -98,7 +102,7 @@ impl Workspace {
 
         cx.subscribe_in(&search, window, |_this, _s, event: &InputEvent, _window, cx| {
             if matches!(event, InputEvent::Change) {
-                cx.notify();
+                cx.notify()
             }
         })
         .detach();
@@ -159,6 +163,7 @@ impl Workspace {
             agents: Vec::new(),
             next_agent_id: 0,
             next_chat_id: 0,
+            send_queue: SendQueue::default(),
             resizing_sidebar: false,
             agents_panel_open: false,
             changes_panel_open: false,
@@ -215,11 +220,7 @@ impl Workspace {
         }
         this.apply_theme(window, cx);
         // "system" follows the OS — re-resolve when the appearance flips.
-        window
-            .observe_window_appearance(move |window, cx| {
-                ws.update(cx, |this, cx| this.apply_theme(window, cx));
-            })
-            .detach();
+        window.observe_window_appearance(move |window, cx| ws.update(cx, |this, cx| this.apply_theme(window, cx))).detach();
         this.start_background(cx);
         this
     }

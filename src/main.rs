@@ -27,6 +27,8 @@ mod chat_ops_tests;
 mod chat_search;
 mod chat_search_tests;
 #[cfg(test)]
+mod composer_queue_tests;
+#[cfg(test)]
 mod composer_tests;
 #[cfg(test)]
 mod continuity_tests;
@@ -52,6 +54,7 @@ mod project;
 mod project_tests;
 mod root;
 mod send;
+mod send_queue;
 mod simulate;
 #[cfg(test)]
 mod ui_tests;

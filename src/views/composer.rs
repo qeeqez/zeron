@@ -92,7 +92,7 @@ impl Workspace {
                     .collect()
             })
             .unwrap_or_default();
-        let queued = crate::views::queued(self.chats[self.active].id);
+        let queued = self.send_queue.queued(self.chats[self.active].id);
         // Re-selecting a chat with a pending queue re-arms its drain (the
         // enqueue-time waiter exits when the chat backgrounds).
         if !queued.is_empty() {
