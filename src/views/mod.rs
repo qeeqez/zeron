@@ -4,6 +4,7 @@ mod changes;
 mod chat_view;
 mod composer;
 mod composer_helpers;
+mod diff;
 mod empty;
 mod markdown;
 mod message;

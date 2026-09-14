@@ -8,15 +8,25 @@ use crate::git::{ChangeStatus, FileChange};
 use crate::workspace::Workspace;
 
 impl Workspace {
+    /// Expand/collapse a row's inline diff. Expanding loads the working-tree
+    /// diff once and caches it on the row; collapsing drops it.
+    pub fn toggle_change_diff(&mut self, ix: usize, cx: &mut Context<Self>) {
+        let dir = self.project.root().to_path_buf();
+        if let Some(change) = self.changes.get_mut(ix) {
+            change.diff = if change.diff.is_none() { crate::changes_diff::diff_for_file(&dir, change) } else { None };
+            cx.notify();
+        }
+    }
+
     pub fn render_changes_panel(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let rows: Vec<AnyElement> = self.changes.iter().enumerate().map(|(ix, c)| change_row(ix, c, cx)).collect();
+        let mut next_line = 0usize;
+        let rows: Vec<AnyElement> = self.changes.iter().enumerate().map(|(ix, c)| change_entry(ix, c, &mut next_line, cx)).collect();
         let added: u32 = self.changes.iter().map(|c| c.added).sum();
         let deleted: u32 = self.changes.iter().map(|c| c.deleted).sum();
-
         div()
             .id("changes-panel")
             .test_support()
-            .w(px(280.))
+            .w(px(360.))
             .h_full()
             .flex()
             .flex_col()
@@ -89,6 +99,16 @@ impl Workspace {
     }
 }
 
+/// A file row plus, when expanded, its inline diff. `next_line` hands out
+/// unique `("diff-line", n)` ids across every expanded file in the panel.
+fn change_entry(ix: usize, change: &FileChange, next_line: &mut usize, cx: &mut Context<Workspace>) -> AnyElement {
+    let mut entry = div().flex().flex_col().child(change_row(ix, change, cx));
+    if let Some(diff) = &change.diff {
+        entry = entry.child(crate::views::diff::render_diff(ix, diff, next_line, cx));
+    }
+    entry.into_any_element()
+}
+
 fn change_row(ix: usize, change: &FileChange, cx: &mut Context<Workspace>) -> AnyElement {
     let (icon, color) = match change.status {
         ChangeStatus::Added => (IconName::FilePlus, cx.theme().success),
@@ -97,6 +117,7 @@ fn change_row(ix: usize, change: &FileChange, cx: &mut Context<Workspace>) -> An
         ChangeStatus::Renamed => (IconName::FileSymlink, cx.theme().info),
         ChangeStatus::Conflicted => (IconName::CircleAlert, cx.theme().danger),
     };
+    let expanded = change.diff.is_some();
     div()
         .id(("change-row", ix))
         .test_support()
@@ -107,6 +128,13 @@ fn change_row(ix: usize, change: &FileChange, cx: &mut Context<Workspace>) -> An
         .py_1()
         .rounded_md()
         .text_sm()
+        .cursor_pointer()
+        .hover(|d| d.bg(cx.theme().muted))
+        .child(div().flex_shrink_0().text_color(cx.theme().muted_foreground).child(if expanded {
+            IconName::ChevronDown
+        } else {
+            IconName::ChevronRight
+        }))
         .child(div().flex_shrink_0().text_color(color).child(icon))
         .child(
             div()
@@ -123,5 +151,6 @@ fn change_row(ix: usize, change: &FileChange, cx: &mut Context<Workspace>) -> An
         .when(change.deleted > 0, |d| {
             d.child(div().flex_shrink_0().text_xs().text_color(cx.theme().danger).child(format!("-{}", change.deleted)))
         })
+        .on_click(cx.listener(move |this, _, _, cx| this.toggle_change_diff(ix, cx)))
         .into_any_element()
 }

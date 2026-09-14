@@ -6,6 +6,9 @@ mod backend_parse;
 #[cfg(test)]
 mod backend_parse_tests;
 mod backend_run;
+mod changes_diff;
+#[cfg(test)]
+mod changes_diff_tests;
 #[cfg(test)]
 mod changes_ui_tests;
 mod chat_delete;

@@ -1,6 +1,7 @@
 //! Working-tree git changes for the Changes panel — collected by shelling out
 //! to `git` in the app cwd. Parsing lives in `parse_status`/`parse_numstat` so
-//! tests can feed fixture output without a real repository.
+//! tests can feed fixture output without a real repository. Line-level diffs
+//! for expanded rows live in `crate::changes_diff`.
 
 /// One file's working-tree change, as listed by `git status --porcelain`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -9,6 +10,10 @@ pub struct FileChange {
     pub status: ChangeStatus,
     pub added: u32,
     pub deleted: u32,
+    /// Parsed unified diff, loaded on demand when the panel row expands —
+    /// `None` means collapsed. Collection never fills this; the workspace
+    /// owns no extra per-file state, so the row doubles as the cache.
+    pub diff: Option<crate::changes_diff::FileDiff>,
 }
 
 /// Display status derived from the two-column porcelain code.
@@ -54,9 +59,17 @@ pub(crate) fn collect(dir: &std::path::Path) -> Vec<FileChange> {
 
 /// Run `git` in `dir`; stdout on success, `None` on spawn failure, non-zero
 /// exit (not a repo), or non-UTF-8 output.
-fn git(dir: &std::path::Path, args: &[&str]) -> Option<String> {
+pub(crate) fn git(dir: &std::path::Path, args: &[&str]) -> Option<String> {
     let out = std::process::Command::new("git").args(args).current_dir(dir).output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// `git diff` variant: exit code 1 means "differences found" (always for
+/// `--no-index`), so stdout is still the payload. Other failures → `None`.
+pub(crate) fn git_diff(dir: &std::path::Path, args: &[&str]) -> Option<String> {
+    let out = std::process::Command::new("git").args(args).current_dir(dir).output().ok()?;
+    let code = out.status.code().unwrap_or(-1);
+    (code == 0 || code == 1).then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// Parse `git status --porcelain=v1 -z` output. Entries are NUL-separated
@@ -78,7 +91,13 @@ pub(crate) fn parse_status(raw: &str) -> Vec<FileChange> {
             // Consume the source-path field; the entry path is the new name.
             fields.next();
         }
-        out.push(FileChange { path: path.to_string(), status, added: 0, deleted: 0 });
+        out.push(FileChange {
+            path: path.to_string(),
+            status,
+            added: 0,
+            deleted: 0,
+            diff: None,
+        });
     }
     out
 }
