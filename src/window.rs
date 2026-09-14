@@ -5,7 +5,9 @@ use gpui_kit::base::InteractiveElementExt;
 use gpui_kit::component::sidebar::SidebarToggleButton;
 use gpui_kit::*;
 #[cfg(target_os = "macos")]
-use objc2_app_kit::NSView;
+use objc2::{Message, rc::Retained};
+#[cfg(target_os = "macos")]
+use objc2_app_kit::{NSView, NSVisualEffectView};
 #[cfg(target_os = "macos")]
 use objc2_foundation::NSRect;
 
@@ -52,12 +54,6 @@ pub(crate) fn sidebar_vibrancy_active(frosted: bool, collapsed: bool) -> bool {
     frosted && !collapsed
 }
 
-/// Tag identifying the app's own `NSVisualEffectView` behind the sidebar, so
-/// `sync_sidebar_vibrancy` can find, resize or remove it without touching
-/// gpui's blurred background view. ("RIXL" in hex.)
-#[cfg(target_os = "macos")]
-const SIDEBAR_VIBRANCY_TAG: isize = 0x5249_584C;
-
 /// Install, resize or remove the `NSVisualEffectView` that makes the frosted
 /// sidebar read as real glass. gpui's `Blurred` window background uses
 /// `NSVisualEffectMaterial::Selection` — the weakest material, which reads
@@ -82,7 +78,7 @@ pub(crate) fn sync_sidebar_vibrancy(window: &Window, sidebar_width: f32, active:
     // on the main thread, so the view and its superview are valid to touch.
     let native_view = unsafe { &*kit.ns_view.as_ptr().cast::<NSView>() };
     let Some(content_view) = (unsafe { native_view.superview() }) else { return };
-    let existing = content_view.viewWithTag(SIDEBAR_VIBRANCY_TAG);
+    let existing = sidebar_vibrancy_view(&content_view);
     if !active {
         if let Some(view) = existing {
             view.removeFromSuperview();
@@ -100,26 +96,34 @@ pub(crate) fn sync_sidebar_vibrancy(window: &Window, sidebar_width: f32, active:
     }
 }
 
+/// Find the app's vibrancy view among the content view's subviews by its
+/// `Sidebar` material — distinct from gpui's `Selection`-material blur view.
+/// (`NSView` exposes `viewWithTag`/`tag` but no `setTag` in objc2-app-kit, so
+/// a material match is the reliable identity.)
+#[cfg(target_os = "macos")]
+fn sidebar_vibrancy_view(content_view: &NSView) -> Option<Retained<NSVisualEffectView>> {
+    use objc2_app_kit::NSVisualEffectMaterial;
+    content_view.subviews().iter().find_map(|sub| {
+        let effect = sub.downcast_ref::<NSVisualEffectView>()?;
+        (effect.material() == NSVisualEffectMaterial::Sidebar).then(|| effect.retain())
+    })
+}
+
 /// Create the sidebar's `NSVisualEffectView` (`Sidebar` material, blending
 /// behind the window) and insert it directly below the Metal content view —
 /// above gpui's own blur view, which stays as a fallback.
 #[cfg(target_os = "macos")]
 fn install_sidebar_vibrancy(content_view: &NSView, native_view: &NSView, frame: NSRect) {
-    use objc2::{MainThreadMarker, msg_send, rc::Retained};
+    use objc2::MainThreadMarker;
     use objc2_app_kit::{
-        NSAutoresizingMaskOptions, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView,
-        NSWindowOrderingMode,
+        NSAutoresizingMaskOptions, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSWindowOrderingMode,
     };
     let Some(mtm) = MainThreadMarker::new() else { return };
-    // SAFETY: initWithFrame: is NSView's designated initializer; the view is
-    // configured before being added to the hierarchy on the main thread.
-    let view: Retained<NSVisualEffectView> = unsafe { msg_send![mtm.alloc::<NSVisualEffectView>(), initWithFrame: frame] };
+    let view = NSVisualEffectView::initWithFrame(mtm.alloc(), frame);
     view.setMaterial(NSVisualEffectMaterial::Sidebar);
     view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
     view.setState(NSVisualEffectState::Active);
     view.setAutoresizingMask(NSAutoresizingMaskOptions::ViewHeightSizable);
-    // SAFETY: setTag: is a plain NSView setter the bindings don't expose.
-    unsafe { msg_send![&view, setTag: SIDEBAR_VIBRANCY_TAG] }
     content_view.addSubview_positioned_relativeTo(&view, NSWindowOrderingMode::Below, Some(native_view));
 }
 

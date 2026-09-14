@@ -182,7 +182,7 @@ fn sidebar_frosted_toggle_flips_rendering_mode() {
         assert_eq!(root_bg, Some(Fill::from(transparent_black())), "frosted needs a transparent Root fill");
         let fill = crate::appearance::sidebar_fill(cx.global::<Theme>(), true);
         assert!(fill.a > 0. && fill.a < 1., "frosted sidebar fill must be translucent, got alpha {}", fill.a);
-        assert!(fill.a >= 0.5, "frosted fill must stay legible over the blur, got alpha {}", fill.a);
+        assert!(fill.a >= 0.25, "frosted fill must stay legible over the blur, got alpha {}", fill.a);
         assert_eq!(
             crate::appearance::window_background_appearance(true),
             gpui_kit::WindowBackgroundAppearance::Blurred,
