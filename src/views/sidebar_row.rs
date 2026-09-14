@@ -84,7 +84,9 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
         running: chat.running,
         unread: chat.unread,
         active: ix == ws.active,
-        renaming: ws.renaming == Some(chat.id),
+        // Only an inline rename mounts the editor — a dialog rename shares
+        // `ws.rename`, and its outside-click would commit behind the dialog.
+        renaming: ws.renaming == Some(chat.id) && ws.rename_mode == crate::workspace::RenameMode::Inline,
         collapsed: false,
     }
 }
@@ -184,9 +186,9 @@ impl ChatRow {
                 cx.stop_propagation();
                 ws_enter.update(cx, |this, cx| this.commit_rename(window, cx));
             })
-            .on_action(move |_: &InputEscape, _window, cx| {
+            .on_action(move |_: &InputEscape, window, cx| {
                 cx.stop_propagation();
-                ws_esc.update(cx, |this, cx| this.cancel_inline_rename(cx));
+                ws_esc.update(cx, |this, cx| this.cancel_inline_rename(window, cx));
             })
             .child(Input::new(&self.rename_input).id(("rename-input", self.chat_id)).xsmall().w_full())
     }

@@ -47,6 +47,17 @@ fn fuzzy_subsequence_and_ranking() {
 }
 
 #[test]
+fn fuzzy_scores_best_alignment_not_first() {
+    // A late contiguous run beats an early scattered match: the greedy
+    // first-subsequence scan took the 'a' at index 0 and ate a 9-char gap
+    // penalty instead of the contiguous "ab" at the end.
+    assert_eq!(fuzzy_score("ab", "a.........ab"), fuzzy_score("ab", "ab"));
+    assert!(fuzzy_score("ab", "a.........ab") > fuzzy_score("ab", "axxxxxxxxxyb"));
+    // Word-start alignment still wins when a scattered match starts earlier.
+    assert!(fuzzy_score("nc", "nonsense New Chat") > fuzzy_score("nc", "nonsense chat"));
+}
+
+#[test]
 fn palette_opens_with_commands_and_chats() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);

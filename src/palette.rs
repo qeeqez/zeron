@@ -41,14 +41,18 @@ impl Workspace {
         let Some(chat) = self.chats.get(ix) else { return };
         let title = chat.title.clone();
         // Store the stable id — vec positions shift if chats are deleted
-        // while the dialog is open.
+        // while the dialog is open. Dialog mode keeps the sidebar row from
+        // mounting its inline editor on the same input state.
         self.renaming = Some(chat.id);
+        self.rename_mode = crate::workspace::RenameMode::Dialog;
         self.rename.update(cx, |state, cx| {
             state.set_value(title, window, cx);
         });
         let ws = cx.entity();
-        window.open_dialog(cx, move |dialog, _window, cx| {
-            let input = ws.read(cx).rename.clone();
+        // Captured now — the builder runs during render while the workspace
+        // is leased, so it can't `ws.read` for the input state.
+        let input = self.rename.clone();
+        window.open_dialog(cx, move |dialog, _window, _cx| {
             let ws_ok = ws.clone();
             dialog
                 .title("Rename chat")
@@ -66,7 +70,13 @@ impl Workspace {
     }
 
     pub fn commit_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mode = self.rename_mode;
         let Some(id) = self.renaming.take() else { return };
+        // An inline commit leaves focus on the now-hidden editor — hand it
+        // back to the composer. Dialog mode restores focus on close itself.
+        if mode == crate::workspace::RenameMode::Inline {
+            self.composer.update(cx, |s, cx| s.focus(window, cx));
+        }
         let title = self.rename.read(cx).value().trim().to_string();
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == id);
         if !title.is_empty()

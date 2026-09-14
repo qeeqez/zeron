@@ -6,6 +6,16 @@ use gpui_kit::*;
 use crate::model::{Agent, Chat};
 use crate::send_queue::SendQueue;
 
+/// How an in-flight rename is driven: the sidebar row's inline editor, or
+/// the rename dialog. The row only mounts its editor for `Inline` — a
+/// dialog rename shares `Workspace::rename`, so without the split the row
+/// would mount an editor whose outside-click commits behind the dialog.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RenameMode {
+    Inline,
+    Dialog,
+}
+
 pub struct Workspace {
     pub chats: Vec<Chat>,
     pub active: usize,
@@ -42,6 +52,8 @@ pub struct Workspace {
     pub rename: Entity<InputState>,
     /// Chat id being renamed — stable across deletions, unlike a vec index.
     pub renaming: Option<u64>,
+    /// Which surface owns the rename — only `Inline` mounts the row editor.
+    pub rename_mode: RenameMode,
     /// Index into user messages for Cmd+Shift+Up/Down recall cycling.
     pub recall_ix: Option<usize>,
     /// Composer text stashed when a recall cycle starts — restored when the
@@ -191,6 +203,7 @@ impl Workspace {
             rename,
             palette,
             renaming: None,
+            rename_mode: RenameMode::Inline,
             recall_ix: None,
             recall_saved: None,
             chat_search,

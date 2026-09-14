@@ -237,6 +237,7 @@ impl Workspace {
     pub fn start_inline_rename(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(chat) = self.chats.get(ix) else { return };
         self.renaming = Some(chat.id);
+        self.rename_mode = crate::workspace::RenameMode::Inline;
         self.rename.update(cx, |state, cx| {
             state.set_value(chat.title.clone(), window, cx);
             state.select_all(window, cx);
@@ -250,8 +251,10 @@ impl Workspace {
     }
 
     /// Abandon the in-flight inline rename without touching the title.
-    pub fn cancel_inline_rename(&mut self, cx: &mut Context<Self>) {
+    /// Focus returns to the composer — the hidden input must not keep it.
+    pub fn cancel_inline_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.renaming.take().is_some() {
+            self.composer.update(cx, |s, cx| s.focus(window, cx));
             cx.notify();
         }
     }

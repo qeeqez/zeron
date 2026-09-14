@@ -3,8 +3,9 @@
 //! outside commits).
 
 use gpui_kit::component::Root;
+use gpui_kit::component::dialog::{Cancel, Confirm};
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext};
+use gpui_kit::{AppContext, Entity, Focusable, TestAppContext, VisualTestContext};
 
 use crate::workspace::Workspace;
 
@@ -104,6 +105,7 @@ fn inline_rename_commits_on_enter() {
         assert_eq!(ws.read(cx).chats[0].title.as_ref(), "Renamed chat");
         assert_eq!(ws.read(cx).renaming, None, "Enter should end the edit");
         assert!(window.try_find(("rename-input", chat_id)).is_none(), "editor should unmount");
+        assert!(ws.read(cx).composer.read(cx).focus_handle(cx).is_focused(window), "focus should return to the composer after Enter");
     });
 }
 
@@ -128,6 +130,7 @@ fn inline_rename_escape_cancels() {
         window.draw(cx).clear(cx);
         assert_eq!(ws.read(cx).chats[0].title.as_ref(), "Keep me", "Escape must not rename");
         assert_eq!(ws.read(cx).renaming, None, "Escape should end the edit");
+        assert!(ws.read(cx).composer.read(cx).focus_handle(cx).is_focused(window), "focus should return to the composer after Escape");
     });
 }
 
@@ -151,5 +154,60 @@ fn inline_rename_commits_when_another_row_is_clicked() {
         assert_eq!(ws.read(cx).chats[0].title.as_ref(), "First chat");
         assert_eq!(ws.read(cx).renaming, None);
         assert_eq!(ws.read(cx).active, 1, "the clicked row should become active");
+    });
+}
+
+#[test]
+fn dialog_rename_does_not_mount_inline_editor() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    let chat_id = cx.update(|_, cx| ws.read(cx).chats[0].id);
+    ws.update(cx, |this, cx| {
+        this.chats[0].title = "Keep me".into();
+        cx.notify();
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        ws.update(cx, |this, cx| this.open_rename(0, window, cx));
+        window.draw(cx).clear(cx);
+        assert_eq!(ws.read(cx).renaming, Some(chat_id));
+        assert!(window.try_find("dialog").is_some(), "rename dialog should open");
+        // The dialog shares `ws.rename` — the row must not mount its inline
+        // editor, or a click inside the dialog commits behind its back.
+        assert!(window.try_find(("rename-input", chat_id)).is_none(), "inline editor must stay unmounted");
+        ws.read(cx).rename.clone().update(cx, |s, cx| s.set_value("Edited", window, cx));
+        // A click inside the dialog is not an outside-click commit.
+        window.within("dialog").click(0usize, cx);
+        window.draw(cx).clear(cx);
+        assert_eq!(ws.read(cx).chats[0].title.as_ref(), "Keep me", "dialog click must not commit");
+        assert_eq!(ws.read(cx).renaming, Some(chat_id), "rename should still be open");
+        // Cancel discards the edit.
+        window.dispatch_action(Box::new(Cancel), cx);
+    });
+    cx.run_until_parked();
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert_eq!(ws.read(cx).chats[0].title.as_ref(), "Keep me", "Cancel must not persist");
+        assert_eq!(ws.read(cx).renaming, None);
+    });
+}
+
+#[test]
+fn dialog_rename_ok_commits() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        ws.update(cx, |this, cx| this.open_rename(0, window, cx));
+        window.draw(cx).clear(cx);
+        ws.read(cx).rename.clone().update(cx, |s, cx| s.set_value("New name", window, cx));
+        window.dispatch_action(Box::new(Confirm { secondary: false }), cx);
+    });
+    cx.run_until_parked();
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert_eq!(ws.read(cx).chats[0].title.as_ref(), "New name", "OK should commit the rename");
+        assert_eq!(ws.read(cx).renaming, None);
+        assert!(window.try_find("dialog").is_none(), "dialog should close on OK");
     });
 }
