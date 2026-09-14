@@ -109,6 +109,7 @@ mod tests {
 
             let modified = FileChange {
                 path: "a.txt".into(),
+                source: None,
                 status: ChangeStatus::Modified,
                 added: 2,
                 deleted: 1,
@@ -121,6 +122,7 @@ mod tests {
 
             let untracked = FileChange {
                 path: "new.txt".into(),
+                source: None,
                 status: ChangeStatus::Added,
                 added: 1,
                 deleted: 0,
@@ -128,6 +130,117 @@ mod tests {
             };
             let diff = diff_for_file(&dir, &untracked).unwrap();
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text == "fresh"));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A staged rename must diff HEAD→worktree across both names — with only
+    /// the destination path, `git diff HEAD` reports it as an all-added new
+    /// file and the removed lines never show. Skips when `git` is unavailable.
+    #[test]
+    fn diff_for_rename_shows_delta_not_all_added() {
+        let dir = std::env::temp_dir().join(format!("rixlcode-diff-rename-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        };
+        if run(&["init", "-q"]) {
+            std::fs::write(dir.join("old.txt"), "one\ntwo\nthree\n").unwrap();
+            run(&["add", "old.txt"]);
+            run(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
+            run(&["mv", "old.txt", "new.txt"]);
+            std::fs::write(dir.join("new.txt"), "one\nTWO\nthree\n").unwrap();
+
+            let renamed = FileChange {
+                path: "new.txt".into(),
+                source: Some("old.txt".into()),
+                status: ChangeStatus::Renamed,
+                added: 1,
+                deleted: 1,
+                diff: None,
+            };
+            let diff = diff_for_file(&dir, &renamed).unwrap();
+            assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Removed && l.text == "two"));
+            assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text == "TWO"));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// On an unborn HEAD, a staged-then-edited file diffs once against the
+    /// empty tree — the net worktree content — instead of concatenating the
+    /// empty→index and index→worktree patches (whose second set of headers
+    /// `parse_diff` would read as content). Skips when `git` is unavailable.
+    #[test]
+    fn diff_for_unborn_head_shows_net_worktree() {
+        let dir = std::env::temp_dir().join(format!("rixlcode-diff-unborn-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        };
+        if run(&["init", "-q"]) {
+            std::fs::write(dir.join("f.txt"), "a\nb\n").unwrap();
+            run(&["add", "f.txt"]);
+            std::fs::write(dir.join("f.txt"), "a\nB\nc\n").unwrap();
+
+            let staged = FileChange {
+                path: "f.txt".into(),
+                source: None,
+                status: ChangeStatus::Added,
+                added: 3,
+                deleted: 0,
+                diff: None,
+            };
+            let diff = diff_for_file(&dir, &staged).unwrap();
+            let added: Vec<&str> = diff.lines.iter().filter(|l| l.kind == DiffLineKind::Added).map(|l| l.text.as_str()).collect();
+            assert_eq!(added, ["a", "B", "c"], "net worktree content, no header junk");
+            assert!(diff.lines.iter().all(|l| l.kind != DiffLineKind::Removed));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A diff bigger than the byte cap is cut at the subprocess, not buffered
+    /// whole — the row cap alone can't flag it, so `truncated` comes from the
+    /// byte limit. Skips when `git` is unavailable.
+    #[test]
+    fn oversized_diff_is_capped_at_the_pipe() {
+        let dir = std::env::temp_dir().join(format!("rixlcode-diff-cap-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        };
+        if run(&["init", "-q"]) {
+            std::fs::write(dir.join("big.txt"), "x\n").unwrap();
+            run(&["add", "big.txt"]);
+            run(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
+            // One ~600KB line — over the 512KB byte cap in a single row.
+            std::fs::write(dir.join("big.txt"), "a".repeat(600 * 1024)).unwrap();
+
+            let change = FileChange {
+                path: "big.txt".into(),
+                source: None,
+                status: ChangeStatus::Modified,
+                added: 1,
+                deleted: 1,
+                diff: None,
+            };
+            let diff = diff_for_file(&dir, &change).unwrap();
+            assert!(diff.truncated, "byte cap marks the diff truncated");
+            assert!(diff.lines.len() <= 400);
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

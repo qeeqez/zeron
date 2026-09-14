@@ -1,12 +1,16 @@
 //! Working-tree git changes for the Changes panel — collected by shelling out
-//! to `git` in the app cwd. Parsing lives in `parse_status`/`parse_numstat` so
-//! tests can feed fixture output without a real repository. Line-level diffs
+//! to `git` in the project root. Parsing lives in `parse_status`/`parse_numstat`
+//! so tests can feed fixture output without a real repository. Line-level diffs
 //! for expanded rows live in `crate::changes_diff`.
 
 /// One file's working-tree change, as listed by `git status --porcelain`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileChange {
     pub path: String,
+    /// Source path of a rename/copy — porcelain `-z` emits it as a second
+    /// field; `None` for every other change kind. `diff HEAD` needs both
+    /// names to show the rename delta instead of an all-added new file.
+    pub source: Option<String>,
     pub status: ChangeStatus,
     pub added: u32,
     pub deleted: u32,
@@ -26,15 +30,12 @@ pub enum ChangeStatus {
     Conflicted,
 }
 
-/// Collect the working-tree changes under the process cwd. Empty when the cwd
-/// is not a repo or `git` is unavailable.
-pub(crate) fn collect_in_cwd() -> Vec<FileChange> {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
-    collect(&cwd)
-}
+/// Git's well-known empty-tree object — the diff base when HEAD is unborn
+/// (a fresh repo with no commits), giving the same net worktree delta.
+pub(crate) const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /// Collect changes under `dir`: porcelain status for the file list, numstat
-/// (unstaged + staged) for line counts, filesystem line count for untracked.
+/// for line counts, filesystem line count for untracked.
 pub(crate) fn collect(dir: &std::path::Path) -> Vec<FileChange> {
     let Some(status) = git(dir, &["status", "--porcelain=v1", "-z", "--untracked-files=all"]) else {
         return Vec::new();
@@ -43,8 +44,14 @@ pub(crate) fn collect(dir: &std::path::Path) -> Vec<FileChange> {
     if changes.is_empty() {
         return changes;
     }
-    let mut counts = parse_numstat(&git(dir, &["diff", "--numstat", "-z"]).unwrap_or_default());
-    counts.extend(parse_numstat(&git(dir, &["diff", "--cached", "--numstat", "-z"]).unwrap_or_default()));
+    // Net HEAD→worktree counts: `diff HEAD` covers staged + unstaged in one
+    // pass, so a partially-staged file reports its combined delta rather than
+    // whichever half was merged last. On an unborn HEAD there is nothing to
+    // diff against — fall back to the empty tree.
+    let numstat = git(dir, &["diff", "HEAD", "--numstat", "-z"])
+        .or_else(|| git(dir, &["diff", EMPTY_TREE, "--numstat", "-z"]))
+        .unwrap_or_default();
+    let counts = parse_numstat(&numstat);
     for change in &mut changes {
         if let Some((added, deleted)) = counts.get(&change.path) {
             change.added = *added;
@@ -64,12 +71,39 @@ pub(crate) fn git(dir: &std::path::Path, args: &[&str]) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// `git diff` variant: exit code 1 means "differences found" (always for
-/// `--no-index`), so stdout is still the payload. Other failures → `None`.
-pub(crate) fn git_diff(dir: &std::path::Path, args: &[&str]) -> Option<String> {
-    let out = std::process::Command::new("git").args(args).current_dir(dir).output().ok()?;
-    let code = out.status.code().unwrap_or(-1);
-    (code == 0 || code == 1).then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+/// `git diff` variant with bounded output: reads at most `max_bytes` of
+/// stdout, then kills the child rather than buffering an unbounded diff.
+/// Returns `(output, hit_cap)`. `None` on spawn failure or an exit code
+/// other than 0/1 (1 = differences found, always for `--no-index`) — unless
+/// the cap was hit, where the partial output is still the payload.
+pub(crate) fn git_diff(dir: &std::path::Path, args: &[&str], max_bytes: u64) -> Option<(String, bool)> {
+    use std::io::Read;
+    let mut child = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        return None;
+    };
+    let mut buf = Vec::new();
+    if stdout.take(max_bytes + 1).read_to_end(&mut buf).is_err() {
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+    }
+    let capped = buf.len() as u64 > max_bytes;
+    buf.truncate(max_bytes as usize);
+    if capped {
+        // The child is likely still writing — kill it instead of waiting on
+        // a full pipe.
+        let _ = child.kill();
+    }
+    let code = child.wait().ok()?.code().unwrap_or(-1);
+    (capped || code == 0 || code == 1).then(|| (String::from_utf8_lossy(&buf).into_owned(), capped))
 }
 
 /// Parse `git status --porcelain=v1 -z` output. Entries are NUL-separated
@@ -87,12 +121,17 @@ pub(crate) fn parse_status(raw: &str) -> Vec<FileChange> {
             continue;
         }
         let status = status_of(code);
-        if status == ChangeStatus::Renamed {
-            // Consume the source-path field; the entry path is the new name.
-            fields.next();
-        }
+        // Renames/copies append the source path as a second NUL field —
+        // consume it whenever the raw code says so, even when the display
+        // status masks it (`RD` shows Deleted but still emits the field).
+        let source = if code.contains(&b'R') || code.contains(&b'C') {
+            fields.next().map(str::to_string).filter(|s| !s.is_empty())
+        } else {
+            None
+        };
         out.push(FileChange {
             path: path.to_string(),
+            source,
             status,
             added: 0,
             deleted: 0,

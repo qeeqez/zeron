@@ -24,12 +24,27 @@ mod tests {
     #[test]
     fn status_rename_consumes_source_field() {
         // -z rename entries are `R  <new>\0<old>\0` — the old path must not
-        // surface as its own row.
+        // surface as its own row, and it is kept for the rename diff.
         let raw = "R  sub/dst.rs\0sub/src.rs\0 M other.rs\0";
         let got = parse_status(raw);
         assert_eq!(got.len(), 2);
         assert_eq!(got[0].path, "sub/dst.rs");
+        assert_eq!(got[0].source.as_deref(), Some("sub/src.rs"));
         assert_eq!(got[0].status, ChangeStatus::Renamed);
+        assert_eq!(got[1].path, "other.rs");
+    }
+
+    #[test]
+    fn status_deleted_rename_still_consumes_source_field() {
+        // `RD` (staged rename, deleted in worktree) displays as Deleted, but
+        // porcelain still emits the source field — leaving it unconsumed
+        // parses the old path as a bogus second row.
+        let raw = "RD sub/dst.rs\0sub/src.rs\0 M other.rs\0";
+        let got = parse_status(raw);
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].path, "sub/dst.rs");
+        assert_eq!(got[0].source.as_deref(), Some("sub/src.rs"));
+        assert_eq!(got[0].status, ChangeStatus::Deleted);
         assert_eq!(got[1].path, "other.rs");
     }
 
@@ -101,6 +116,38 @@ mod tests {
             assert_eq!(got[0].path, "untracked.txt");
             assert_eq!(got[0].status, ChangeStatus::Added);
             assert_eq!(got[0].added, 3);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A partially-staged file (`MM`) must report the net HEAD→worktree
+    /// delta — staged + unstaged combined — not just the staged half.
+    /// Skips when `git` is unavailable.
+    #[test]
+    fn collect_reports_net_counts_for_partially_staged() {
+        let dir = std::env::temp_dir().join(format!("rixlcode-git-mm-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        };
+        if run(&["init", "-q"]) {
+            std::fs::write(dir.join("f.txt"), "one\ntwo\nthree\n").unwrap();
+            run(&["add", "f.txt"]);
+            run(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
+            // Stage one change, then make another unstaged — status `MM`.
+            std::fs::write(dir.join("f.txt"), "ONE\ntwo\nthree\n").unwrap();
+            run(&["add", "f.txt"]);
+            std::fs::write(dir.join("f.txt"), "ONE\ntwo\nthree\nfour\n").unwrap();
+
+            let got = crate::git::collect(&dir);
+            assert_eq!(got.len(), 1);
+            assert_eq!(got[0].status, ChangeStatus::Modified);
+            assert_eq!((got[0].added, got[0].deleted), (2, 1), "net HEAD→worktree delta");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

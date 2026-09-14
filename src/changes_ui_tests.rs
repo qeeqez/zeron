@@ -20,7 +20,14 @@ fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext)
 }
 
 fn change(path: &str, status: ChangeStatus, added: u32, deleted: u32) -> FileChange {
-    FileChange { path: path.into(), status, added, deleted, diff: None }
+    FileChange {
+        path: path.into(),
+        source: None,
+        status,
+        added,
+        deleted,
+        diff: None,
+    }
 }
 
 fn sample_diff() -> FileDiff {
@@ -114,10 +121,15 @@ fn change_row_expands_to_show_diff_lines_and_collapses() {
         window.draw(cx).clear(cx);
         assert!(window.try_find(("change-diff", 0usize)).is_none(), "diff starts collapsed");
 
-        // Expand: the row shells out to git for src/edited.rs — absent from
-        // this repo's working tree, so the diff is empty and the body still
-        // renders its placeholder.
+        // Expand: the row's git diff loads on the background executor — the
+        // click returns before it lands.
         window.click(("change-row", 0usize), cx);
+        assert!(ws.read(cx).changes[0].diff.is_none(), "diff load is off the click path");
+    });
+    cx.run_until_parked();
+    cx.update(|window, cx| {
+        // src/edited.rs is absent from this repo's working tree, so the diff
+        // is empty and the body renders its placeholder.
         window.draw(cx).clear(cx);
         assert!(window.find(("change-diff", 0usize)).visible(), "click expands the diff body");
         assert!(ws.read(cx).changes[0].diff.is_some(), "diff result is cached on the row");
@@ -127,6 +139,52 @@ fn change_row_expands_to_show_diff_lines_and_collapses() {
         assert!(window.try_find(("change-diff", 0usize)).is_none(), "second click collapses");
         assert!(ws.read(cx).changes[0].diff.is_none(), "collapse drops the cached diff");
     });
+}
+
+/// Opening the panel must not run git collection on the UI thread: the list
+/// stays empty until the background task lands, then shows the repo's rows.
+/// Skips its assertions when `git` is unavailable.
+#[test]
+fn opening_panel_collects_off_the_ui_thread() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    let dir = std::env::temp_dir().join(format!("rixlcode-changes-collect-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let run = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(&dir)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    };
+    if !run(&["init", "-q"]) {
+        return;
+    }
+    std::fs::write(dir.join("tracked.txt"), "one\n").unwrap();
+    run(&["add", "tracked.txt"]);
+    run(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
+    std::fs::write(dir.join("tracked.txt"), "one\ntwo\n").unwrap();
+
+    cx.update(|_window, cx| {
+        ws.update(cx, |this, cx| {
+            this.project = crate::project::Project::open(&dir);
+            this.toggle_changes_panel(cx);
+        });
+        assert!(ws.read(cx).changes_panel_open, "panel opened");
+        assert!(ws.read(cx).changes.is_empty(), "collection did not run on the UI thread");
+    });
+    cx.run_until_parked();
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        let changes = &ws.read(cx).changes;
+        assert_eq!(changes.len(), 1, "background collection published the row");
+        assert_eq!(changes[0].path, "tracked.txt");
+        assert_eq!(changes[0].status, ChangeStatus::Modified);
+        assert_eq!(changes[0].added, 1);
+        assert!(window.find(("change-row", 0usize)).visible(), "row renders after collection");
+    });
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

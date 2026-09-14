@@ -9,6 +9,10 @@ use crate::git::{ChangeStatus, FileChange, git, git_diff};
 /// Most lines kept per file — a huge generated diff can't flood the panel.
 const MAX_DIFF_LINES: usize = 400;
 
+/// Most stdout bytes read from `git diff` — bounds the subprocess buffer
+/// before `parse_diff` applies its own row cap.
+const MAX_DIFF_BYTES: u64 = 512 * 1024;
+
 /// One rendered row of a file diff.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiffLine {
@@ -42,20 +46,30 @@ pub struct FileDiff {
 /// can't run; a file with no textual diff (binary, mode-only, vanished)
 /// yields an empty `FileDiff`.
 pub(crate) fn diff_for_file(dir: &Path, change: &FileChange) -> Option<FileDiff> {
-    let raw = if change.status == ChangeStatus::Added && !tracked(dir, &change.path) {
+    let (raw, capped) = if change.status == ChangeStatus::Added && !tracked(dir, &change.path) {
         // Untracked files have no index entry — diff against /dev/null.
         let abs = dir.join(&change.path);
-        git_diff(dir, &["diff", "--no-index", "--", "/dev/null", &abs.to_string_lossy()])
+        git_diff(dir, &["diff", "--no-index", "--", "/dev/null", &abs.to_string_lossy()], MAX_DIFF_BYTES)?
     } else {
-        // `diff HEAD` covers staged + unstaged in one output. On an unborn
-        // HEAD (no commits yet) it fails, so fall back to both halves.
-        git_diff(dir, &["diff", "HEAD", "--", &change.path]).or_else(|| {
-            let mut both = git_diff(dir, &["diff", "--cached", "--", &change.path]).unwrap_or_default();
-            both.push_str(&git_diff(dir, &["diff", "--", &change.path]).unwrap_or_default());
-            Some(both)
-        })
-    }?;
-    Some(parse_diff(&raw))
+        // `diff HEAD` covers staged + unstaged in one output. A rename needs
+        // both names in the pathspec — the source alone is gone from the
+        // worktree, the destination alone diffs as a new file. On an unborn
+        // HEAD (no commits yet) `diff HEAD` fails, so diff the worktree once
+        // against the empty tree for the same net result — concatenating the
+        // staged and unstaged halves would feed the second patch's headers
+        // to `parse_diff` as content.
+        let mut args = vec!["diff", "HEAD", "--", change.path.as_str()];
+        if let Some(source) = &change.source {
+            args.push(source.as_str());
+        }
+        git_diff(dir, &args, MAX_DIFF_BYTES).or_else(|| {
+            args[1] = crate::git::EMPTY_TREE;
+            git_diff(dir, &args, MAX_DIFF_BYTES)
+        })?
+    };
+    let mut diff = parse_diff(&raw);
+    diff.truncated |= capped;
+    Some(diff)
 }
 
 /// Whether `path` has an index entry — untracked files need `--no-index`.

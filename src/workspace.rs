@@ -292,14 +292,8 @@ impl Workspace {
     pub fn toggle_changes_panel(&mut self, cx: &mut Context<Self>) {
         self.changes_panel_open = !self.changes_panel_open;
         if self.changes_panel_open {
-            self.changes = crate::git::collect_in_cwd();
+            self.refresh_changes(cx);
         }
-        cx.notify();
-    }
-
-    /// Re-run git collection for the Changes panel.
-    pub fn refresh_changes(&mut self, cx: &mut Context<Self>) {
-        self.changes = crate::git::collect_in_cwd();
         cx.notify();
     }
 }

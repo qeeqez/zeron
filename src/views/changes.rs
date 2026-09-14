@@ -9,13 +9,48 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     /// Expand/collapse a row's inline diff. Expanding loads the working-tree
-    /// diff once and caches it on the row; collapsing drops it.
+    /// diff on the background executor and caches it on the row; collapsing
+    /// drops it.
     pub fn toggle_change_diff(&mut self, ix: usize, cx: &mut Context<Self>) {
-        let dir = self.project.root().to_path_buf();
-        if let Some(change) = self.changes.get_mut(ix) {
-            change.diff = if change.diff.is_none() { crate::changes_diff::diff_for_file(&dir, change) } else { None };
+        if self.changes.get(ix).is_some_and(|c| c.diff.is_some()) {
+            self.changes[ix].diff = None;
             cx.notify();
+            return;
         }
+        let Some(change) = self.changes.get(ix).cloned() else { return };
+        let dir = self.project.root().to_path_buf();
+        let path = change.path.clone();
+        cx.spawn(async move |this, cx| {
+            let diff = cx
+                .background_executor()
+                .spawn(async move { crate::changes_diff::diff_for_file(&dir, &change) })
+                .await;
+            let _ = this.update(cx, |this, cx| this.land_change_diff(&path, diff, cx));
+        })
+        .detach();
+    }
+
+    /// Store a loaded diff on the row for `path` — skipped when the list
+    /// refreshed under the load and that file is no longer listed.
+    fn land_change_diff(&mut self, path: &str, diff: Option<crate::changes_diff::FileDiff>, cx: &mut Context<Self>) {
+        let Some(row) = self.changes.iter_mut().find(|r| r.path == path) else { return };
+        row.diff = diff;
+        cx.notify();
+    }
+
+    /// Re-run git collection for the Changes panel. Collection shells out to
+    /// several git processes and reads untracked files, so it runs on the
+    /// background executor and publishes the result back when done.
+    pub fn refresh_changes(&mut self, cx: &mut Context<Self>) {
+        let root = self.project.root().to_path_buf();
+        cx.spawn(async move |this, cx| {
+            let changes = cx.background_executor().spawn(async move { crate::git::collect(&root) }).await;
+            let _ = this.update(cx, |this, cx| {
+                this.changes = changes;
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub fn render_changes_panel(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
