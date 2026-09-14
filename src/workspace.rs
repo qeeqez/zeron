@@ -54,6 +54,15 @@ pub struct Workspace {
     pub notify_on_done: bool,
     pub word_wrap: bool,
     pub font_size: u8,
+    /// Interface font family; empty = system default.
+    pub font_family: String,
+    /// Code font family; empty = theme default mono.
+    pub code_font_family: String,
+    pub code_font_size: u8,
+    /// Chrome contrast percentage, clamped to [50, 200].
+    pub contrast: u16,
+    /// Sidebar translucency over the blurred window background.
+    pub sidebar_frosted: bool,
     /// Appearance: "system" | "light" | "dark". "system" follows the OS.
     pub theme: String,
     /// Project-relative file paths for the @-mention picker.
@@ -137,9 +146,7 @@ impl Workspace {
         // Built eagerly — creating it inside open_settings would re-enter the
         // workspace borrow (the click listener already holds it).
         let ws = cx.entity();
-        let settings_panel = cx.new(|cx| {
-            crate::views::settings::SettingsPanel::new(ws.clone(), (settings.http_url.clone(), settings.http_key_env.clone()), window, cx)
-        });
+        let settings_panel = cx.new(|cx| crate::views::settings::SettingsPanel::new(ws.clone(), &settings, window, cx));
         let mut this = Self {
             chats: Vec::new(),
             active: 0,
@@ -181,7 +188,12 @@ impl Workspace {
             notify_on_done: settings.notify_on_done,
             word_wrap: settings.word_wrap,
             backend: crate::backend::make_backend(&settings),
-            font_size: settings.font_size.clamp(10, 24),
+            font_size: settings.font_size.clamp(crate::appearance::FONT_SIZE_MIN, crate::appearance::FONT_SIZE_MAX),
+            font_family: settings.font_family.clone(),
+            code_font_family: settings.code_font_family.clone(),
+            code_font_size: settings.code_font_size.clamp(crate::appearance::FONT_SIZE_MIN, crate::appearance::FONT_SIZE_MAX),
+            contrast: settings.contrast.clamp(crate::appearance::CONTRAST_MIN, crate::appearance::CONTRAST_MAX),
+            sidebar_frosted: settings.sidebar_frosted,
             theme: settings.theme.clone(),
             project_files: Vec::new(),
             project,
@@ -205,18 +217,6 @@ impl Workspace {
             .detach();
         this.start_background(cx);
         this
-    }
-
-    /// Resolve the configured appearance and apply it. "system" maps the OS
-    /// window appearance to a concrete mode; anything else is used as-is.
-    pub(crate) fn apply_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        use gpui_kit::component::theme::{Theme, ThemeMode};
-        let mode = match self.theme.as_str() {
-            "light" => ThemeMode::Light,
-            "dark" => ThemeMode::Dark,
-            _ => ThemeMode::from(window.appearance()),
-        };
-        Theme::change(mode, Some(window), cx);
     }
 
     pub(crate) fn save(&mut self) {
@@ -260,6 +260,11 @@ impl Workspace {
             access: self.access.name().into(),
             word_wrap: self.word_wrap,
             font_size: self.font_size,
+            font_family: self.font_family.clone(),
+            code_font_family: self.code_font_family.clone(),
+            code_font_size: self.code_font_size,
+            contrast: self.contrast,
+            sidebar_frosted: self.sidebar_frosted,
             notify_on_done: self.notify_on_done,
             backend: self.backend.name().into(),
             http_url: self.http_url.clone(),

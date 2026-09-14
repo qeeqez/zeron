@@ -143,7 +143,20 @@ pub struct Settings {
     /// migration, never written back.
     #[serde(skip_serializing)]
     pub use_codex_cli: Option<bool>,
+    /// Interface font size in px — also the rem base, so rem-sized UI text
+    /// scales with it.
     pub font_size: u8,
+    /// Interface font family; empty = system default (`.SystemUIFont`).
+    pub font_family: String,
+    /// Code (monospace) font family; empty = theme default (Menlo on macOS).
+    pub code_font_family: String,
+    /// Code font size in px — drives `Theme::mono_font_size`.
+    pub code_font_size: u8,
+    /// Chrome contrast percentage: 50 = muted, 100 = theme default, 200 = max.
+    pub contrast: u16,
+    /// Sidebar translucency: on = frosted glass over the blurred window
+    /// background, off = opaque `theme.sidebar`.
+    pub sidebar_frosted: bool,
     /// Last window bounds: [x, y, width, height] in pixels.
     pub window_bounds: Option<[f32; 4]>,
     pub sidebar_width: f32,
@@ -181,6 +194,11 @@ impl Default for Settings {
             http_key_env: "RIXL_API_KEY".into(),
             use_codex_cli: None,
             font_size: 14,
+            font_family: String::new(),
+            code_font_family: String::new(),
+            code_font_size: 13,
+            contrast: 100,
+            sidebar_frosted: true,
             window_bounds: None,
             sidebar_width: 255.0,
             sidebar_collapsed: false,

@@ -3,6 +3,8 @@ use crate::workspace::Workspace;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::component::select::{SelectEvent, SelectState};
+use gpui_kit::component::slider::{SliderEvent, SliderState};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -16,21 +18,29 @@ pub struct SettingsPanel {
     pub(crate) search: Entity<InputState>,
     url_input: Entity<InputState>,
     key_input: Entity<InputState>,
+    /// Interface font family picker — `Vec<String>` delegate over the
+    /// installed font names.
+    pub(crate) font_select: Entity<SelectState<Vec<String>>>,
+    /// Code (mono) font family picker.
+    pub(crate) code_font_select: Entity<SelectState<Vec<String>>>,
+    /// Contrast slider, 50–200%.
+    pub(crate) contrast_slider: Entity<SliderState>,
 }
 
 impl SettingsPanel {
-    /// `http` seeds the url/key inputs — the workspace entity can't be read
-    /// here because the panel is built while `Workspace::new` still holds it.
-    pub fn new(ws: Entity<Workspace>, http: (String, String), window: &mut Window, cx: &mut Context<Self>) -> Self {
+    /// `settings` seeds the inputs and pickers — the workspace entity can't
+    /// be read here because the panel is built while `Workspace::new` still
+    /// holds it.
+    pub fn new(ws: Entity<Workspace>, settings: &crate::persist::Settings, window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&ws, |_, _, cx| cx.notify()).detach();
         let url_input = cx.new(|cx| {
             let mut s = InputState::new(window, cx).placeholder("https://…");
-            s.set_value(http.0, window, cx);
+            s.set_value(settings.http_url.clone(), window, cx);
             s
         });
         let key_input = cx.new(|cx| {
             let mut s = InputState::new(window, cx).placeholder("ENV_VAR_NAME");
-            s.set_value(http.1, window, cx);
+            s.set_value(settings.http_key_env.clone(), window, cx);
             s
         });
         // Persist on every edit — the backend reads these at send time.
@@ -48,8 +58,56 @@ impl SettingsPanel {
             }
         })
         .detach();
-        Self { ws, section: Section::General, search, url_input, key_input }
+
+        // Font pickers list every installed family; an empty persisted value
+        // means "default" and maps to no selection.
+        let fonts = cx.text_system().all_font_names();
+        let font_select = font_picker(&fonts, &settings.font_family, window, cx);
+        let code_font_select = font_picker(&fonts, &settings.code_font_family, window, cx);
+        let ws_font = ws.clone();
+        cx.subscribe_in(&font_select, window, move |_, _, event: &SelectEvent<Vec<String>>, window, cx| {
+            let SelectEvent::Confirm(family) = event;
+            ws_font.update(cx, |this, cx| this.set_interface_font(family.clone(), window, cx));
+        })
+        .detach();
+        let ws_code = ws.clone();
+        cx.subscribe_in(&code_font_select, window, move |_, _, event: &SelectEvent<Vec<String>>, window, cx| {
+            let SelectEvent::Confirm(family) = event;
+            ws_code.update(cx, |this, cx| this.set_code_font(family.clone(), window, cx));
+        })
+        .detach();
+
+        let contrast_slider = cx.new(|_cx| {
+            SliderState::new()
+                .min(crate::appearance::CONTRAST_MIN as f32)
+                .max(crate::appearance::CONTRAST_MAX as f32)
+                .step(5.)
+                .default_value(settings.contrast as f32)
+        });
+        let ws_slider = ws.clone();
+        cx.subscribe_in(&contrast_slider, window, move |_, _, event: &SliderEvent, window, cx| {
+            ws_slider.update(cx, |this, cx| this.set_contrast(event, window, cx));
+        })
+        .detach();
+
+        Self {
+            ws,
+            section: Section::General,
+            search,
+            url_input,
+            key_input,
+            font_select,
+            code_font_select,
+            contrast_slider,
+        }
     }
+}
+
+/// A searchable font-family picker; `current` selects the matching row when
+/// it's a real family name (empty = default → no selection).
+fn font_picker(fonts: &[String], current: &str, window: &mut Window, cx: &mut Context<SettingsPanel>) -> Entity<SelectState<Vec<String>>> {
+    let selected = fonts.iter().position(|f| f == current).map(gpui_kit::component::IndexPath::new);
+    cx.new(|cx| SelectState::new(fonts.to_vec(), selected, window, cx).searchable(true))
 }
 
 /// Write a changed http config field to the workspace and persist it.
@@ -93,6 +151,9 @@ impl Render for SettingsPanel {
         let view = crate::views::settings_sections::SettingsView {
             notify: s.notify_on_done,
             font_size: s.font_size,
+            code_font_size: s.code_font_size,
+            sidebar_frosted: s.sidebar_frosted,
+            contrast: s.contrast,
             backend: s.backend.name(),
             access: s.access,
             word_wrap: s.word_wrap,
@@ -100,6 +161,9 @@ impl Render for SettingsPanel {
             ws: self.ws.clone(),
             url_input: self.url_input.clone(),
             key_input: self.key_input.clone(),
+            font_select: self.font_select.clone(),
+            code_font_select: self.code_font_select.clone(),
+            contrast_slider: self.contrast_slider.clone(),
         };
         let theme = cx.theme();
         // Left edge sits at the main sidebar's right edge — the sidebar (now

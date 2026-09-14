@@ -54,11 +54,20 @@ impl Render for Workspace {
             .on_action(move |_: &OpenPalette, window, cx| {
                 ws_palette.update(cx, |this, cx| this.open_palette(window, cx));
             })
-            .on_action(move |_: &ThemeLight, window, cx| {
-                Theme::change(ThemeMode::Light, Some(window), cx);
+            .on_action({
+                let ws = cx.entity();
+                move |_: &ThemeLight, window, cx| {
+                    Theme::change(ThemeMode::Light, Some(window), cx);
+                    // `Theme::change` resets fonts/contrast — re-apply them.
+                    ws.update(cx, |this, cx| this.apply_appearance(window, cx));
+                }
             })
-            .on_action(move |_: &ThemeDark, window, cx| {
-                Theme::change(ThemeMode::Dark, Some(window), cx);
+            .on_action({
+                let ws = cx.entity();
+                move |_: &ThemeDark, window, cx| {
+                    Theme::change(ThemeMode::Dark, Some(window), cx);
+                    ws.update(cx, |this, cx| this.apply_appearance(window, cx));
+                }
             })
             .on_action({
                 let ws = cx.entity();

@@ -9,6 +9,7 @@ mod empty;
 mod markdown;
 mod message;
 pub mod settings;
+pub mod settings_appearance;
 pub mod settings_nav;
 pub mod settings_sections;
 

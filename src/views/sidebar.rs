@@ -107,7 +107,13 @@ impl Workspace {
             .relative()
             .flex()
             .flex_col()
-            .bg(cx.theme().sidebar.opacity(0.6))
+            .bg(if self.sidebar_frosted {
+                // Translucent over the window's blurred background → real
+                // frosted glass (the window runs WindowBackgroundAppearance::Blurred).
+                cx.theme().sidebar.opacity(0.6)
+            } else {
+                cx.theme().sidebar
+            })
             .border_r_1()
             .border_color(cx.theme().sidebar_border)
             // Full-height sidebar: its top strip is a transparent window-drag

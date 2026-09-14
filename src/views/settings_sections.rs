@@ -5,6 +5,8 @@ use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::select::SelectState;
+use gpui_kit::component::slider::SliderState;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -17,6 +19,9 @@ use crate::workspace::Workspace;
 pub struct SettingsView {
     pub notify: bool,
     pub font_size: u8,
+    pub code_font_size: u8,
+    pub sidebar_frosted: bool,
+    pub contrast: u16,
     pub backend: &'static str,
     pub word_wrap: bool,
     pub theme: String,
@@ -24,13 +29,16 @@ pub struct SettingsView {
     pub url_input: Entity<InputState>,
     pub key_input: Entity<InputState>,
     pub access: AccessMode,
+    pub font_select: Entity<SelectState<Vec<String>>>,
+    pub code_font_select: Entity<SelectState<Vec<String>>>,
+    pub contrast_slider: Entity<SliderState>,
 }
 
 /// The content pane for the selected section.
 pub fn section_body(section: Section, s: &SettingsView, cx: &App) -> impl IntoElement {
     let body = match section {
         Section::General => general_section(s, cx).into_any_element(),
-        Section::Appearance => appearance_section(s, cx).into_any_element(),
+        Section::Appearance => crate::views::settings_appearance::appearance_section(s, cx).into_any_element(),
         Section::Shortcuts => shortcuts_section(cx).into_any_element(),
         Section::Voice => placeholder_section("Voice input and dictation are not configured yet.", cx),
         Section::Profile => placeholder_section("Signed in as a local account — no profile to manage.", cx),
@@ -49,7 +57,7 @@ fn placeholder_section(text: &'static str, cx: &App) -> AnyElement {
     div().text_sm().text_color(cx.theme().muted_foreground).child(text).into_any_element()
 }
 
-fn group_label(text: &'static str, cx: &App) -> Div {
+pub(crate) fn group_label(text: &'static str, cx: &App) -> Div {
     div().pt_2().text_sm().font_semibold().text_color(cx.theme().muted_foreground).child(text)
 }
 
@@ -60,40 +68,9 @@ fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
         .flex_col()
         .gap_3()
         .child(group_label("Notifications", cx))
-        .child(toggle_row(("toggle-notify", "Notify on reply complete"), s.notify, ws.clone(), |this, _cx| {
+        .child(toggle_row(("toggle-notify", "Notify on reply complete"), s.notify, ws.clone(), |this, _w, _cx| {
             this.notify_on_done = !this.notify_on_done;
         }))
-        .child(group_label("Font size", cx))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .text_xs()
-                .child(div().id("font-dec").test_support().cursor_pointer().child(IconName::Minus).on_click({
-                    let ws = ws.clone();
-                    move |_, _, cx| {
-                        ws.update(cx, |this, cx| {
-                            this.font_size = this.font_size.saturating_sub(1).max(10);
-                            this.save_settings();
-                            this.scroller.update(cx, |s, cx| s.remeasure(cx));
-                            cx.notify();
-                        });
-                    }
-                }))
-                .child(format!("{}px", s.font_size))
-                .child(div().id("font-inc").test_support().cursor_pointer().child(IconName::Plus).on_click({
-                    let ws = ws.clone();
-                    move |_, _, cx| {
-                        ws.update(cx, |this, cx| {
-                            this.font_size = this.font_size.saturating_add(1).min(24);
-                            this.save_settings();
-                            this.scroller.update(cx, |s, cx| s.remeasure(cx));
-                            cx.notify();
-                        });
-                    }
-                })),
-        )
         .child(group_label("Backend", cx))
         .child(
             div().flex().items_center().gap_2().text_xs().child(s.backend).child(div().flex_1()).child(
@@ -141,61 +118,10 @@ fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
                 .child("Filesystem access for Agent-mode turns — Plan and Ask always stay read-only"),
         )
         .child(group_label("Messages", cx))
-        .child(toggle_row(("toggle-wrap", "Word wrap"), s.word_wrap, ws.clone(), |this, cx| {
+        .child(toggle_row(("toggle-wrap", "Word wrap"), s.word_wrap, ws.clone(), |this, _w, cx| {
             this.word_wrap = !this.word_wrap;
             this.scroller.update(cx, |s, cx| s.remeasure(cx));
         }))
-}
-
-fn appearance_section(s: &SettingsView, cx: &App) -> impl IntoElement {
-    div().flex().flex_col().gap_3().child(group_label("Theme", cx)).child(
-        div()
-            .flex()
-            .gap_3()
-            .child(theme_card("System", "system", s, cx))
-            .child(theme_card("Light", "light", s, cx))
-            .child(theme_card("Dark", "dark", s, cx)),
-    )
-}
-
-/// A Codex-style theme card: mini preview swatch over a label, accent border
-/// when active.
-fn theme_card(label: &'static str, mode: &'static str, s: &SettingsView, cx: &App) -> impl IntoElement {
-    let theme = cx.theme();
-    let selected = s.theme == mode;
-    let (preview_bg, preview_fg) = match mode {
-        "light" => (hsla(0.0, 0.0, 0.98, 1.0), hsla(0.0, 0.0, 0.2, 1.0)),
-        "dark" => (hsla(0.0, 0.0, 0.12, 1.0), hsla(0.0, 0.0, 0.85, 1.0)),
-        _ => (theme.background, theme.foreground),
-    };
-    let ws = s.ws.clone();
-    div()
-        .id(SharedString::from(format!("theme-{mode}")))
-        .test_support()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .w(px(140.))
-        .cursor_pointer()
-        .child(
-            div()
-                .h(px(72.))
-                .w_full()
-                .rounded_md()
-                .border_1()
-                .border_color(if selected { theme.list_active_border } else { theme.border })
-                .bg(preview_bg)
-                .p_2()
-                .child(div().w(px(48.)).h(px(6.)).rounded_sm().bg(preview_fg)),
-        )
-        .child(div().text_xs().child(label))
-        .on_click(move |_, window, cx| {
-            ws.update(cx, |this, cx| {
-                this.theme = mode.to_string();
-                this.save_settings();
-                this.apply_theme(window, cx);
-            });
-        })
 }
 
 fn shortcuts_section(cx: &App) -> impl IntoElement {
@@ -229,8 +155,8 @@ pub const SHORTCUTS: [(&str, &str); 14] = [
 /// A label + check/X row that flips a workspace flag, then persists
 /// settings and re-renders — `set` does the flip plus any side effects.
 /// `row` bundles the element id and label to stay under the arg-count lint.
-fn toggle_row(
-    row: (&'static str, &'static str), on: bool, ws: Entity<Workspace>, set: fn(&mut Workspace, &mut Context<Workspace>),
+pub(crate) fn toggle_row(
+    row: (&'static str, &'static str), on: bool, ws: Entity<Workspace>, set: fn(&mut Workspace, &mut Window, &mut Context<Workspace>),
 ) -> impl IntoElement {
     div().flex().items_center().gap_2().text_xs().child(row.1).child(div().flex_1()).child(
         div()
@@ -238,9 +164,9 @@ fn toggle_row(
             .test_support()
             .cursor_pointer()
             .child(if on { IconName::Check } else { IconName::X })
-            .on_click(move |_, _, cx| {
+            .on_click(move |_, window, cx| {
                 ws.update(cx, |this, cx| {
-                    set(this, cx);
+                    set(this, window, cx);
                     this.save_settings();
                     cx.notify();
                 });
