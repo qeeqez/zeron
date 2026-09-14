@@ -1,5 +1,6 @@
+use std::collections::HashSet;
 use std::rc::Rc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use gpui_kit::*;
 
@@ -11,20 +12,41 @@ pub(crate) const SLASH_COMMANDS: [&str; 6] = ["clear", "compact", "export", "hel
 
 impl Workspace {
     pub fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.chats[self.active].running {
-            return;
-        }
         let text = self.composer.read(cx).value().to_string();
         let text = text.trim();
         if text.is_empty() {
             return;
         }
+        // Slash commands run immediately — even mid-reply (`/compact` stops
+        // the turn itself). Only plain text queues behind a running reply.
         if self.run_slash(text, window, cx) {
-            self.composer.update(cx, |state, cx| {
-                state.set_value("", window, cx);
-            });
+            self.clear_composer(window, cx);
             return;
         }
+        if self.chats[self.active].running {
+            // Codex parity: Enter during a reply queues the message; it sends
+            // when the turn ends (see `drain_queued`).
+            let live: HashSet<u64> = self.chats.iter().map(|c| c.id).collect();
+            let chat_id = self.chats[self.active].id;
+            crate::views::enqueue(chat_id, text.to_string(), |id| live.contains(&id));
+            self.clear_composer(window, cx);
+            self.spawn_queue_drain(chat_id, cx);
+            cx.notify();
+            return;
+        }
+        self.send_text(text, window, cx);
+        self.clear_composer(window, cx);
+    }
+
+    fn clear_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.composer.update(cx, |state, cx| {
+            state.set_value("", window, cx);
+        });
+    }
+
+    /// Append `text` as a user message on the active chat and start the
+    /// reply. Caller guarantees the chat is idle and clears the composer.
+    pub(crate) fn send_text(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         let prompt = self.build_prompt(text);
         let chat = &mut self.chats[self.active];
         if chat.messages.is_empty() && chat.title == "New chat" {
@@ -53,15 +75,30 @@ impl Workspace {
         self.recall_saved = None;
 
         chat.attachments.clear();
-        self.composer.update(cx, |state, cx| {
-            state.set_value("", window, cx);
-        });
         if self.push_visible(cx) {
             self.scroller.update(cx, |s, cx| s.append(1, cx));
         }
         cx.notify();
         self.save();
         self.start_reply(&prompt, cx);
+    }
+
+    /// Poll the queue on a timer and drain it when the turn ends. Spawned on
+    /// enqueue and when a queued chat is re-selected (deduped by `draining_begin`).
+    pub(crate) fn spawn_queue_drain(&mut self, chat_id: u64, cx: &mut Context<Self>) {
+        if !crate::views::draining_begin(chat_id) {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            while this
+                .update_in(cx, |this, window, cx| this.drain_queued(chat_id, window, cx))
+                .is_ok_and(|step| !matches!(step, crate::views::Drain::Done))
+            {
+                cx.background_executor().timer(Duration::from_millis(50)).await;
+            }
+            crate::views::draining_end(chat_id);
+        })
+        .detach();
     }
 
     /// Re-run the reply for the last assistant message.

@@ -101,3 +101,81 @@ fn slash_menu_filters_and_dispatches(cx: &mut TestAppContext) {
     });
     assert!(note, "expected a /help note message in the chat");
 }
+
+/// Send `text` through the real input path: type, then Enter.
+fn type_and_send(cx: &mut VisualTestContext, text: &str) {
+    cx.update(|window, cx| {
+        window.input(text, cx);
+        window.press("enter", cx);
+    });
+}
+
+/// Advance the test clock until `cond` holds or the budget runs out.
+fn until(workspace: &Entity<Workspace>, cx: &mut VisualTestContext, cond: impl Fn(&Workspace) -> bool) {
+    for _ in 0..64 {
+        cx.executor().advance_clock(std::time::Duration::from_secs(1));
+        cx.run_until_parked();
+        if workspace.read_with(cx, |ws, _| cond(ws)) {
+            return;
+        }
+    }
+    panic!("condition never held");
+}
+
+/// Count user messages whose text contains `needle`.
+fn user_msgs(ws: &Workspace, needle: &str) -> usize {
+    ws.chats[ws.active]
+        .messages
+        .iter()
+        .filter(|m| m.role == crate::model::Role::User && matches!(&m.kind, MessageKind::Text(t) if t.contains(needle)))
+        .count()
+}
+
+/// Point the workspace at the sim backend so sends complete on the test clock.
+fn use_sim(workspace: &Entity<Workspace>, cx: &mut VisualTestContext) {
+    cx.update(|_, cx| {
+        workspace.update(cx, |ws, _| {
+            ws.backend = std::sync::Arc::new(crate::backend::SimBackend);
+        });
+    });
+}
+
+#[gpui_kit::test]
+fn queued_message_sends_after_reply_finishes(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    use_sim(&workspace, cx);
+    type_and_send(cx, "first");
+    assert!(workspace.read_with(cx, |ws, _| ws.chats[ws.active].running));
+
+    // Typing + Enter mid-reply queues instead of dropping the message.
+    type_and_send(cx, "second");
+    assert_eq!(composer_value(&workspace, cx), "");
+    assert_eq!(workspace.read_with(cx, |ws, _| user_msgs(ws, "second")), 0, "queued text must not post mid-reply");
+    cx.update(|window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("queued-0").is_some(), "queued row should render");
+    });
+
+    // Turn 1 ends → the queued message sends itself and turn 2 runs.
+    until(&workspace, cx, |ws| user_msgs(ws, "second") == 1 && ws.chats[ws.active].running);
+    until(&workspace, cx, |ws| !ws.chats[ws.active].running);
+    assert_eq!(workspace.read_with(cx, |ws, _| user_msgs(ws, "second")), 1);
+    cx.update(|window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("queued-0").is_none(), "queue should be empty");
+    });
+}
+
+#[gpui_kit::test]
+fn dequeue_drops_queued_message(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    use_sim(&workspace, cx);
+    type_and_send(cx, "first");
+    type_and_send(cx, "second");
+    cx.update(|window, cx| {
+        window.render_frame(cx);
+        window.click("dequeue-0", cx);
+    });
+    until(&workspace, cx, |ws| !ws.chats[ws.active].running);
+    assert_eq!(workspace.read_with(cx, |ws, _| user_msgs(ws, "second")), 0, "dequeued message must never send");
+}

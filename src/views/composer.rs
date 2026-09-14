@@ -8,7 +8,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::send::SLASH_COMMANDS;
-use crate::views::{apply_pick, attachment_chips, mention_item, slash_item};
+use crate::views::{apply_pick, attachment_chips, mention_item, queued_item, slash_item};
 use crate::workspace::Workspace;
 
 const MODES: [&str; 3] = ["Agent", "Plan", "Ask"];
@@ -92,6 +92,12 @@ impl Workspace {
                     .collect()
             })
             .unwrap_or_default();
+        let queued = crate::views::queued(self.chats[self.active].id);
+        // Re-selecting a chat with a pending queue re-arms its drain (the
+        // enqueue-time waiter exits when the chat backgrounds).
+        if !queued.is_empty() {
+            self.spawn_queue_drain(self.chats[self.active].id, cx);
+        }
 
         div()
             .p_3()
@@ -141,6 +147,18 @@ impl Workspace {
                                 .border_b_1()
                                 .border_color(cx.theme().border)
                                 .children(slash_items),
+                        )
+                    })
+                    .when(!queued.is_empty(), |d| {
+                        d.child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_0p5()
+                                .pb_1()
+                                .border_b_1()
+                                .border_color(cx.theme().border)
+                                .children(queued.iter().map(|item| queued_item(item, &ws, cx).into_any_element()).collect::<Vec<_>>()),
                         )
                     })
                     .child(
