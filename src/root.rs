@@ -2,9 +2,9 @@
 
 use crate::workspace::Workspace;
 use crate::{
-    Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EscapeKey,
-    NewChat, NewWindow, OpenPalette, OpenSettings, QuitApp, RecallLast, RecallNext, RecallPrev, RevealChats, SearchChat, ShortcutsHelp,
-    ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleSidebar,
+    Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EnterFullscreen,
+    EscapeKey, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats, SearchChat,
+    ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleSidebar, ZoomWindow,
 };
 use gpui_kit::component::Root;
 
@@ -77,14 +77,14 @@ impl Render for Workspace {
                     ws.update(cx, |this, cx| this.open_chat_search(window, cx));
                 }
             })
-            .on_action(|_: &QuitApp, _window, cx| {
-                cx.quit();
+            .on_action(|_: &MinimizeWindow, window, _cx| {
+                window.minimize_window();
             })
-            .on_action(|_: &NewWindow, _window, cx| {
-                cx.spawn(async move |cx| {
-                    let _ = open_workspace_window(cx);
-                })
-                .detach();
+            .on_action(|_: &ZoomWindow, window, _cx| {
+                window.zoom_window();
+            })
+            .on_action(|_: &EnterFullscreen, window, _cx| {
+                window.toggle_fullscreen();
             })
             .on_action(|_: &EmojiPalette, window, _cx| {
                 window.show_character_palette();
@@ -226,9 +226,11 @@ macro_rules! chat_ix {
 }
 chat_ix!(Chat1 => 0, Chat2 => 1, Chat3 => 2, Chat4 => 3, Chat5 => 4, Chat6 => 5, Chat7 => 6, Chat8 => 7, Chat9 => 8);
 
-/// Open a workspace window (used at launch and for Cmd+Shift+N).
-pub fn open_workspace_window(cx: &mut gpui_kit::AsyncApp) -> gpui_kit::Result<()> {
-    cx.open_window(
+/// Open a workspace window (used at launch, File > New Window, and dock
+/// reopen). Returns the handle so callers can follow up — e.g. About opens
+/// its dialog in the window it just created.
+pub fn open_workspace_window(cx: &mut gpui_kit::AsyncApp) -> gpui_kit::Result<gpui_kit::WindowHandle<Root>> {
+    let handle = cx.open_window(
         WindowOptions {
             window_min_size: Some(Size { width: px(800.), height: px(600.) }),
             window_bounds: crate::window::saved_window_bounds(),
@@ -252,5 +254,5 @@ pub fn open_workspace_window(cx: &mut gpui_kit::AsyncApp) -> gpui_kit::Result<()
             cx.new(|cx| Root::new(view, window, cx))
         },
     )?;
-    Ok(())
+    Ok(handle)
 }
