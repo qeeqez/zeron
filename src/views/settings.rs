@@ -213,8 +213,6 @@ impl Render for SettingsPanel {
 
 impl SettingsPanel {
     fn render_content(&self, view: &crate::views::settings_sections::SettingsView, cx: &App) -> impl IntoElement {
-        let theme = cx.theme();
-        let ws = self.ws.clone();
         div().id("settings-content").test_support().flex_1().min_w_0().h_full().overflow_y_scroll().child(
             div()
                 .flex()
@@ -224,24 +222,7 @@ impl SettingsPanel {
                 .max_w(px(680.))
                 .mx_auto()
                 .p_6()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .child(div().text_lg().font_semibold().child(self.section.label()))
-                        .child(div().flex_1())
-                        .child(
-                            div()
-                                .id("settings-close")
-                                .test_support()
-                                .cursor_pointer()
-                                .text_color(theme.muted_foreground)
-                                .child(IconName::X)
-                                .on_click(move |_, _, cx| {
-                                    ws.update(cx, |this, cx| this.close_settings(cx));
-                                }),
-                        ),
-                )
+                .child(div().text_lg().font_semibold().child(self.section.label()))
                 .child(crate::views::settings_sections::section_body(self.section, view, cx)),
         )
     }
