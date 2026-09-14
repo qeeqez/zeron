@@ -150,6 +150,60 @@ mod tests {
     }
 
     #[test]
+    fn partial_migration_resumes_on_next_launch() {
+        let home = sandbox_home();
+        let legacy = home.join(".rixl/rixlcode/chats");
+        std::fs::create_dir_all(&legacy).unwrap();
+        let moved = r#"{"v":1,"title":"moved","messages":[]}"#;
+        let stranded = r#"{"v":1,"title":"stranded","messages":[]}"#;
+        std::fs::write(legacy.join("0.json"), moved).unwrap();
+        std::fs::write(legacy.join("1.json"), stranded).unwrap();
+
+        // Simulate a run that moved 0.json then died before 1.json: the
+        // target holds the moved file and the in-progress marker survives.
+        let project = Project::open(temp_root("partial"));
+        std::fs::create_dir_all(project.chats_dir()).unwrap();
+        std::fs::rename(legacy.join("0.json"), project.chats_dir().join("0.json")).unwrap();
+        std::fs::write(project.dir().join("legacy-migration"), "").unwrap();
+
+        // Next launch: the occupied target must not strand 1.json — the
+        // marker says this run is a resume, not a foreign history.
+        project.migrate_legacy_chats(0);
+
+        let mut next_id = 0;
+        let chats = crate::persist::load_chats(&project.chats_dir(), &mut next_id, true);
+        assert_eq!(chats.len(), 2, "the stranded legacy chat must be retried");
+        assert_eq!(chats[0].title, "moved");
+        assert_eq!(chats[1].title, "stranded");
+        assert!(!legacy.exists(), "emptied legacy dir is removed");
+        assert!(!project.dir().join("legacy-migration").exists(), "marker clears once migration completes");
+    }
+
+    #[test]
+    fn resumed_migration_never_overwrites_occupied_slots() {
+        let home = sandbox_home();
+        let legacy = home.join(".rixl/rixlcode/chats");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("0.json"), r#"{"v":1,"title":"legacy","messages":[]}"#).unwrap();
+
+        // A resume where slot 0 was taken by a different chat mid-run —
+        // the legacy file must land on a free index, not clobber it.
+        let project = Project::open(temp_root("collision"));
+        std::fs::create_dir_all(project.chats_dir()).unwrap();
+        std::fs::write(project.chats_dir().join("0.json"), r#"{"v":1,"title":"other","messages":[]}"#).unwrap();
+        std::fs::write(project.dir().join("legacy-migration"), "").unwrap();
+
+        project.migrate_legacy_chats(0);
+
+        let mut next_id = 0;
+        let chats = crate::persist::load_chats(&project.chats_dir(), &mut next_id, true);
+        assert_eq!(chats.len(), 2, "both chats must survive the collision");
+        assert_eq!(chats[0].title, "other", "the occupied slot keeps its chat");
+        assert_eq!(chats[1].title, "legacy", "the legacy chat takes a free index");
+        assert!(!legacy.exists());
+    }
+
+    #[test]
     fn launch_resolves_once_for_all_windows() {
         sandbox_home();
         let original = std::env::current_dir().unwrap().canonicalize().unwrap();

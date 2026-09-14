@@ -36,7 +36,7 @@ pub(crate) fn dirs_home() -> PathBuf {
 pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
     let _ = fs::create_dir_all(dir);
     for (ix, chat) in chats.iter().enumerate() {
-        let stored = StoredChat {
+        let mut stored = StoredChat {
             v: 1,
             title: chat.title.to_string(),
             messages: (*chat.messages).clone(),
@@ -47,6 +47,23 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
         };
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
+        // A Running tool in a chat this workspace isn't running belongs to
+        // another window's live turn — our copy is a stale snapshot with no
+        // reply task behind it. Re-read the file before overwriting: when
+        // the on-disk transcript has at least as many messages, the owning
+        // window's write is newer, so keep its messages and persist only
+        // our metadata (a longer local list means this window continued
+        // the conversation itself — ours wins).
+        let foreign_turn = !chat.running
+            && stored.messages.iter().any(|m| matches!(&m.kind, MessageKind::Tool(t) if t.status == ToolStatus::Running));
+        if foreign_turn
+            && let Some(on_disk) =
+                fs::read_to_string(&dst).ok().and_then(|s| serde_json::from_str::<StoredChat>(&s).ok())
+            && on_disk.v == 1
+            && on_disk.messages.len() >= stored.messages.len()
+        {
+            stored.messages = on_disk.messages;
+        }
         if let Ok(json) = serde_json::to_string_pretty(&stored) {
             // Skip the write when nothing changed — save() runs on every
             // keystroke-adjacent action and most chats are untouched.

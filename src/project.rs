@@ -123,36 +123,53 @@ impl Project {
     /// project's store so existing users keep their history. Runs once:
     /// a project that already has chats is never clobbered, and the legacy
     /// `active_chat` setting seeds `state.json`.
+    ///
+    /// Resumable: a `legacy-migration` marker in the store dir records that
+    /// a run started. Without it, any chat in the target means "this
+    /// project has its own history" and migration stays out of the way.
+    /// With it, leftover legacy files are retried — a mid-move failure
+    /// can't strand chats behind the occupied check.
     pub fn migrate_legacy_chats(&self, legacy_active: usize) {
         let legacy = crate::persist::dirs_home().join(".rixl/rixlcode/chats");
-        let Ok(entries) = fs::read_dir(&legacy) else { return };
+        let marker = self.dir().join("legacy-migration");
+        let Ok(entries) = fs::read_dir(&legacy) else {
+            if !legacy.exists() {
+                let _ = fs::remove_file(&marker);
+            }
+            return;
+        };
         let mut files: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "json")).collect();
         if files.is_empty() {
+            let _ = fs::remove_dir(&legacy);
+            if !legacy.exists() {
+                let _ = fs::remove_file(&marker);
+            }
             return;
         }
         let target = self.chats_dir();
         let occupied =
             fs::read_dir(&target).is_ok_and(|mut d| d.any(|e| e.is_ok_and(|e| e.path().extension().is_some_and(|x| x == "json"))));
-        if occupied {
+        if occupied && !marker.exists() {
             return;
         }
         files.sort();
         let _ = fs::create_dir_all(&target);
+        // Written before the first move: a crash mid-run leaves the marker
+        // behind so the next launch resumes instead of reading the
+        // half-moved target as occupied.
+        write_atomic(&marker, "");
         for path in &files {
-            let Some(name) = path.file_name() else { continue };
-            let dst = target.join(name);
-            // Cross-device fallback: copy, then remove the source — but only
-            // after the copy lands, or a failed copy would delete the only
-            // copy of that chat.
-            if fs::rename(path, &dst).is_err() && fs::copy(path, &dst).is_ok() {
-                let _ = fs::remove_file(path);
-            }
+            move_legacy(path, &target);
         }
         if !self.dir().join("state.json").exists() {
             self.save_state(&ProjectState { active_chat: legacy_active });
         }
-        // Only succeeds once the legacy dir is empty — strays stay put.
+        // Only succeeds once the legacy dir is empty — strays stay put and
+        // the marker keeps the next launch retrying them.
         let _ = fs::remove_dir(&legacy);
+        if !legacy.exists() {
+            let _ = fs::remove_file(&marker);
+        }
     }
 
     /// Re-root the process at the project root so the backend, `git` and
@@ -182,6 +199,38 @@ impl Project {
 
 fn cwd() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
+}
+
+/// Move one legacy chat file into `target`. On a resume collision the slot
+/// may already hold a file: identical content means a previous run moved it
+/// (drop the source); different content means the slot belongs to another
+/// chat (take a free index — never overwrite). Cross-device moves fall
+/// back to copy-then-remove so a failed copy can't delete the only copy.
+fn move_legacy(path: &Path, target: &Path) {
+    let Some(name) = path.file_name() else { return };
+    let mut dst = target.join(name);
+    if dst.exists() {
+        if fs::read(path).ok().zip(fs::read(&dst).ok()).is_some_and(|(a, b)| a == b) {
+            let _ = fs::remove_file(path);
+            return;
+        }
+        dst = free_slot(target);
+    }
+    if fs::rename(path, &dst).is_err() && fs::copy(path, &dst).is_ok() {
+        let _ = fs::remove_file(path);
+    }
+}
+
+/// First `N.json` name not taken in `dir` — used when a resumed migration
+/// hits a slot that already holds a different chat.
+fn free_slot(dir: &Path) -> PathBuf {
+    for ix in 0usize.. {
+        let candidate = dir.join(format!("{ix}.json"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!()
 }
 
 fn projects_dir() -> PathBuf {

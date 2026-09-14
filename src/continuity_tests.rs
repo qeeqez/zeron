@@ -148,3 +148,69 @@ fn second_window_keeps_running_tool_status() {
         );
     });
 }
+
+#[test]
+fn second_window_save_preserves_completed_turn() {
+    sandbox_home();
+    let mut app = TestAppContext::single();
+    let (ws, cx) = open_workspace(&mut app);
+    // First window mid-turn: a Running tool on disk, owned by ws.
+    cx.update(|_window, cx| {
+        ws.update(cx, |ws, _cx| {
+            ws.chats[0].running = true;
+            ws.chats[0].messages = std::rc::Rc::new(vec![ChatMessage {
+                role: Role::Assistant,
+                kind: MessageKind::Tool(ToolCall {
+                    tool_ix: 0,
+                    name: "shell".into(),
+                    detail: "make".into(),
+                    output: "".into(),
+                    status: ToolStatus::Running,
+                    expanded: false,
+                }),
+                rating: None,
+                usage: None,
+                attachments: vec![],
+                at: std::time::SystemTime::now(),
+            }]);
+            ws.save();
+        });
+    });
+
+    // Second window opens while the turn is live — its copy holds the
+    // stale Running snapshot with no reply task behind it.
+    let (ws2, cx2) = open_workspace(&mut app);
+
+    // The owning window finishes the turn and persists the result.
+    cx.update(|_window, cx| {
+        ws.update(cx, |ws, _cx| {
+            ws.chats[0].running = false;
+            let mut msgs = (*ws.chats[0].messages).clone();
+            if let MessageKind::Tool(t) = &mut msgs[0].kind {
+                t.status = ToolStatus::Done;
+                t.output = "built".into();
+            }
+            ws.chats[0].messages = std::rc::Rc::new(msgs);
+            ws.save();
+        });
+    });
+
+    // A save in the second window (e.g. a draft edit) must not write its
+    // stale snapshot over the completed transcript.
+    cx2.update(|_window, cx| {
+        ws2.update(cx, |ws, _cx| {
+            ws.chats[0].draft = "wip".to_string();
+            ws.save();
+        });
+    });
+
+    let project = crate::project::Project::current();
+    let mut next_id = 0;
+    let loaded = crate::persist::load_chats(&project.chats_dir(), &mut next_id, false);
+    assert_eq!(loaded.len(), 1);
+    assert!(
+        matches!(&loaded[0].messages[0].kind, MessageKind::Tool(t) if t.status == ToolStatus::Done && t.output.as_str() == "built"),
+        "the owning window's completed turn must survive the second window's save"
+    );
+    assert_eq!(loaded[0].draft, "wip", "the second window's own edits still persist");
+}
