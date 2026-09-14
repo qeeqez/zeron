@@ -1,17 +1,25 @@
-//! Agent panel operations: cancel, expand, stop-all, clear-finished.
+//! Agent panel operations: cancel, expand, stop-all, clear-finished, plus
+//! the plumbing that opens/closes a panel row for a chat's backend turn.
+//! Standalone task agents (the panel's input row) live in `agents_task`.
+
+use std::rc::Rc;
 
 use gpui_kit::*;
 
-use crate::model::{Agent, AgentStatus};
+use crate::model::{Agent, AgentStatus, Chat, MessageKind, Role, ToolCall, ToolStatus};
 use crate::workspace::Workspace;
 
 impl Workspace {
     pub fn cancel_agent(&mut self, id: u64, cx: &mut Context<Self>) {
         // Chat-run rows hold no handles — the task and child live on the
-        // Chat. Resolve the link and stop that reply so the backend
-        // process actually dies.
+        // Chat. Snapshot the turn's tool calls while the link still
+        // resolves, then stop that reply so the backend process dies.
         if let Some(chat_id) = self.chats.iter().find(|c| c.run_agent == Some(id)).map(|c| c.id) {
+            self.snapshot_chat_tools(chat_id);
             self.stop_chat_reply(chat_id, cx);
+            if let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) {
+                settle_tools(agent);
+            }
             return;
         }
         let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) else { return };
@@ -24,12 +32,23 @@ impl Workspace {
         drop(agent.stream.take()); // dropping the stream kills the turn
         agent.status = AgentStatus::Cancelled;
         agent.step = "cancelled".into();
+        settle_tools(agent);
         cx.notify();
     }
 
     pub fn toggle_agent_expand(&mut self, id: u64, cx: &mut Context<Self>) {
         if let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) {
             agent.expanded = !agent.expanded;
+        }
+        cx.notify();
+    }
+
+    /// Expand/collapse one tool row's output inside an agent card.
+    pub fn toggle_agent_tool(&mut self, id: u64, tool_ix: usize, cx: &mut Context<Self>) {
+        if let Some(agent) = self.agents.iter_mut().find(|a| a.id == id)
+            && !agent.expanded_tools.remove(&tool_ix)
+        {
+            agent.expanded_tools.insert(tool_ix);
         }
         cx.notify();
     }
@@ -46,18 +65,17 @@ impl Workspace {
             .map(|c| c.id)
             .collect();
         for id in chat_ids {
+            self.snapshot_chat_tools(id);
             self.stop_chat_reply(id, cx);
         }
         for agent in &mut self.agents {
-            if agent.status != AgentStatus::Running {
-                continue;
+            if agent.status == AgentStatus::Running {
+                agent.status = AgentStatus::Cancelled;
+                agent.step = "cancelled".into();
             }
-            if let Some(task) = agent.task.take() {
-                drop(task);
-            }
-            drop(agent.stream.take());
-            agent.status = AgentStatus::Cancelled;
-            agent.step = "cancelled".into();
+            drop(agent.task.take()); // non-detached Task cancels on drop
+            drop(agent.stream.take()); // dropping the stream kills the turn
+            settle_tools(agent);
         }
         cx.notify();
     }
@@ -67,85 +85,6 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Spawn a standalone background task: a real backend turn that
-    /// reports into the panel without tying up a chat. The agent owns the
-    /// stream; cancel/stop-all drop it to kill the turn.
-    pub fn spawn_task_agent(&mut self, prompt: String, cx: &mut Context<Self>) {
-        let prompt = prompt.trim().to_string();
-        if prompt.is_empty() {
-            return;
-        }
-        let id = self.next_agent_id;
-        self.next_agent_id += 1;
-        let name = if prompt.chars().count() > 24 {
-            format!("{}…", prompt.chars().take(24).collect::<String>())
-        } else {
-            prompt.clone()
-        };
-        let mut agent = Agent::new(id, name, self.backend.name(), 0);
-        agent.step = "running".into();
-        agent.log.push("[0s] task started".into());
-        let stream = self.backend.send(&prompt, self.model.as_ref(), self.mode.as_ref());
-        agent.stream = Some(stream);
-        self.agents.push(agent);
-        cx.notify();
-        let task = cx.spawn(async move |this, cx| {
-            // Poll the stream's channel; the pump inside the backend
-            // already runs on its own thread.
-            loop {
-                cx.background_executor().timer(std::time::Duration::from_millis(30)).await;
-                let _ = this.update(cx, |this, cx| this.drain_task_agent(id, cx));
-            }
-        });
-        if let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) {
-            agent.task = Some(task);
-        }
-    }
-
-    /// Pull pending events off a task agent's stream into its log. When
-    /// the stream ends (Done/Error/disconnect) the row closes and the
-    /// polling task is dropped.
-    fn drain_task_agent(&mut self, id: u64, cx: &mut Context<Self>) {
-        let Some(agent) = self.agents.iter_mut().find(|a| a.id == id && a.status == AgentStatus::Running) else {
-            return;
-        };
-        let Some(stream) = &mut agent.stream else { return };
-        let mut closed = false;
-        loop {
-            let ev = match stream.events.try_recv() {
-                Ok(ev) => ev,
-                Err(std::sync::mpsc::TryRecvError::Empty) => break,
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    close_disconnected(agent);
-                    closed = true;
-                    break;
-                },
-            };
-            let (line, is_step, terminal) = task_event_line(&ev);
-            if is_step {
-                agent.steps_done += 1;
-                agent.steps_total = agent.steps_done;
-            }
-            match (line, is_step) {
-                (Some(line), true) => {
-                    agent.step = line.clone().into();
-                    agent.log.push(format!("[{}s] {line}", agent.elapsed_secs).into());
-                },
-                (Some(line), false) => agent.log.push(format!("[{}s] {line}", agent.elapsed_secs).into()),
-                (None, _) => {},
-            }
-            if let Some(status) = terminal {
-                agent.status = status;
-                agent.step = "finished".into();
-                closed = true;
-            }
-        }
-        if closed {
-            agent.stream = None;
-            agent.task = None; // drops this polling task at the next await
-        }
-        cx.notify();
-    }
     /// Open a panel row for a real backend turn. `steps_total` stays 0 —
     /// the backend doesn't announce its plan; `steps_done` counts tool
     /// calls as they arrive so the row shows real progress.
@@ -161,9 +100,11 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Append a real event line to the turn's agent row and bump progress.
-    /// `count_step` is set for tool calls — the only discrete unit a real
-    /// turn exposes.
+    /// Record a real event on the turn's agent row. `count_step` marks
+    /// tool calls — the only discrete unit a real turn exposes. The call
+    /// itself renders as a tool row (derived from the chat's Tool
+    /// messages), so step entries update `step` but don't duplicate into
+    /// the log.
     pub(crate) fn agent_log(&mut self, chat_id: u64, entry: AgentLogEntry, cx: &mut Context<Self>) {
         let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
         let Some(id) = chat.run_agent else { return };
@@ -173,24 +114,100 @@ impl Workspace {
         if entry.count_step {
             agent.steps_done += 1;
             agent.steps_total = agent.steps_done;
-            agent.step = entry.line.clone().into();
+            agent.step = entry.line.into();
+        } else {
+            agent.log.push(format!("[{}s] {}", agent.elapsed_secs, entry.line).into());
         }
-        agent.log.push(format!("[{}s] {}", agent.elapsed_secs, entry.line).into());
         cx.notify();
     }
 
     /// Close the turn's agent row. No-op when the row is already closed
-    /// (cancel beat the event stream to it).
+    /// (cancel beat the event stream to it). Tool messages still marked
+    /// Running are settled — a turn that ends without a ToolCallEnd
+    /// shouldn't leave a spinner behind. The chat's tool calls are
+    /// snapshotted onto the agent so the row keeps them after the link
+    /// drops (and after later turns relink the chat).
     pub(crate) fn finish_run_agent(&mut self, chat_id: u64, ok: bool, cx: &mut Context<Self>) {
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
-        let Some(id) = chat.run_agent.take() else { return };
-        let Some(agent) = self.agents.iter_mut().find(|a| a.id == id && a.status == AgentStatus::Running) else {
-            return;
-        };
-        agent.status = if ok { AgentStatus::Done } else { AgentStatus::Failed };
-        agent.step = "finished".into();
-        agent.log.push(format!("[{}s] {}", agent.elapsed_secs, agent.status).into());
+        let Some(id) = chat.run_agent else { return };
+        let status = if ok { ToolStatus::Done } else { ToolStatus::Failed };
+        for msg in Rc::make_mut(&mut chat.messages).iter_mut() {
+            if let MessageKind::Tool(t) = &mut msg.kind
+                && t.status == ToolStatus::Running
+            {
+                t.status = status;
+            }
+        }
+        let tools: Vec<ToolCall> = turn_tools(chat).into_iter().cloned().collect();
+        chat.run_agent = None;
+        let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) else { return };
+        agent.tools = tools;
+        if agent.status == AgentStatus::Running {
+            agent.status = if ok { AgentStatus::Done } else { AgentStatus::Failed };
+            agent.step = "finished".into();
+            agent.log.push(format!("[{}s] {}", agent.elapsed_secs, agent.status).into());
+        }
+        settle_tools(agent);
         cx.notify();
+    }
+
+    /// Copy the chat's current-turn tool calls onto its agent row. Must run
+    /// while `chat.run_agent` still points at the row.
+    fn snapshot_chat_tools(&mut self, chat_id: u64) {
+        let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
+        let Some(id) = chat.run_agent else { return };
+        let tools: Vec<ToolCall> = turn_tools(chat).into_iter().cloned().collect();
+        if let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) {
+            agent.tools = tools;
+        }
+    }
+}
+
+/// Tool rows shown under an agent card. A running chat turn derives live
+/// status and output from the chat's Tool messages; everything else reads
+/// the row's own snapshot (task agents record theirs from the stream).
+pub(crate) fn agent_tools<'a>(ws: &'a Workspace, agent: &'a Agent) -> Vec<&'a ToolCall> {
+    match ws.chats.iter().find(|c| c.run_agent == Some(agent.id)) {
+        Some(chat) => turn_tools(chat),
+        None => agent.tools.iter().collect(),
+    }
+}
+
+/// The current turn's tool calls: Tool messages after the last user
+/// message. Scoping matters — a chat's earlier turns would otherwise leak
+/// their tool calls into the live row.
+fn turn_tools(chat: &Chat) -> Vec<&ToolCall> {
+    let start = chat.messages.iter().rposition(|m| m.role == Role::User).map_or(0, |i| i + 1);
+    chat.messages[start..]
+        .iter()
+        .filter_map(|m| match &m.kind {
+            MessageKind::Tool(t) => Some(t),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Close tool rows still marked Running once the turn is over: Done when
+/// the turn finished cleanly, Failed otherwise (cancel counts — the call
+/// never produced a result).
+pub(crate) fn settle_tools(agent: &mut Agent) {
+    let status = if agent.status == AgentStatus::Done { ToolStatus::Done } else { ToolStatus::Failed };
+    for tool in &mut agent.tools {
+        if tool.status == ToolStatus::Running {
+            tool.status = status;
+        }
+    }
+}
+
+/// "42s" → "42s", "75s" → "1m 15s", "3700s" → "1h 1m" — the compact form
+/// Codex uses for turn durations.
+pub(crate) fn fmt_elapsed(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        format!("{}m {}s", secs / 60, secs % 60)
+    } else {
+        format!("{}h {}m", secs / 3600, secs % 3600 / 60)
     }
 }
 
@@ -208,59 +225,39 @@ pub(crate) struct AgentLogEntry {
     pub count_step: bool,
 }
 
-/// Map one backend event to (log line, counts-as-step, terminal status).
-/// Text deltas are skipped — the panel shows activity, not prose.
-/// A failed tool call is item-level, not turn-level: it logs but does not
-/// close the row — the turn may recover and continue.
-fn task_event_line(ev: &crate::backend::AgentEvent) -> (Option<String>, bool, Option<AgentStatus>) {
-    use crate::backend::AgentEvent as E;
-    match ev {
-        E::ToolCallStart { name, detail, .. } => (Some(format!("{name} {detail}")), true, None),
-        E::ToolCallEnd { ok, .. } => ((!ok).then(|| "tool call failed".to_string()), false, None),
-        E::Diff { path, added, removed, .. } => (Some(format!("diff {path} +{added} -{removed}")), false, None),
-        E::Usage { input, output } => (Some(format!("usage {input}→{output}")), false, None),
-        E::Done => (None, false, Some(AgentStatus::Done)),
-        E::Error(msg) => (Some(format!("error: {msg}")), false, Some(AgentStatus::Failed)),
-        E::TextStart | E::TextDelta(_) | E::ToolCallDelta { .. } | E::ToolCallSet { .. } => (None, false, None),
-    }
-}
-
-/// Stream ended without a terminal event — mark the row Done, unless an
-/// earlier Error already closed it as Failed (a producer that errors then
-/// drops its sender lands here).
-fn close_disconnected(agent: &mut Agent) {
-    if agent.status == AgentStatus::Running {
-        agent.status = AgentStatus::Done;
-    }
-    agent.step = "finished".into();
-}
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{Agent, AgentStatus};
+    use crate::model::{Agent, AgentStatus, ToolStatus};
 
-    use super::{close_disconnected, task_event_line};
+    use super::settle_tools;
 
-    #[test]
-    fn failed_tool_call_is_not_terminal() {
-        let (line, is_step, terminal) = task_event_line(&crate::backend::AgentEvent::ToolCallEnd { ix: 0, ok: false });
-        assert!(line.is_some());
-        assert!(!is_step);
-        assert!(terminal.is_none());
+    fn running_tool() -> crate::model::ToolCall {
+        crate::model::ToolCall {
+            tool_ix: 0,
+            name: "bash".into(),
+            detail: "ls".into(),
+            output: String::new().into(),
+            status: ToolStatus::Running,
+            expanded: false,
+        }
     }
 
     #[test]
-    fn disconnect_preserves_failed_status() {
+    fn settle_marks_running_tools_done_on_success() {
         let mut agent = Agent::new(1, "t", "sim", 0);
-        agent.status = AgentStatus::Failed;
-        close_disconnected(&mut agent);
-        assert_eq!(agent.status, AgentStatus::Failed);
+        agent.status = AgentStatus::Done;
+        agent.tools.push(running_tool());
+        settle_tools(&mut agent);
+        assert_eq!(agent.tools[0].status, ToolStatus::Done);
     }
 
     #[test]
-    fn disconnect_closes_running_as_done() {
+    fn settle_marks_running_tools_failed_on_cancel() {
         let mut agent = Agent::new(1, "t", "sim", 0);
-        close_disconnected(&mut agent);
-        assert_eq!(agent.status, AgentStatus::Done);
+        agent.status = AgentStatus::Cancelled;
+        agent.tools.push(running_tool());
+        settle_tools(&mut agent);
+        assert_eq!(agent.tools[0].status, ToolStatus::Failed);
     }
 }

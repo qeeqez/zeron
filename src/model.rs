@@ -5,7 +5,7 @@ use gpui_kit::{SharedString, Task};
 /// Model ids offered in the picker and `/model`.
 pub const MODELS: [&str; 4] = ["default", "gpt-5-codex", "gpt-5", "gpt-5-mini"];
 
-#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ToolStatus {
     Running,
     Done,
@@ -169,6 +169,13 @@ pub struct Agent {
     /// `None` for simulated agents and chat-turn rows (those are owned by
     /// the chat's reply_task/child).
     pub stream: Option<crate::backend::ReplyStream>,
+    /// Tool calls this turn ran — populated for task agents from the event
+    /// stream; chat-turn rows read the chat's Tool messages instead.
+    pub tools: Vec<ToolCall>,
+    /// Panel-side expansion for tool rows, keyed by `tool_ix` — kept off
+    /// `ToolCall.expanded` so chat-derived rows don't share state with the
+    /// message surface.
+    pub expanded_tools: std::collections::HashSet<usize>,
     pub steps_done: usize,
     pub steps_total: usize,
     pub elapsed_secs: u64,
@@ -186,6 +193,8 @@ impl Agent {
             step: "starting".into(),
             task: None,
             stream: None,
+            tools: Vec::new(),
+            expanded_tools: std::collections::HashSet::new(),
             steps_done: 0,
             steps_total,
             elapsed_secs: 0,

@@ -1,6 +1,9 @@
 #![recursion_limit = "1024"]
 
 mod agents;
+mod agents_task;
+#[cfg(test)]
+mod agents_tests;
 mod appearance;
 #[cfg(test)]
 mod appearance_tests;

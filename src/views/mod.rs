@@ -1,3 +1,4 @@
+mod agents_card;
 mod agents_panel;
 mod cards;
 mod changes;
