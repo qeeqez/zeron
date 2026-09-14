@@ -201,7 +201,7 @@ impl Workspace {
             http_key_env: settings.http_key_env.clone(),
         };
         crate::backend::set_access_mode(this.access);
-        let loaded = crate::persist::load_chats(&this.project.chats_dir(), &mut this.next_chat_id);
+        let loaded = crate::persist::load_chats(&this.project.chats_dir(), &mut this.next_chat_id, !crate::lifecycle::any_turn_running(cx));
         if loaded.is_empty() {
             this.new_chat(cx);
         } else {

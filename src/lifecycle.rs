@@ -82,16 +82,27 @@ pub fn request_quit(cx: &mut App) {
 /// open window — not just the active one — so Cmd+Q can't silently kill a
 /// turn running in a background window.
 fn running_workspace_window(cx: &mut App) -> Option<AnyWindowHandle> {
-    cx.windows().into_iter().find(|handle| {
-        handle
-            .update(cx, |root, _, cx| {
-                root.downcast::<Root>()
-                    .ok()
-                    .and_then(|root| root.read(cx).view().clone().downcast::<Workspace>().ok())
-                    .is_some_and(|ws| ws.read(cx).chats.iter().any(|c| c.running))
-            })
-            .unwrap_or(false)
-    })
+    cx.windows().into_iter().find(|handle| window_has_running_turn(*handle, cx))
+}
+
+/// True while any open workspace window owns a live turn. `Workspace::new`
+/// consults this before restoring chats: a `Running` tool on disk belongs to
+/// that live turn, so only a cold start (no running turn anywhere) may
+/// recover it as failed. The window under construction isn't in
+/// `cx.windows()` yet, so it can't false-positive on itself.
+pub(crate) fn any_turn_running(cx: &mut App) -> bool {
+    cx.windows().into_iter().any(|handle| window_has_running_turn(handle, cx))
+}
+
+fn window_has_running_turn(handle: AnyWindowHandle, cx: &mut App) -> bool {
+    handle
+        .update(cx, |root, _, cx| {
+            root.downcast::<Root>()
+                .ok()
+                .and_then(|root| root.read(cx).view().clone().downcast::<Workspace>().ok())
+                .is_some_and(|ws| ws.read(cx).chats.iter().any(|c| c.running))
+        })
+        .unwrap_or(false)
 }
 
 /// Open a fresh workspace window — File > New Window, the dock menu, and

@@ -51,10 +51,14 @@ impl Workspace {
 
     /// Select the chat a notification points at — the chat may have been
     /// deleted since the notice was posted, so resolve by id at click time.
+    /// Overlay state is cleared too: a click while settings is open must
+    /// reveal the chat, not leave the overlay covering it.
     fn open_notified_chat(&mut self, chat_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        self.settings_open = false;
         if let Some(ix) = self.chat_index(chat_id) {
             self.select_chat(ix, window, cx);
         }
+        cx.notify();
     }
 
     /// The notice for a finished reply — `system` stays false while the

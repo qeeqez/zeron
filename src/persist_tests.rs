@@ -59,7 +59,7 @@ mod tests {
         save_chats(&dir, &[chat]);
 
         let mut next_id = 0;
-        let loaded = load_chats(&dir, &mut next_id);
+        let loaded = load_chats(&dir, &mut next_id, true);
         assert_eq!(loaded.len(), 1);
         let chat = &loaded[0];
         assert_eq!(chat.title, "saved chat");
@@ -101,7 +101,7 @@ mod tests {
         save_chats(&dir, &[chat]);
 
         let mut next_id = 0;
-        let loaded = load_chats(&dir, &mut next_id);
+        let loaded = load_chats(&dir, &mut next_id, true);
         assert_eq!(loaded.len(), 1);
         assert!(!loaded[0].running, "a dead turn must not restore as running");
         assert!(
@@ -111,12 +111,41 @@ mod tests {
     }
 
     #[test]
+    fn running_tool_survives_warm_reload() {
+        let dir = temp_chats_dir("warm");
+        // A second window loading while another window's turn is live must
+        // not rewrite the live tool's status — a later save would persist
+        // the false failure over the real result.
+        let mut chat = Chat::new(0, "live turn");
+        chat.messages = Rc::new(vec![msg(
+            Role::Assistant,
+            MessageKind::Tool(ToolCall {
+                tool_ix: 0,
+                name: "shell".into(),
+                detail: "make".into(),
+                output: "".into(),
+                status: ToolStatus::Running,
+                expanded: false,
+            }),
+        )]);
+        save_chats(&dir, &[chat]);
+
+        let mut next_id = 0;
+        let loaded = load_chats(&dir, &mut next_id, false);
+        assert_eq!(loaded.len(), 1);
+        assert!(
+            matches!(&loaded[0].messages[0].kind, MessageKind::Tool(t) if t.status == ToolStatus::Running),
+            "a live turn's tool must keep its Running status"
+        );
+    }
+
+    #[test]
     fn deleted_chat_files_do_not_resurrect() {
         let dir = temp_chats_dir("deleted");
         save_chats(&dir, &[Chat::new(0, "a"), Chat::new(1, "b")]);
         save_chats(&dir, &[Chat::new(0, "a")]);
         let mut next_id = 0;
-        let loaded = load_chats(&dir, &mut next_id);
+        let loaded = load_chats(&dir, &mut next_id, true);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].title, "a");
     }
@@ -127,7 +156,7 @@ mod tests {
         let path = dir.join("0.json");
         std::fs::write(&path, r#"{"v":99,"title":"future","messages":[]}"#).unwrap();
         let mut next_id = 0;
-        assert!(load_chats(&dir, &mut next_id).is_empty());
+        assert!(load_chats(&dir, &mut next_id, true).is_empty());
         assert!(!path.exists());
         assert!(path.with_extension("json.bak").exists(), "unreadable file must be preserved");
     }

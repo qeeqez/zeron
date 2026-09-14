@@ -10,10 +10,12 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 
 /// A canonicalized directory the app runs against, plus its store dir.
+#[derive(Clone)]
 pub struct Project {
     root: PathBuf,
     /// Display name — the root's last component ("rixlcode").
@@ -37,7 +39,18 @@ impl Project {
     /// argument opens its parent (`rixlcode README.md` still lands in the
     /// repo). With no usable argument, or when the directory cannot be
     /// entered, the cwd is the project.
+    ///
+    /// Resolved once per process: `enter` re-roots the cwd, so a second
+    /// `Workspace` (New Window) must reuse the cached project — resolving
+    /// again would interpret a relative dir arg against the new cwd and
+    /// land in a nested folder (`rixlcode repo` inside `repo` → `repo/repo`).
     pub fn launch() -> Self {
+        static LAUNCH: LazyLock<Project> = LazyLock::new(Project::resolve_launch);
+        LAUNCH.clone()
+    }
+
+    /// The uncached resolution behind `launch` — see it for the rules.
+    fn resolve_launch() -> Self {
         let requested = std::env::args().skip(1).map(PathBuf::from).find(|p| p.exists()).map(Self::open);
         match requested {
             Some(project) if project.enter().is_ok() => project,
@@ -128,8 +141,10 @@ impl Project {
         for path in &files {
             let Some(name) = path.file_name() else { continue };
             let dst = target.join(name);
-            if fs::rename(path, &dst).is_err() {
-                let _ = fs::copy(path, &dst);
+            // Cross-device fallback: copy, then remove the source — but only
+            // after the copy lands, or a failed copy would delete the only
+            // copy of that chat.
+            if fs::rename(path, &dst).is_err() && fs::copy(path, &dst).is_ok() {
                 let _ = fs::remove_file(path);
             }
         }

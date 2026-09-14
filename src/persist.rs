@@ -77,7 +77,9 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
 /// numeric-name order — the same order `save_chats` wrote — so the persisted
 /// `active_chat` index still points at the same conversation. Each chat gets
 /// a fresh id from `next_id` so reply tasks can target chats stably.
-pub fn load_chats(dir: &std::path::Path, next_id: &mut u64) -> Vec<Chat> {
+/// `recover_interrupted` marks tools saved mid-`Running` as failed — pass it
+/// only on a cold start, when no live window can own those turns.
+pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted: bool) -> Vec<Chat> {
     let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
     let mut files: Vec<(usize, PathBuf)> = entries
         .filter_map(|e| {
@@ -99,11 +101,12 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64) -> Vec<Chat> {
                 let _ = fs::rename(&path, path.with_extension("json.bak"));
                 return None;
             }
-            // A chat saved mid-turn leaves ToolStatus::Running behind; the
-            // owning turn is gone after restart, so mark it failed rather
-            // than resurrect a spinner that can never resolve.
+            // A chat saved mid-turn leaves ToolStatus::Running behind. Only a
+            // cold start may mark it failed — when another window owns a live
+            // turn, rewriting its status here would persist a false failure.
             for m in &mut stored.messages {
-                if let MessageKind::Tool(t) = &mut m.kind
+                if recover_interrupted
+                    && let MessageKind::Tool(t) = &mut m.kind
                     && t.status == ToolStatus::Running
                 {
                     t.status = ToolStatus::Failed;

@@ -8,7 +8,7 @@ use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext, px, size};
 
-use crate::model::{Chat, ChatMessage, MessageKind, Role};
+use crate::model::{Chat, ChatMessage, MessageKind, Role, ToolCall, ToolStatus};
 use crate::workspace::Workspace;
 
 /// Redirect persistence into a throwaway dir so tests never read or write
@@ -104,5 +104,47 @@ fn sent_message_and_reply_survive_reload() {
                 .any(|m| matches!(&m.kind, MessageKind::Text(t) if t.as_str() == "remember this"))
         );
         assert!(!ws.chats[0].running);
+    });
+}
+
+#[test]
+fn second_window_keeps_running_tool_status() {
+    sandbox_home();
+    let mut app = TestAppContext::single();
+    let (ws, cx) = open_workspace(&mut app);
+    // Simulate a turn still generating in the first window: flag the chat
+    // and persist a mid-turn tool call the way save() would leave it.
+    cx.update(|_window, cx| {
+        ws.update(cx, |ws, _cx| {
+            ws.chats[0].running = true;
+            ws.chats[0].messages = std::rc::Rc::new(vec![ChatMessage {
+                role: Role::Assistant,
+                kind: MessageKind::Tool(ToolCall {
+                    tool_ix: 0,
+                    name: "shell".into(),
+                    detail: "make".into(),
+                    output: "".into(),
+                    status: ToolStatus::Running,
+                    expanded: false,
+                }),
+                rating: None,
+                usage: None,
+                attachments: vec![],
+                at: std::time::SystemTime::now(),
+            }]);
+            ws.save();
+        });
+    });
+
+    // New Window while the turn is live: the load must not mark the tool
+    // failed — the owning turn is still running in the first window.
+    let (ws2, cx2) = open_workspace(&mut app);
+    cx2.update(|_window, cx| {
+        let ws = ws2.read(cx);
+        assert_eq!(ws.chats.len(), 1);
+        assert!(
+            matches!(&ws.chats[0].messages[0].kind, MessageKind::Tool(t) if t.status == ToolStatus::Running),
+            "a live turn's tool must not restore as failed in a second window"
+        );
     });
 }

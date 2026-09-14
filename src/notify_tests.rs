@@ -173,6 +173,27 @@ fn clicking_system_notification_opens_the_chat(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn notification_click_closes_settings_overlay(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    cx.deactivate_window();
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), cx);
+    // Settings open over the chat; the notification click must dismiss it,
+    // not leave the overlay covering the chat it just switched to.
+    cx.update(|window, cx| workspace.update(cx, |ws, cx| ws.open_settings(window, cx)));
+    assert!(workspace.read_with(cx, |ws, _| ws.settings_open));
+
+    let tag = cx.delivered_system_notifications()[0].tag.clone();
+    cx.simulate_system_notification_response(SystemNotificationResponse { tag, action_id: None });
+    cx.run_until_parked();
+
+    assert!(!workspace.read_with(cx, |ws, _| ws.settings_open), "notification click must close the settings overlay");
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.try_find("settings-screen").is_none(), "settings overlay must not still cover the chat");
+    });
+}
+
+#[gpui_kit::test]
 fn clicking_toast_opens_the_chat(cx: &mut TestAppContext) {
     let (workspace, cx) = open_workspace(cx);
     cx.update(|window, _| window.activate_window());

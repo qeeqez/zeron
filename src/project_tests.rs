@@ -70,8 +70,8 @@ mod tests {
         crate::persist::save_chats(&b.chats_dir(), &[Chat::new(0, "beta chat"), Chat::new(1, "beta two")]);
 
         let mut next_id = 0;
-        let a_chats = crate::persist::load_chats(&a.chats_dir(), &mut next_id);
-        let b_chats = crate::persist::load_chats(&b.chats_dir(), &mut next_id);
+        let a_chats = crate::persist::load_chats(&a.chats_dir(), &mut next_id, true);
+        let b_chats = crate::persist::load_chats(&b.chats_dir(), &mut next_id, true);
         assert_eq!(a_chats.len(), 1);
         assert_eq!(a_chats[0].title, "alpha chat");
         assert_eq!(b_chats.len(), 2);
@@ -104,7 +104,7 @@ mod tests {
         project.migrate_legacy_chats(1);
 
         let mut next_id = 0;
-        let chats = crate::persist::load_chats(&project.chats_dir(), &mut next_id);
+        let chats = crate::persist::load_chats(&project.chats_dir(), &mut next_id, true);
         assert_eq!(chats.len(), 2, "legacy chats must land in the project store");
         assert_eq!(chats[0].title, "old chat");
         assert_eq!(project.load_state().active_chat, 1, "legacy active_chat seeds project state");
@@ -123,10 +123,47 @@ mod tests {
         project.migrate_legacy_chats(0);
 
         let mut next_id = 0;
-        let chats = crate::persist::load_chats(&project.chats_dir(), &mut next_id);
+        let chats = crate::persist::load_chats(&project.chats_dir(), &mut next_id, true);
         assert_eq!(chats.len(), 1);
         assert_eq!(chats[0].title, "already here", "existing project chats must win");
         assert!(legacy.join("0.json").exists(), "unmigrated legacy file stays put");
+    }
+
+    #[test]
+    fn migration_keeps_source_when_move_fails() {
+        let home = sandbox_home();
+        let legacy = home.join(".rixl/rixlcode/chats");
+        std::fs::create_dir_all(&legacy).unwrap();
+        let source = legacy.join("0.json");
+        std::fs::write(&source, r#"{"v":1,"title":"old chat","messages":[]}"#).unwrap();
+
+        // A file where the chats dir belongs makes every move fail — rename
+        // can't create the target, and the copy fallback can't either. The
+        // legacy source must survive so the next launch can retry.
+        let project = Project::open(temp_root("blocked"));
+        std::fs::create_dir_all(project.dir()).unwrap();
+        std::fs::write(project.chats_dir(), "not a directory").unwrap();
+        project.migrate_legacy_chats(0);
+
+        assert!(source.exists(), "a failed move must not delete the legacy chat");
+        assert_eq!(std::fs::read_to_string(&source).unwrap(), r#"{"v":1,"title":"old chat","messages":[]}"#);
+    }
+
+    #[test]
+    fn launch_resolves_once_for_all_windows() {
+        sandbox_home();
+        let original = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let first = Project::launch();
+        assert_eq!(first.root(), original.as_path());
+
+        // `enter` re-roots the process; a second Workspace (New Window) must
+        // reuse the resolved project instead of re-reading args against the
+        // new cwd — a relative dir arg would otherwise nest (`repo/repo`).
+        let elsewhere = temp_root("elsewhere");
+        std::env::set_current_dir(&elsewhere).unwrap();
+        let second = Project::launch();
+        assert_eq!(second.root(), original.as_path(), "New Window must reuse the launch project");
+        assert_eq!(second.dir(), first.dir());
     }
 
     #[test]
