@@ -4,7 +4,7 @@ use crate::model::ChatMessage;
 use crate::views::cards::MsgCtx;
 use crate::views::render_empty_state;
 use crate::views::render_message;
-use crate::{EscapeKey, FindInChat, workspace::Workspace};
+use crate::{EscapeKey, FindInChat, MsgNavBottom, MsgNavDown, MsgNavEnter, MsgNavTop, MsgNavUp, workspace::Workspace};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::Input;
@@ -54,7 +54,7 @@ fn chat_menu(
 }
 
 impl Workspace {
-    pub fn render_chat(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let chat = &self.chats[self.active];
         let empty = chat.messages.is_empty();
         let messages: Rc<Vec<ChatMessage>> = chat.messages.clone();
@@ -86,6 +86,10 @@ impl Workspace {
         // Find bar state: matching message indices plus the current match's
         // message — the scroller rows read both for the highlight.
         let find: Option<crate::chat_find::FindMarks> = self.find.open.then(|| self.find_marks(cx));
+        // Keyboard navigation cursor — the focused row's real index while the
+        // transcript holds focus (see `crate::msg_nav`).
+        let nav_ix = self.nav_target(window);
+        let nav_focus = self.nav_focus.clone();
         let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, window, cx| {
             let real_ix = filtered.as_ref().map_or(ix, |f| *f.get(ix).unwrap_or(&ix));
             // Last visible message — under a filter that's the last match,
@@ -95,7 +99,7 @@ impl Workspace {
             let duration = if !running && real_ix == msg_count - 1 { last_turn } else { None };
             let el = messages
                 .get(real_ix)
-                .map(|msg| render_message(MsgCtx { ix: real_ix, is_last, duration, msg }, &ws, window, cx))
+                .map(|msg| render_message(MsgCtx { ix: real_ix, is_last, duration, msg }, nav_ix == Some(real_ix), &ws, window, cx))
                 .unwrap_or_else(|| div().into_any_element());
             crate::chat_find::wrap_find_hit(el, real_ix, find.as_ref(), cx)
         })
@@ -182,6 +186,16 @@ impl Workspace {
             // close the bar before the workspace's own Esc handling runs.
             .on_action(cx.listener(|this, _: &FindInChat, window, cx| this.open_chat_find(window, cx)))
             .on_action(cx.listener(|this, _: &EscapeKey, window, cx| this.find_escape(window, cx)))
+            // Message navigation: j/k/↑/↓/gg/G/Enter reach here only when no
+            // input owns the keys (see `msg_nav::nav_keys_allowed`); Esc exits
+            // nav — or enters it from an idle composer — before the
+            // workspace's own Esc handling.
+            .on_action(cx.listener(|this, _: &MsgNavDown, window, cx| this.nav_move(false, window, cx)))
+            .on_action(cx.listener(|this, _: &MsgNavUp, window, cx| this.nav_move(true, window, cx)))
+            .on_action(cx.listener(|this, _: &MsgNavTop, window, cx| this.nav_g(window, cx)))
+            .on_action(cx.listener(|this, _: &MsgNavBottom, window, cx| this.nav_bottom(window, cx)))
+            .on_action(cx.listener(|this, _: &MsgNavEnter, window, cx| this.nav_activate(window, cx)))
+            .on_action(cx.listener(|this, _: &EscapeKey, window, cx| this.nav_escape(window, cx)))
             .child(header)
             .when(self.chat_search_open, |d| {
                 d.child(
@@ -206,11 +220,20 @@ impl Workspace {
                 )
             })
             .when(self.find.open, |d| d.child(self.find_bar(cx)))
-            .child(div().flex_1().min_h_0().child(if empty {
-                render_empty_state(ws_empty.clone(), self.project.root(), cx).into_any_element()
-            } else {
-                list.into_any_element()
-            }))
+            .child(
+                div()
+                    .id("msg-nav")
+                    .test_support()
+                    .track_focus(&nav_focus)
+                    .flex_1()
+                    .min_h_0()
+                    .on_mouse_down(MouseButton::Left, cx.listener(Workspace::nav_click))
+                    .child(if empty {
+                        render_empty_state(ws_empty.clone(), self.project.root(), cx).into_any_element()
+                    } else {
+                        list.into_any_element()
+                    }),
+            )
             .when(running, |d| {
                 let elapsed = chat.started_at.map(|t| t.elapsed().as_secs()).unwrap_or(0);
                 d.child(

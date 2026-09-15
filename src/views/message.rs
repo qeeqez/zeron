@@ -11,15 +11,16 @@ use crate::views::approval::render_approval;
 use crate::views::cards::{MsgCtx, render_diff, render_plan, render_tool_call};
 use crate::workspace::Workspace;
 
-pub fn render_message(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut App) -> AnyElement {
+pub fn render_message(mc: MsgCtx, focused: bool, ws: &Entity<Workspace>, window: &mut Window, cx: &mut App) -> AnyElement {
     let MsgCtx { ix, msg, .. } = mc;
-    match &msg.kind {
+    let el = match &msg.kind {
         MessageKind::Text(_) => render_text(mc, ws, window, cx),
         MessageKind::Tool(tool) => render_tool_call(ix, tool, ws.clone(), cx).into_any_element(),
         MessageKind::Diff(diff) => render_diff(ix, diff, ws.clone(), cx).into_any_element(),
         MessageKind::Plan(plan) => render_plan(ix, plan, cx).into_any_element(),
         MessageKind::Approval(card) => render_approval(ix, card, ws.clone(), cx).into_any_element(),
-    }
+    };
+    crate::msg_nav::wrap_nav_focus(el, focused, cx)
 }
 
 fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut App) -> AnyElement {

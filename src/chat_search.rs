@@ -97,6 +97,14 @@ impl Workspace {
         let end = real_ix.min(self.chats[self.active].messages.len());
         self.chats[self.active].messages[..end].iter().filter(|m| msg_matches(m, &query)).count()
     }
+
+    /// Scroll the scroller to the row showing message `real_ix`, accounting
+    /// for the chat-search filter — the shared jump used by find, global
+    /// search and message navigation.
+    pub(crate) fn scroll_to_message(&mut self, real_ix: usize, cx: &mut Context<Self>) {
+        let pos = self.filtered_pos(real_ix, cx);
+        self.scroller.update(cx, |s, cx| s.scroll_to_item(pos, cx));
+    }
 }
 impl Workspace {
     pub fn open_chat_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {

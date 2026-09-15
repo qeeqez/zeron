@@ -153,10 +153,7 @@ impl Workspace {
             return;
         }
         self.find.match_ix = step_ix(self.find.match_ix, back, matches.len());
-        let pos = self.filtered_pos(matches[self.find.match_ix], cx);
-        self.scroller.update(cx, |s, cx| {
-            s.scroll_to_item(pos, cx);
-        });
+        self.scroll_to_message(matches[self.find.match_ix], cx);
         cx.notify();
     }
     /// A query edit re-targets the first match, like Codex's live find.
@@ -171,8 +168,7 @@ impl Workspace {
         self.find.match_ix = 0;
         let matches = self.find_matches(cx);
         if let Some(&first) = matches.first() {
-            let pos = self.filtered_pos(first, cx);
-            self.scroller.update(cx, |s, cx| s.scroll_to_item(pos, cx));
+            self.scroll_to_message(first, cx);
         }
         cx.notify();
     }
@@ -190,8 +186,7 @@ impl Workspace {
         let matches = self.find_matches(cx);
         self.find.match_ix = matches.iter().position(|&ix| ix == msg_ix).unwrap_or(0);
         if let Some(&target) = matches.get(self.find.match_ix) {
-            let pos = self.filtered_pos(target, cx);
-            self.scroller.update(cx, |s, cx| s.scroll_to_item(pos, cx));
+            self.scroll_to_message(target, cx);
         }
         cx.notify();
     }

@@ -91,6 +91,9 @@ mod model;
 mod model_catalog;
 #[cfg(test)]
 mod model_picker_tests;
+mod msg_nav;
+#[cfg(test)]
+mod msg_nav_tests;
 mod notify;
 #[cfg(test)]
 mod notify_tests;
@@ -189,7 +192,7 @@ actions!([
     ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat,
     SearchAllChats, FindInChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext,
     NewWindow, OpenProject, AboutApp, CheckForUpdates, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront,
-    ToggleDictation, ToggleTerminal,
+    ToggleDictation, ToggleTerminal, MsgNavDown, MsgNavUp, MsgNavTop, MsgNavBottom, MsgNavEnter,
 ]);
 
 /// Workspace-context key bindings. Menu items pick their key equivalents up
@@ -205,6 +208,14 @@ fn workspace_keys() -> Vec<KeyBinding> {
     // opening the find bar and Cmd-Shift-F opening global search.
     keys.push(KeyBinding::new("cmd-f", FindInChat, Some("Input")));
     keys.push(KeyBinding::new("cmd-shift-f", SearchAllChats, Some("Input")));
+    // Message navigation aliases beyond the cheat-sheet rows: arrow keys
+    // mirror j/k, and `g` arms the `gg` double-tap (a two-stroke "g g"
+    // binding would hold a typed g for the pending-input timeout — the
+    // double-tap in `msg_nav` keeps typing instant). All propagate when an
+    // input owns the keys (see `msg_nav::nav_keys_allowed`).
+    keys.push(KeyBinding::new("up", MsgNavUp, Some("workspace")));
+    keys.push(KeyBinding::new("down", MsgNavDown, Some("workspace")));
+    keys.push(KeyBinding::new("g", MsgNavTop, Some("workspace")));
     keys
 }
 

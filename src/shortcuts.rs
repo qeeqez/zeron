@@ -102,5 +102,10 @@ pub static SHORTCUT_SPECS: &[ShortcutSpec] = &[
     spec!("cmd-7", Chat7, "Switch to chat 7", Navigation),
     spec!("cmd-8", Chat8, "Switch to chat 8", Navigation),
     spec!("cmd-9", Chat9, "Switch to chat 9", Navigation),
+    spec!("j", MsgNavDown, "Focus next message", Navigation),
+    spec!("k", MsgNavUp, "Focus previous message", Navigation),
+    spec!("gg", "Focus first message", Navigation),
+    spec!("shift-g", MsgNavBottom, "Focus last message", Navigation),
+    spec!("enter", MsgNavEnter, "Edit / copy focused message", Navigation),
     spec!("cmd-,", OpenSettings, "Open settings", Settings),
 ];

@@ -14,14 +14,16 @@ use crate::shortcuts::{SHORTCUT_SPECS, ShortcutGroup};
 #[test]
 fn keymap_and_overlay_share_one_table() {
     let bound = SHORTCUT_SPECS.iter().filter(|s| s.bind.is_some()).count();
-    // Two extra bindings beyond the table: cmd-f and cmd-shift-f are also
+    // Extra bindings beyond the table: cmd-f and cmd-shift-f are also
     // registered in the "Input" context so they still open the find bar /
     // global search while an input is focused (inputs bind cmd-f to their
-    // own Search and cmd-shift-f to Replace, swallowing both).
+    // own Search and cmd-shift-f to Replace, swallowing both); up/down/g
+    // alias the message-navigation keys (the "gg" row is display-only — the
+    // double-tap is handled in `msg_nav` so a typed g never pends).
     assert_eq!(
         crate::workspace_keys().len(),
-        bound + 2,
-        "workspace_keys registers every bound spec plus the Input-context cmd-f and cmd-shift-f"
+        bound + 5,
+        "workspace_keys registers every bound spec plus the Input-context cmd-f/cmd-shift-f and the up/down/g nav aliases"
     );
     assert!(bound > 0);
 

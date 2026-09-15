@@ -119,6 +119,12 @@ pub struct Workspace {
     /// In-chat find bar state (Cmd-F) — highlights + navigates matches
     /// without filtering the transcript (see `crate::chat_find`).
     pub find: crate::chat_find::FindBar,
+    /// Keyboard message navigation: the focused transcript row plus the
+    /// focus handle the scroller wrapper tracks while navigating (see
+    /// `crate::msg_nav`). `pending_g` is the `g` double-tap arm for `gg`.
+    pub nav: Option<crate::msg_nav::MsgNav>,
+    pub nav_focus: FocusHandle,
+    pub pending_g: Option<std::time::Instant>,
     /// Agents-panel task input — Enter spawns a standalone backend turn.
     pub task_input: Entity<InputState>,
     pub chat_search_open: bool,
