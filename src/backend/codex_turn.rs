@@ -35,6 +35,7 @@ pub(super) fn build_command(turn: &CodexTurn) -> std::process::Command {
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    super::apply_env(&mut cmd, &turn.env);
     cmd
 }
 

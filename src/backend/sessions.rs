@@ -26,22 +26,22 @@ const MAX_PAGES: u32 = 4;
 
 /// List past codex threads, newest first. Err on spawn failure, handshake
 /// error, timeout, or EOF mid-list — the caller treats it as "no sessions".
-pub fn fetch_codex_sessions() -> Result<Vec<SessionInfo>, String> {
-    exchange(|stdin, stdout| read_sessions(stdin, stdout))
+pub fn fetch_codex_sessions(env: &[(String, String)]) -> Result<Vec<SessionInfo>, String> {
+    exchange(env, |stdin, stdout| read_sessions(stdin, stdout))
 }
 
 /// Reopen one thread: `thread/resume` returns it with its recent turns,
 /// mapped to chat messages for display.
-pub fn resume_codex_session(thread_id: &str) -> Result<ResumedSession, String> {
+pub fn resume_codex_session(thread_id: &str, env: &[(String, String)]) -> Result<ResumedSession, String> {
     let thread_id = thread_id.to_string();
-    exchange(move |stdin, stdout| read_session(stdin, stdout, &thread_id))
+    exchange(env, move |stdin, stdout| read_session(stdin, stdout, &thread_id))
 }
 
 /// Spawn `codex app-server`, run `drive` against its pipes on a helper
 /// thread, and bound the exchange by `FETCH_TIMEOUT`. The child is killed
 /// either way — these are one-shot queries, not a session.
 pub(super) fn exchange<T: Send + 'static>(
-    drive: impl FnOnce(&mut dyn Write, std::process::ChildStdout) -> Result<T, String> + Send + 'static,
+    env: &[(String, String)], drive: impl FnOnce(&mut dyn Write, std::process::ChildStdout) -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
     let mut cmd = std::process::Command::new("codex");
     cmd.arg("app-server")
@@ -49,6 +49,7 @@ pub(super) fn exchange<T: Send + 'static>(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
+    super::apply_env(&mut cmd, env);
     let mut child = cmd.spawn().map_err(|e| format!("codex spawn: {e}"))?;
     let stdout = child.stdout.take().expect("piped");
     let mut stdin = child.stdin.take().expect("piped");

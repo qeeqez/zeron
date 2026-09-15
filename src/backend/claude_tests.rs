@@ -187,7 +187,7 @@ fn backend_for_builds_claude() {
 
 #[test]
 fn claude_models_have_no_default_entry() {
-    let models = crate::backend::ClaudeCliBackend::new().models();
+    let models = crate::backend::ClaudeCliBackend::new(Vec::new()).models();
     assert!(!models.is_empty());
     assert!(models.iter().all(|m| m.id != "default"));
     assert!(models.iter().any(|m| m.id == "sonnet"));
@@ -206,6 +206,7 @@ mod command_tests {
             mode: mode.into(),
             access,
             cwd: std::path::PathBuf::from("/tmp/thread-wt"),
+            env: Vec::new(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
@@ -228,6 +229,14 @@ mod command_tests {
     fn command_spawns_in_the_thread_workdir() {
         let cmd = build_command(&turn("Agent", AccessMode::Auto));
         assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/tmp/thread-wt")));
+    }
+
+    #[test]
+    fn instance_env_lands_on_the_spawned_command() {
+        let mut t = turn("Agent", AccessMode::Auto);
+        t.env = vec![("ANTHROPIC_BASE_URL".to_string(), "https://proxy".to_string())];
+        let envs: Vec<_> = build_command(&t).get_envs().map(|(k, v)| (k.to_os_string(), v.map(|v| v.to_os_string()))).collect();
+        assert!(envs.contains(&(std::ffi::OsString::from("ANTHROPIC_BASE_URL"), Some(std::ffi::OsString::from("https://proxy")))));
     }
 
     #[test]

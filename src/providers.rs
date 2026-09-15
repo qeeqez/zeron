@@ -129,10 +129,31 @@ pub struct ProviderInstance {
     pub command: String,
     /// Env var holding the http bearer token; empty for other kinds.
     pub key_env: String,
+    /// Extra environment for the backend subprocess (e.g. a custom base
+    /// URL or API key for this instance only). Rows with a blank key are
+    /// half-edited UI state — skipped on save and at spawn.
+    #[serde(with = "env_map", skip_serializing_if = "Vec::is_empty")]
+    pub env: Vec<(String, String)>,
     /// Per-model enable + order; empty = all enabled, catalog order.
     pub models: Vec<ModelConfig>,
     /// Optional accent color (hex) shown as a marker in the picker.
     pub accent: Option<String>,
+}
+
+/// `env` serializes as a JSON object (`{"KEY": "value"}`) so the settings
+/// file stays hand-editable; in memory it's an ordered row list matching
+/// the Variables editor. Blank keys — a row the user added but hasn't
+/// named yet — are dropped on save.
+mod env_map {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(env: &[(String, String)], s: S) -> Result<S::Ok, S::Error> {
+        s.collect_map(env.iter().filter(|(k, _)| !k.trim().is_empty()).map(|(k, v)| (k, v)))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<(String, String)>, D::Error> {
+        Ok(<std::collections::BTreeMap<String, String>>::deserialize(d)?.into_iter().collect())
+    }
 }
 
 impl ProviderInstance {
@@ -146,6 +167,7 @@ impl ProviderInstance {
             enabled: true,
             command: kind.default_command().to_string(),
             key_env: kind.default_key_env().to_string(),
+            env: Vec::new(),
             models: Vec::new(),
             accent: None,
         }

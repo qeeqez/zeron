@@ -7,7 +7,7 @@ use gpui_kit::{AppContext, Entity, SharedString, TestAppContext, VisualTestConte
 
 use crate::model::ModelInfo;
 use crate::persist::Settings;
-use crate::providers::{ModelConfig, ProviderKind, apply_model_config};
+use crate::providers::{ModelConfig, ProviderInstance, ProviderKind, apply_model_config};
 use crate::workspace::Workspace;
 
 /// Mount a `Workspace` in a headless window with `HOME` redirected to a
@@ -104,6 +104,20 @@ fn new_format_file_is_not_migrated() {
     assert!(!json.contains("\"backend\"") && !json.contains("\"disabled_providers\""));
 }
 
+#[test]
+fn provider_env_persists_as_a_map() {
+    let mut p = ProviderInstance::new(ProviderKind::CodexCli, "Codex".into());
+    p.env = vec![("CODEX_HOME".into(), "/tmp/x".into()), (String::new(), "half-edited".into())];
+    let s = Settings { providers: vec![p], ..Default::default() };
+    let json = serde_json::to_string(&s).unwrap();
+    assert!(json.contains(r#""env":{"CODEX_HOME":"/tmp/x"}"#), "env serializes as a map: {json}");
+    let s: Settings = serde_json::from_str(&json).unwrap();
+    assert_eq!(s.providers[0].env, vec![("CODEX_HOME".to_string(), "/tmp/x".to_string())], "blank-key rows don't persist");
+    // Old files have no `env` — it defaults to empty.
+    let s: Settings = serde_json::from_str(r#"{"providers":[{"id":"c","kind":"codex-cli"}]}"#).unwrap();
+    assert!(s.providers[0].env.is_empty());
+}
+
 // ---- models_for filtering/ordering ----
 
 #[test]
@@ -154,6 +168,44 @@ fn removing_selected_provider_moves_selection() {
     ws.update(cx, |this, cx| this.remove_provider("codex-cli", cx));
     let (provider, backend) = ws.read_with(cx, |w, _| (w.selected_provider().map(str::to_string), w.backend.name()));
     assert_eq!((provider.as_deref(), backend), (Some("claude-cli"), "claude-cli"));
+}
+
+#[test]
+fn provider_env_ops_add_update_remove() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    let env_of = |ws: &Entity<Workspace>, cx: &mut VisualTestContext| {
+        ws.read_with(cx, |w, _| w.provider_instances().iter().find(|p| p.id == "codex-cli").unwrap().env.clone())
+    };
+    ws.update(cx, |this, cx| {
+        this.add_provider_env_row("codex-cli", cx);
+        this.add_provider_env_row("codex-cli", cx);
+    });
+    assert_eq!(env_of(&ws, cx), vec![(String::new(), String::new()); 2]);
+    ws.update(cx, |this, cx| {
+        this.set_provider_env("codex-cli", 0, ("CODEX_HOME".into(), "/tmp/x".into()), cx);
+        this.set_provider_env("codex-cli", 1, ("OPENAI_BASE_URL".into(), "https://x".into()), cx);
+    });
+    assert_eq!(
+        env_of(&ws, cx),
+        vec![
+            ("CODEX_HOME".to_string(), "/tmp/x".to_string()),
+            ("OPENAI_BASE_URL".to_string(), "https://x".to_string())
+        ]
+    );
+    // Update one row, remove the other — indices shift as expected.
+    ws.update(cx, |this, cx| {
+        this.set_provider_env("codex-cli", 1, ("OPENAI_BASE_URL".into(), "https://y".into()), cx);
+        this.remove_provider_env_row("codex-cli", 0, cx);
+    });
+    assert_eq!(env_of(&ws, cx), vec![("OPENAI_BASE_URL".to_string(), "https://y".to_string())]);
+    // Out-of-range writes/removes and unknown instances are ignored.
+    ws.update(cx, |this, cx| {
+        this.set_provider_env("codex-cli", 9, ("K".into(), "v".into()), cx);
+        this.remove_provider_env_row("codex-cli", 9, cx);
+        this.add_provider_env_row("nope", cx);
+    });
+    assert_eq!(env_of(&ws, cx).len(), 1);
 }
 
 #[test]

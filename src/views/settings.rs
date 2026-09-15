@@ -1,4 +1,5 @@
 use crate::views::settings_nav::Section;
+use crate::views::settings_provider_env::EnvRow;
 use crate::views::settings_provider_wizard::ProviderWizard;
 use crate::views::settings_providers::ProviderInputs;
 use crate::workspace::Workspace;
@@ -29,6 +30,9 @@ pub struct SettingsPanel {
     /// Per-provider-instance detail inputs (name/command/key_env), keyed by
     /// instance id — created lazily by `sync_provider_inputs` on render.
     pub(crate) provider_inputs: HashMap<String, ProviderInputs>,
+    /// Per-instance Variables inputs (key/value rows), keyed by instance
+    /// id — created lazily by `sync_provider_env_inputs` on render.
+    pub(crate) provider_env_inputs: HashMap<String, Vec<EnvRow>>,
     /// The instance the Providers detail panel shows.
     pub(crate) provider_selection: Option<String>,
     /// In-flight "Add provider" wizard state — `None` when closed.
@@ -156,6 +160,7 @@ impl SettingsPanel {
             section: Section::General,
             search,
             provider_inputs: HashMap::new(),
+            provider_env_inputs: HashMap::new(),
             provider_selection,
             provider_wizard: None,
             font_select,
@@ -191,6 +196,7 @@ impl Render for SettingsPanel {
         };
         // Reconcile per-instance inputs + selection before the view snapshot.
         self.sync_provider_inputs(window, cx);
+        self.sync_provider_env_inputs(window, cx);
         let s = ws.read(cx);
         let view = crate::views::settings_sections::SettingsView {
             notify: s.notify_on_done,
@@ -212,6 +218,7 @@ impl Render for SettingsPanel {
             mcp_adding: self.mcp_adding,
             mcp_error: self.mcp_error.clone(),
             mcp_inputs: self.mcp_inputs.clone(),
+            provider_env_inputs: self.provider_env_inputs.clone(),
             provider_selection: self.provider_selection.clone(),
             font_select: self.font_select.clone(),
             code_font_select: self.code_font_select.clone(),

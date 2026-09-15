@@ -176,10 +176,53 @@ impl Workspace {
         let Some(p) = self.providers.iter_mut().find(|p| p.id == instance_id) else { return };
         p.command = command;
         p.key_env = key_env;
-        if self.selected_provider == instance_id {
+        self.rebuild_selected_backend(instance_id);
+        self.save_settings();
+    }
+
+    /// Write one Variables row — `ix` indexes `p.env`, `key`/`value` are
+    /// the row's current text. Blank keys stay in memory (the row is still
+    /// being edited) but are skipped on save and at spawn.
+    pub fn set_provider_env(&mut self, instance_id: &str, ix: usize, pair: (String, String), cx: &mut Context<Self>) {
+        let Some(p) = self.providers.iter_mut().find(|p| p.id == instance_id) else { return };
+        let Some(row) = p.env.get_mut(ix) else { return };
+        if row.0 == pair.0 && row.1 == pair.1 {
+            return;
+        }
+        *row = pair;
+        self.rebuild_selected_backend(instance_id);
+        self.save_settings();
+        cx.notify();
+    }
+
+    /// Append a blank Variables row — the detail panel's "Add variable".
+    pub fn add_provider_env_row(&mut self, instance_id: &str, cx: &mut Context<Self>) {
+        let Some(p) = self.providers.iter_mut().find(|p| p.id == instance_id) else { return };
+        p.env.push((String::new(), String::new()));
+        self.save_settings();
+        cx.notify();
+    }
+
+    /// Remove Variables row `ix`.
+    pub fn remove_provider_env_row(&mut self, instance_id: &str, ix: usize, cx: &mut Context<Self>) {
+        let Some(p) = self.providers.iter_mut().find(|p| p.id == instance_id) else { return };
+        if ix >= p.env.len() {
+            return;
+        }
+        p.env.remove(ix);
+        self.rebuild_selected_backend(instance_id);
+        self.save_settings();
+        cx.notify();
+    }
+
+    /// Rebuild the live backend when `instance_id` is the selected one —
+    /// env/connection edits must reach the next spawned subprocess.
+    fn rebuild_selected_backend(&mut self, instance_id: &str) {
+        if self.selected_provider == instance_id
+            && let Some(p) = self.providers.iter().find(|p| p.id == instance_id)
+        {
             self.backend = crate::backend::backend_for(p);
         }
-        self.save_settings();
     }
 
     /// Switch the active instance: rebuild its backend and re-resolve the

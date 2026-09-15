@@ -17,6 +17,8 @@ use crate::model::ModelInfo;
 pub struct AcpBackend {
     /// Spawn command split into program + args (whitespace-separated).
     command: Vec<String>,
+    /// The instance's Variables — injected into the spawned agent.
+    env: Vec<(String, String)>,
     /// Model catalog learned from `session/new` responses — shared with
     /// every turn so `models()` reflects what the agent last advertised.
     models: std::sync::Arc<parking_lot::Mutex<Vec<ModelInfo>>>,
@@ -28,11 +30,12 @@ impl AcpBackend {
 
     /// `command` is a shell-style "program arg…" string; empty falls back
     /// to the default so a cleared setting can't silently wedge sends.
-    pub fn new(command: String) -> Self {
+    pub fn new(command: String, env: Vec<(String, String)>) -> Self {
         let trimmed = command.trim();
         let command = if trimmed.is_empty() { Self::DEFAULT_COMMAND } else { trimmed };
         Self {
             command: command.split_whitespace().map(str::to_string).collect(),
+            env,
             models: Default::default(),
         }
     }
@@ -40,7 +43,7 @@ impl AcpBackend {
 
 impl Default for AcpBackend {
     fn default() -> Self {
-        Self::new(String::new())
+        Self::new(String::new(), Vec::new())
     }
 }
 
@@ -67,6 +70,7 @@ impl AgentBackend for AcpBackend {
             // Snapshot the configured MCP servers — `session/new` advertises
             // them so the agent spawns/connects them for this session.
             mcp_servers: crate::persist::load_settings().mcp_servers,
+            env: self.env.clone(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             models: self.models.clone(),
@@ -98,6 +102,8 @@ pub(super) struct AcpTurn {
     cwd: std::path::PathBuf,
     /// Image attachments — sent as `resource_link` blocks on `session/prompt`.
     images: Vec<std::path::PathBuf>,
+    /// The instance's Variables — injected into the spawned agent.
+    pub(super) env: Vec<(String, String)>,
     slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
     cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// Shared model catalog — `session/new` refreshes it for `models()`.
@@ -117,6 +123,7 @@ impl AcpTurn {
             access,
             cwd: std::path::PathBuf::from("/tmp"),
             images: Vec::new(),
+            env: Vec::new(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             models: std::sync::Arc::new(parking_lot::Mutex::new(vec![])),
@@ -175,15 +182,23 @@ pub(super) enum PumpEnd {
     Eof,
 }
 
-/// One ACP turn: spawn, handshake, stream `session/update` notifications
-/// until the `session/prompt` response or EOF, reap, classify.
-fn spawn_acp(turn: &AcpTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> AcpOutcome {
+/// The agent spawn command for one turn — extracted so tests can assert
+/// args and env without launching a real process.
+pub(super) fn build_command(turn: &AcpTurn) -> std::process::Command {
     let mut cmd = std::process::Command::new(&turn.command[0]);
     cmd.args(&turn.command[1..])
         .current_dir(&turn.cwd)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    super::apply_env(&mut cmd, &turn.env);
+    cmd
+}
+
+/// One ACP turn: spawn, handshake, stream `session/update` notifications
+/// until the `session/prompt` response or EOF, reap, classify.
+fn spawn_acp(turn: &AcpTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> AcpOutcome {
+    let mut cmd = build_command(turn);
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,

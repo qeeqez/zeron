@@ -11,6 +11,7 @@ mod claude;
 mod claude_parse;
 mod codex;
 mod codex_turn;
+mod factory;
 mod http;
 mod models;
 mod rpc;
@@ -43,6 +44,8 @@ pub use codex::fetch_mcp_status;
 #[cfg(test)]
 pub(crate) use codex::read_mcp_status;
 pub(crate) use codex::{auth_status as codex_auth_status, login as codex_login, logout as codex_logout};
+pub(crate) use factory::apply_env;
+pub use factory::backend_for;
 pub use http::HttpBackend;
 pub use models::fetch_codex_models;
 pub use steer::TurnHandle;
@@ -172,7 +175,13 @@ pub struct TurnContext {
 impl TurnContext {
     /// A turn rooted at `cwd` with `access`, starting a fresh thread.
     pub fn at(cwd: std::path::PathBuf, access: AccessMode) -> Self {
-        Self { cwd, access, thread_id: None, effort: None, images: Vec::new() }
+        Self {
+            cwd,
+            access,
+            thread_id: None,
+            effort: None,
+            images: Vec::new(),
+        }
     }
 }
 
@@ -378,18 +387,5 @@ impl AgentBackend for SimBackend {
             child: None,
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
-    }
-}
-
-/// Build the backend for one provider instance — `command`/`key_env` carry
-/// the kind-specific connection fields (acp spawn command, http endpoint).
-pub fn backend_for(p: &crate::providers::ProviderInstance) -> std::sync::Arc<dyn AgentBackend> {
-    use crate::providers::ProviderKind;
-    match p.kind {
-        ProviderKind::CodexCli => std::sync::Arc::new(CodexCliBackend::new()),
-        ProviderKind::ClaudeCli => std::sync::Arc::new(ClaudeCliBackend::new()),
-        ProviderKind::Acp => std::sync::Arc::new(AcpBackend::new(p.command.clone())),
-        ProviderKind::Http => std::sync::Arc::new(HttpBackend::new(p.command.clone(), p.key_env.clone())),
-        ProviderKind::Sim => std::sync::Arc::new(SimBackend),
     }
 }

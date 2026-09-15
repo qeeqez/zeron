@@ -14,6 +14,7 @@ use gpui_kit::*;
 
 use crate::auth::{self, AuthState};
 use crate::providers::{ProviderInstance, ProviderKind};
+use crate::views::settings_provider_env::variables_section;
 use crate::views::settings_providers::{ProviderInputs, code_row};
 use crate::views::settings_sections::{SettingsView, group_label};
 
@@ -68,6 +69,10 @@ pub(crate) fn detail_panel(p: Option<&ProviderInstance>, s: &SettingsView, cx: &
             .children(connection_fields(p, &inputs))
         })
         .child(account_section(p, inputs.as_ref(), s, cx))
+        // The simulator spawns nothing — Variables would be a no-op.
+        .when(!matches!(p.kind, ProviderKind::Sim), |d| {
+            d.child(variables_section(p, s.provider_env_inputs.get(&p.id).map_or(&[][..], Vec::as_slice), s, cx))
+        })
         .child(models_section(p, s, cx))
 }
 
@@ -246,7 +251,9 @@ fn model_row(pid: &str, m: &crate::model::ModelInfo, on: bool, s: &SettingsView,
 }
 
 /// A small clickable icon — the shared shape for remove/reorder controls.
-fn icon_btn(id: &str, icon: IconName, on_click: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static) -> impl IntoElement {
+pub(crate) fn icon_btn(
+    id: &str, icon: IconName, on_click: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
     div()
         .id(SharedString::from(id.to_string()))
         .test_support()

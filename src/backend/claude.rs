@@ -14,7 +14,10 @@ use super::claude_parse::ClaudeDecoder;
 use super::{AgentBackend, AgentEvent, ReplyStream, kill_slot};
 
 /// Backend that shells out to the `claude` CLI (Claude Code print mode).
-pub struct ClaudeCliBackend;
+pub struct ClaudeCliBackend {
+    /// The instance's Variables — injected into every spawned `claude`.
+    env: Vec<(String, String)>,
+}
 
 /// Models the picker offers for this provider — claude-cli can't enumerate
 /// its models, so this is the static alias list from `claude --help`.
@@ -22,8 +25,8 @@ pub struct ClaudeCliBackend;
 const CLAUDE_MODELS: [(&str, &str); 4] = [("sonnet", "Sonnet"), ("opus", "Opus"), ("haiku", "Haiku"), ("fable", "Fable")];
 
 impl ClaudeCliBackend {
-    pub fn new() -> Self {
-        Self
+    pub fn new(env: Vec<(String, String)>) -> Self {
+        Self { env }
     }
 }
 
@@ -56,6 +59,7 @@ impl AgentBackend for ClaudeCliBackend {
             mode: mode.to_string(),
             access: ctx.access,
             cwd: ctx.cwd.clone(),
+            env: self.env.clone(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         });
@@ -81,6 +85,8 @@ pub(super) struct ClaudeTurn {
     /// The thread's working directory — the project root, or its git
     /// worktree when the thread runs in one.
     pub(super) cwd: std::path::PathBuf,
+    /// The instance's Variables — injected into the spawned `claude`.
+    pub(super) env: Vec<(String, String)>,
     pub(super) slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
     /// Set when the UI drops the stream — checked before spawn so a
     /// cancelled turn can't start a fresh child.
@@ -122,6 +128,7 @@ pub(super) fn build_command(turn: &ClaudeTurn) -> std::process::Command {
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    super::apply_env(&mut cmd, &turn.env);
     if !turn.model.is_empty() {
         cmd.arg("--model").arg(&turn.model);
     }

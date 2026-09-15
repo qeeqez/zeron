@@ -20,9 +20,20 @@ fn backend_for_builds_acp() {
 
 #[test]
 fn empty_command_falls_back_to_default() {
-    let b = AcpBackend::new("  ".into());
+    let b = AcpBackend::new("  ".into(), Vec::new());
     assert_eq!(b.name(), "acp");
     assert!(b.models().is_empty());
+}
+
+#[test]
+fn instance_env_lands_on_the_spawned_command() {
+    let mut t = AcpTurn::for_test("m", "Agent", AccessMode::Auto);
+    t.env = vec![("ACP_KEY".to_string(), "k".to_string())];
+    let envs: Vec<_> = super::acp::build_command(&t)
+        .get_envs()
+        .map(|(k, v)| (k.to_os_string(), v.map(|v| v.to_os_string())))
+        .collect();
+    assert!(envs.contains(&(std::ffi::OsString::from("ACP_KEY"), Some(std::ffi::OsString::from("k")))));
 }
 
 // ---- session/update decoder ----

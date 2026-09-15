@@ -1,6 +1,9 @@
+//! Headless tests for the Providers settings section: the master-detail
 //! layout (scrollable instance list + detail panel), the three-step
 //! add-provider wizard, enable/remove switches, per-model toggles and
 //! ordering, and the connection-field → `configure_provider` wiring.
+
+mod env_tests;
 
 use gpui_kit::component::Root;
 use gpui_kit::component::input::InputEvent;

@@ -56,6 +56,18 @@ mod tests {
         assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/tmp/thread-wt")));
     }
 
+    #[test]
+    fn instance_env_lands_on_the_spawned_command() {
+        let mut t = turn("Agent", AccessMode::Auto);
+        t.env = vec![
+            ("CODEX_HOME".to_string(), "/tmp/codex-home".to_string()),
+            (String::new(), "half-edited".to_string()),
+        ];
+        let envs: Vec<_> = build_command(&t).get_envs().map(|(k, v)| (k.to_os_string(), v.map(|v| v.to_os_string()))).collect();
+        assert!(envs.contains(&(std::ffi::OsString::from("CODEX_HOME"), Some(std::ffi::OsString::from("/tmp/codex-home")))));
+        assert!(!envs.iter().any(|(k, _)| k.is_empty()), "blank-key rows are skipped");
+    }
+
     /// The initialize response drives the next handshake request — a turn
     /// bound to a session resumes its thread, a fresh turn starts one.
     fn handshake_writes(turn: &CodexTurn) -> String {
@@ -215,7 +227,7 @@ mod tests {
     #[test]
     fn codex_declares_steer_support() {
         use crate::backend::AgentBackend;
-        assert!(crate::backend::CodexCliBackend::new().supports_steer());
+        assert!(crate::backend::CodexCliBackend::new(Vec::new()).supports_steer());
         assert!(!crate::backend::SimBackend.supports_steer());
     }
 }

@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use crate::backend::AccessMode;
 use crate::views::settings::SettingsPanel;
 use crate::views::settings_nav::Section;
+use crate::views::settings_provider_env::EnvRow;
 use crate::views::settings_providers::ProviderInputs;
 use crate::workspace::Workspace;
 
@@ -35,6 +36,8 @@ pub struct SettingsView {
     pub panel: Entity<SettingsPanel>,
     /// Per-instance detail inputs, keyed by instance id.
     pub provider_inputs: HashMap<String, ProviderInputs>,
+    /// Per-instance Variables inputs, keyed by instance id.
+    pub provider_env_inputs: HashMap<String, Vec<EnvRow>>,
     /// The instance the Providers detail panel shows.
     pub provider_selection: Option<String>,
     pub access: AccessMode,

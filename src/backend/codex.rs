@@ -14,11 +14,14 @@ use super::steer::CodexSlot;
 use super::{AgentBackend, AgentEvent, ReplyStream};
 
 /// Backend that shells out to `codex app-server` (the desktop transport).
-pub struct CodexCliBackend;
+pub struct CodexCliBackend {
+    /// The instance's Variables — injected into every spawned `codex`.
+    env: Vec<(String, String)>,
+}
 
 impl CodexCliBackend {
-    pub fn new() -> Self {
-        Self
+    pub fn new(env: Vec<(String, String)>) -> Self {
+        Self { env }
     }
 }
 
@@ -45,6 +48,7 @@ impl AgentBackend for CodexCliBackend {
             images: ctx.images.clone(),
             resume: ctx.thread_id.clone(),
             effort: ctx.effort.clone(),
+            env: self.env.clone(),
             slot: std::sync::Arc::new(CodexSlot::new()),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         });
@@ -69,12 +73,12 @@ impl AgentBackend for CodexCliBackend {
 
     /// `thread/list` — past codex threads for the sidebar's Resume section.
     fn list_sessions(&self) -> Option<Vec<super::SessionInfo>> {
-        super::sessions::fetch_codex_sessions().ok()
+        super::sessions::fetch_codex_sessions(&self.env).ok()
     }
 
     /// `thread/resume` — reopen the thread and return its transcript.
     fn resume_session(&self, thread_id: &str) -> Option<super::ResumedSession> {
-        super::sessions::resume_codex_session(thread_id).ok()
+        super::sessions::resume_codex_session(thread_id, &self.env).ok()
     }
 }
 
@@ -98,6 +102,8 @@ pub(super) struct CodexTurn {
     /// Reasoning effort for `turn/start` — `None` lets the server apply
     /// the model's `defaultReasoningEffort`.
     pub(super) effort: Option<String>,
+    /// The instance's Variables — injected into the spawned `codex`.
+    pub(super) env: Vec<(String, String)>,
     /// The turn's live handle: child slot, shared stdin, and the
     /// thread/turn ids `turn/steer` addresses.
     pub(super) slot: std::sync::Arc<CodexSlot>,
@@ -119,6 +125,7 @@ impl CodexTurn {
             effort: None,
             images: Vec::new(),
             resume: None,
+            env: Vec::new(),
             slot: std::sync::Arc::new(CodexSlot::new()),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
@@ -257,7 +264,7 @@ pub(crate) fn read_mcp_status(stdin: &mut dyn std::io::Write, stdout: impl std::
 /// (which carries the plan/email), falling back to `codex login status`
 /// when the server can't answer. Blocking — call off the UI thread.
 pub(crate) fn auth_status() -> crate::auth::AuthState {
-    super::sessions::exchange(read_account).unwrap_or_else(|_| cli_login_status())
+    super::sessions::exchange(&[], read_account).unwrap_or_else(|_| cli_login_status())
 }
 
 /// `codex login status` — the CLI's own answer when app-server is down.
@@ -343,7 +350,7 @@ fn read_account(stdin: &mut dyn Write, stdout: impl std::io::Read) -> Result<cra
 
 /// `account/logout` — clears the CLI's stored credentials.
 pub(crate) fn logout() -> Result<(), String> {
-    super::sessions::exchange(|stdin, stdout| one_request(stdin, stdout, |_| super::rpc::logout_req(2)).map(|_| ()))
+    super::sessions::exchange(&[], |stdin, stdout| one_request(stdin, stdout, |_| super::rpc::logout_req(2)).map(|_| ()))
 }
 
 /// Handshake, send `req(2)`, return its `result`. Shared by the one-shot

@@ -84,8 +84,8 @@ fn non_codex_backends_have_no_sessions() {
     assert!(!crate::backend::SimBackend.supports_sessions());
     assert!(crate::backend::SimBackend.list_sessions().is_none());
     assert!(crate::backend::SimBackend.resume_session("t").is_none());
-    assert!(!crate::backend::ClaudeCliBackend::new().supports_sessions());
-    assert!(crate::backend::ClaudeCliBackend::new().list_sessions().is_none());
+    assert!(!crate::backend::ClaudeCliBackend::new(Vec::new()).supports_sessions());
+    assert!(crate::backend::ClaudeCliBackend::new(Vec::new()).list_sessions().is_none());
 }
 
 #[test]

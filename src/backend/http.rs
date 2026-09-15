@@ -10,11 +10,14 @@ pub struct HttpBackend {
     url: String,
     /// Env var holding the token; empty means no Authorization header.
     key_env: String,
+    /// The instance's Variables — consulted for `key_env` before the
+    /// process environment, so an API key can live on the instance.
+    env: Vec<(String, String)>,
 }
 
 impl HttpBackend {
-    pub fn new(url: String, key_env: String) -> Self {
-        Self { url, key_env }
+    pub fn new(url: String, key_env: String, env: Vec<(String, String)>) -> Self {
+        Self { url, key_env, env }
     }
 }
 
@@ -29,6 +32,7 @@ impl AgentBackend for HttpBackend {
         let turn = std::sync::Arc::new(HttpTurn {
             url: self.url.clone(),
             key_env: self.key_env.clone(),
+            env: self.env.clone(),
             prompt: prompt.to_string(),
             model: model.to_string(),
             mode: mode.to_string(),
@@ -44,6 +48,8 @@ impl AgentBackend for HttpBackend {
 struct HttpTurn {
     url: String,
     key_env: String,
+    /// The instance's Variables — `key_env` resolves here first.
+    env: Vec<(String, String)>,
     prompt: String,
     model: String,
     mode: String,
@@ -57,8 +63,11 @@ fn run_http(turn: &HttpTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) {
     use std::io::BufRead;
     let body = serde_json::json!({ "prompt": turn.prompt, "model": turn.model, "mode": turn.mode });
     let mut req = ureq::post(&turn.url).config().timeout_global(Some(std::time::Duration::from_secs(300))).build();
+    // The instance's Variables win over the process env — that's how a
+    // per-provider API key works without touching the shell env.
+    let key = turn.env.iter().find(|(k, _)| k.trim() == turn.key_env).map(|(_, v)| v.as_str());
     if !turn.key_env.is_empty()
-        && let Ok(key) = std::env::var(&turn.key_env)
+        && let Some(key) = key.map(str::to_string).or_else(|| std::env::var(&turn.key_env).ok())
         && !key.is_empty()
     {
         req = req.header("Authorization", format!("Bearer {key}"));
