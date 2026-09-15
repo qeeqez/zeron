@@ -69,6 +69,9 @@ impl Workspace {
     pub fn open_chat_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.chat_search_open = !self.chat_search_open;
         self.search_match_ix = 0;
+        // The find bar and the filter share the strip under the titlebar —
+        // never show both.
+        self.find.open = false;
         if self.chat_search_open {
             let input = self.chat_search.clone();
             window.defer(cx, move |window, cx| {

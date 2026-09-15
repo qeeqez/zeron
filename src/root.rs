@@ -3,7 +3,7 @@
 use crate::workspace::Workspace;
 use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EnterFullscreen,
-    EscapeKey, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats, SearchChat,
+    EscapeKey, FindInChat, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats, SearchChat,
     ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleExplorer, ToggleSidebar, ZoomWindow,
 };
 use gpui_kit::component::Root;
@@ -29,6 +29,7 @@ impl Render for Workspace {
         let ws_side = cx.entity();
         let ws_agents = cx.entity();
         let ws_palette = cx.entity();
+        let ws_find = cx.entity();
         div()
             .key_context("workspace")
             .on_action(move |_: &NewChat, _, cx| {
@@ -96,6 +97,9 @@ impl Render for Workspace {
                     ws.update(cx, |this, cx| this.open_chat_search(window, cx));
                 }
             })
+            // Reached only when focus is outside the chat column — the
+            // column's own FindInChat listener consumes it first.
+            .on_action(move |_: &FindInChat, window, cx| ws_find.update(cx, |this, cx| this.open_chat_find(window, cx)))
             .on_action(|_: &MinimizeWindow, window, _cx| {
                 window.minimize_window();
             })

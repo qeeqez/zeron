@@ -22,6 +22,7 @@ impl Workspace {
         self.recall_ix = None;
         self.recall_saved = None;
         self.search_match_ix = 0;
+        self.find.match_ix = 0;
         self.scroller.update(cx, |s, cx| {
             s.reset(0, cx);
         });
@@ -52,6 +53,7 @@ impl Workspace {
         self.recall_ix = None;
         self.recall_saved = None;
         self.search_match_ix = 0;
+        self.find.match_ix = 0;
         self.chats[index].unread = false;
         let draft = self.chats[index].draft.clone();
         self.composer.update(cx, |s, cx| {

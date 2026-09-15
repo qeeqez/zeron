@@ -12,8 +12,7 @@ use gpui_kit::component::message_scroller::MessageScroller;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-
-use crate::workspace::Workspace;
+use crate::{EscapeKey, FindInChat, workspace::Workspace};
 
 fn chat_menu(
     menu: gpui_kit::component::menu::PopupMenu, ws: &Entity<Workspace>, pinned: bool, word_wrap: bool,
@@ -67,7 +66,6 @@ impl Workspace {
 
         let running_agents = self.running_agents();
         let panel_open = self.agents_panel_open;
-
         let msg_count = messages.len();
         let query = if self.chat_search_open {
             self.chat_search.read(cx).value().to_string().to_lowercase()
@@ -80,6 +78,9 @@ impl Workspace {
         } else {
             Some((0..msg_count).filter(|&ix| crate::chat_search::msg_matches(&messages[ix], &query)).collect())
         };
+        // Find bar state: matching message indices plus the current match's
+        // message — the scroller rows read both for the highlight.
+        let find: Option<crate::chat_find::FindMarks> = self.find.open.then(|| self.find_marks(cx));
         let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, window, cx| {
             let real_ix = filtered.as_ref().map_or(ix, |f| *f.get(ix).unwrap_or(&ix));
             // Last visible message — under a filter that's the last match,
@@ -87,10 +88,11 @@ impl Workspace {
             // The "Worked for Ns" label belongs to the final real message —
             // under a search filter the last match is not the turn's end.
             let duration = if !running && real_ix == msg_count - 1 { last_turn } else { None };
-            messages
+            let el = messages
                 .get(real_ix)
                 .map(|msg| render_message(MsgCtx { ix: real_ix, is_last, duration, msg }, &ws, window, cx))
-                .unwrap_or_else(|| div().into_any_element())
+                .unwrap_or_else(|| div().into_any_element());
+            crate::chat_find::wrap_find_hit(el, real_ix, find.as_ref(), cx)
         })
         .jump_button(true)
         .with_jump_button_label("Jump to latest");
@@ -152,6 +154,11 @@ impl Workspace {
             .flex_1()
             .h_full()
             .bg(cx.theme().background)
+            // FindInChat lives here rather than on the workspace root so the
+            // bar stays scoped to the chat pane; EscapeKey intercepts Esc to
+            // close the bar before the workspace's own Esc handling runs.
+            .on_action(cx.listener(|this, _: &FindInChat, window, cx| this.open_chat_find(window, cx)))
+            .on_action(cx.listener(|this, _: &EscapeKey, window, cx| this.find_escape(window, cx)))
             .child(header)
             .when(self.chat_search_open, |d| {
                 d.child(
@@ -175,6 +182,7 @@ impl Workspace {
                         ),
                 )
             })
+            .when(self.find.open, |d| d.child(self.find_bar(cx)))
             .child(div().flex_1().min_h_0().child(if empty {
                 render_empty_state(ws_empty.clone(), cx).into_any_element()
             } else {
@@ -216,3 +224,4 @@ impl Workspace {
             .child(self.render_composer(cx))
     }
 }
+

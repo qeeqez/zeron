@@ -14,7 +14,10 @@ use crate::shortcuts::{SHORTCUT_SPECS, ShortcutGroup};
 #[test]
 fn keymap_and_overlay_share_one_table() {
     let bound = SHORTCUT_SPECS.iter().filter(|s| s.bind.is_some()).count();
-    assert_eq!(crate::workspace_keys().len(), bound, "workspace_keys must register every bound spec and nothing else");
+    // One extra binding beyond the table: cmd-f is also registered in the
+    // "Input" context so it still opens the find bar while an input is
+    // focused (inputs bind cmd-f to their own Search and swallow it).
+    assert_eq!(crate::workspace_keys().len(), bound + 1, "workspace_keys registers every bound spec plus the Input-context cmd-f");
     assert!(bound > 0);
 
     for spec in SHORTCUT_SPECS {

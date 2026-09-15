@@ -92,6 +92,9 @@ pub struct Workspace {
     /// cycle steps past the newest message.
     pub recall_saved: Option<String>,
     pub chat_search: Entity<InputState>,
+    /// In-chat find bar state (Cmd-F) — highlights + navigates matches
+    /// without filtering the transcript (see `crate::chat_find`).
+    pub find: crate::chat_find::FindBar,
     /// Agents-panel task input — Enter spawns a standalone backend turn.
     pub task_input: Entity<InputState>,
     pub chat_search_open: bool,
@@ -192,6 +195,7 @@ impl Workspace {
             _ => {},
         })
         .detach();
+        let chat_find = crate::chat_find::new_find_input(window, cx);
         let task_input = cx.new(|cx| InputState::new(window, cx).placeholder("New task…"));
         cx.subscribe_in(&task_input, window, |this, s, event: &InputEvent, window, cx| {
             if matches!(event, InputEvent::PressEnter { .. }) {
@@ -269,14 +273,15 @@ impl Workspace {
                 .then(|| crate::backend::AccessMode::from_name(&settings.default_permissions)),
             default_workspace: crate::worktree::WorkspaceMode::from_name(&settings.default_workspace),
             rename,
-            palette,
             renaming: None,
             rename_mode: RenameMode::Inline,
             recall_ix: None,
-            recall_saved: None,
+            palette,
             chat_search,
+            find: crate::chat_find::FindBar::new(chat_find),
             chat_search_open: false,
             search_match_ix: 0,
+            recall_saved: None,
             close_confirmed: std::cell::Cell::new(false),
             settings_open: false,
             settings_panel,

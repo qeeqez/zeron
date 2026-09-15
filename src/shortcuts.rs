@@ -88,7 +88,7 @@ pub static SHORTCUT_SPECS: &[ShortcutSpec] = &[
     spec!("cmd-shift-up", RecallPrev, "Recall previous message", Composer),
     spec!("cmd-shift-down", RecallNext, "Recall next message", Composer),
     spec!("cmd-k", OpenPalette, "Command palette", Navigation),
-    spec!("cmd-f", SearchChat, "Search in chat", Navigation),
+    spec!("cmd-f", FindInChat, "Find in chat", Navigation),
     spec!("cmd-1", Chat1, "Switch to chat 1", Navigation),
     spec!("cmd-2", Chat2, "Switch to chat 2", Navigation),
     spec!("cmd-3", Chat3, "Switch to chat 3", Navigation),

@@ -30,6 +30,9 @@ mod changes_tests;
 #[cfg(test)]
 mod changes_ui_tests;
 mod chat_delete;
+mod chat_find;
+#[cfg(test)]
+mod chat_find_tests;
 mod chat_msg;
 mod chat_ops;
 #[cfg(test)]
@@ -131,9 +134,9 @@ use gpui_kit::*;
 
 actions!([
     NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleExplorer, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2,
-    Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette,
-    RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow, AboutApp, HideApp, HideOthers, MinimizeWindow,
-    ZoomWindow, EnterFullscreen, BringAllToFront,
+    Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, FindInChat, CopyTranscript,
+    EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow, AboutApp, HideApp, HideOthers,
+    MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront,
 ]);
 
 /// The macOS menu bar. Menu actions dispatch to the active window (or the
@@ -173,6 +176,7 @@ fn app_menus() -> Vec<Menu> {
             MenuItem::os_action("Select All", input::SelectAll, OsAction::SelectAll),
             MenuItem::separator(),
             MenuItem::action("Copy Transcript", CopyTranscript),
+            MenuItem::action("Find in Chat", FindInChat),
             MenuItem::separator(),
             MenuItem::action("Emoji & Symbols", EmojiPalette),
         ]),
@@ -202,7 +206,14 @@ fn app_menus() -> Vec<Menu> {
 /// list comes from `shortcuts::SHORTCUT_SPECS` — the same table the Cmd-/
 /// overlay renders, so the cheat sheet can't drift from the real keymap.
 fn workspace_keys() -> Vec<KeyBinding> {
-    shortcuts::SHORTCUT_SPECS.iter().filter_map(|spec| spec.bind.map(|bind| bind(spec.keys))).collect()
+    let mut keys: Vec<KeyBinding> =
+        shortcuts::SHORTCUT_SPECS.iter().filter_map(|spec| spec.bind.map(|bind| bind(spec.keys))).collect();
+    // Inputs bind cmd-f to their own Search action and swallow it when not
+    // `searchable`, which would shadow the workspace binding whenever the
+    // composer or find input is focused. Registering later in the same
+    // context wins, so this keeps Cmd-F opening the find bar.
+    keys.push(KeyBinding::new("cmd-f", FindInChat, Some("Input")));
+    keys
 }
 
 /// App-level action handlers. These are global listeners, so menu and dock
