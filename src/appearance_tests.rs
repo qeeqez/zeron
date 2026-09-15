@@ -10,7 +10,7 @@ use gpui_kit::component::select::{SearchableVec, SelectEvent};
 use gpui_kit::component::slider::{SliderEvent, SliderValue};
 use gpui_kit::component::theme::{Theme, ThemeColor};
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{App, AppContext, Entity, Fill, Styled, TestAppContext, VisualTestContext, Window, point, px, transparent_black};
+use gpui_kit::{App, AppContext, Entity, Fill, Role, Styled, TestAppContext, VisualTestContext, Window, point, px, transparent_black};
 
 use crate::workspace::Workspace;
 
@@ -191,6 +191,9 @@ fn sidebar_frosted_toggle_flips_rendering_mode() {
     });
     open_appearance(cx);
     cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert_eq!(window.find("toggle-sidebar-frosted").role(), Some(Role::Switch), "frosted row must render a Switch");
+        assert_eq!(window.find("toggle-sidebar-frosted").checked(), Some(true), "frosted is on by default");
         window.click("toggle-sidebar-frosted", cx);
     });
     cx.update(|window, cx| {
@@ -210,6 +213,7 @@ fn sidebar_frosted_toggle_flips_rendering_mode() {
             "unfrosted restores an opaque window"
         );
 
+        assert_eq!(window.find("toggle-sidebar-frosted").checked(), Some(false), "switch should read unchecked while opaque");
         window.click("toggle-sidebar-frosted", cx);
     });
     cx.update(|window, cx| {

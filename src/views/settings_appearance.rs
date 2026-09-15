@@ -42,10 +42,15 @@ pub(crate) fn appearance_section(s: &SettingsView, cx: &App) -> impl IntoElement
                 .child(div().w(px(40.)).text_xs().child(format!("{}%", s.contrast))),
         )
         .child(group_label("Sidebar", cx))
-        .child(toggle_row(("toggle-sidebar-frosted", "Frosted glass sidebar"), s.sidebar_frosted, s.ws.clone(), |this, window, cx| {
-            this.sidebar_frosted = !this.sidebar_frosted;
-            this.apply_appearance(window, cx);
-        }))
+        .child(toggle_row(
+            ("toggle-sidebar-frosted", "Frosted glass sidebar"),
+            s.sidebar_frosted,
+            s.ws.clone(),
+            |this, next, window, cx| {
+                this.sidebar_frosted = next;
+                this.apply_appearance(window, cx);
+            },
+        ))
 }
 
 /// A Codex-style theme card: mini preview swatch over a label, accent border

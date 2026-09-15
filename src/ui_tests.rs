@@ -12,7 +12,7 @@
 use gpui_kit::component::Root;
 use gpui_kit::component::theme::Theme;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, Entity, InteractiveElement, ParentElement, TestAppContext, TestSupportExt, VisualTestContext, div};
+use gpui_kit::{AppContext, Entity, InteractiveElement, ParentElement, Role, TestAppContext, TestSupportExt, VisualTestContext, div};
 
 use crate::workspace::Workspace;
 
@@ -210,5 +210,34 @@ fn settings_close_control_matches_sidebar_state() {
         window.draw(cx).clear(cx);
         assert!(!ws.read(cx).settings_open, "header close should close settings");
         assert!(window.try_find("settings-screen").is_none());
+    });
+}
+
+/// The General section's boolean rows are real `Switch` controls: role +
+/// toggled state come from the element, and a click writes the workspace
+/// flag and persists it.
+#[test]
+fn settings_switches_toggle_workspace_flags() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.click("settings-btn", cx);
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.find("settings-section-general").visible());
+        for (id, on) in [("toggle-notify", ws.read(cx).notify_on_done), ("toggle-wrap", ws.read(cx).word_wrap)] {
+            let toggle = window.find(id);
+            assert_eq!(toggle.role(), Some(Role::Switch), "{id} must render a Switch");
+            assert_eq!(toggle.checked(), Some(on), "{id} must mirror the workspace flag");
+        }
+        window.click("toggle-notify", cx);
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(!ws.read(cx).notify_on_done, "switch click should clear the flag");
+        assert!(!crate::persist::load_settings().notify_on_done, "switch click should persist");
+        assert_eq!(window.find("toggle-notify").checked(), Some(false));
     });
 }

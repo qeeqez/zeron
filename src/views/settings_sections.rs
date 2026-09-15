@@ -1,12 +1,13 @@
 //! Content pane bodies for each settings section — the controls that used to
 //! live in the flat settings sheet, grouped by nav section.
 
-use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
+use gpui_kit::component::Sizable;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::InputState;
 use gpui_kit::component::select::{SearchableVec, SelectState};
 use gpui_kit::component::slider::SliderState;
+use gpui_kit::component::switch::Switch;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -69,8 +70,8 @@ fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
         .flex_col()
         .gap_3()
         .child(group_label("Notifications", cx))
-        .child(toggle_row(("toggle-notify", "Notify on reply complete"), s.notify, ws.clone(), |this, _w, _cx| {
-            this.notify_on_done = !this.notify_on_done;
+        .child(toggle_row(("toggle-notify", "Notify on reply complete"), s.notify, ws.clone(), |this, next, _w, _cx| {
+            this.notify_on_done = next;
         }))
         .child(group_label("Agent access", cx))
         .child(div().flex().items_center().gap_2().text_xs().children(AccessMode::ALL.into_iter().map(|mode| {
@@ -89,8 +90,8 @@ fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
                 .child("Filesystem access for Agent-mode turns — Plan and Ask always stay read-only"),
         )
         .child(group_label("Messages", cx))
-        .child(toggle_row(("toggle-wrap", "Word wrap"), s.word_wrap, ws.clone(), |this, _w, cx| {
-            this.word_wrap = !this.word_wrap;
+        .child(toggle_row(("toggle-wrap", "Word wrap"), s.word_wrap, ws.clone(), |this, next, _w, cx| {
+            this.word_wrap = next;
             this.scroller.update(cx, |s, cx| s.remeasure(cx));
         }))
 }
@@ -123,24 +124,21 @@ pub const SHORTCUTS: [(&str, &str); 14] = [
     ("Esc", "Stop reply / close search"),
 ];
 
-/// A label + check/X row that flips a workspace flag, then persists
-/// settings and re-renders — `set` does the flip plus any side effects.
-/// `row` bundles the element id and label to stay under the arg-count lint.
+/// A label + `Switch` row that writes a workspace flag, then persists
+/// settings and re-renders — `set` applies the requested value plus any side
+/// effects. `row` bundles the element id and label to stay under the
+/// arg-count lint.
 pub(crate) fn toggle_row(
-    row: (&'static str, &'static str), on: bool, ws: Entity<Workspace>, set: fn(&mut Workspace, &mut Window, &mut Context<Workspace>),
+    row: (&'static str, &'static str), on: bool, ws: Entity<Workspace>, set: fn(&mut Workspace, bool, &mut Window, &mut Context<Workspace>),
 ) -> impl IntoElement {
     div().flex().items_center().gap_2().text_xs().child(row.1).child(div().flex_1()).child(
-        div()
-            .id(row.0)
-            .test_support()
-            .cursor_pointer()
-            .child(if on { IconName::Check } else { IconName::X })
-            .on_click(move |_, window, cx| {
-                ws.update(cx, |this, cx| {
-                    set(this, window, cx);
-                    this.save_settings();
-                    cx.notify();
-                });
-            }),
+        Switch::new(row.0).checked(on).small().accessibility_label(row.1).on_click(move |next, window, cx| {
+            let next = *next;
+            ws.update(cx, |this, cx| {
+                set(this, next, window, cx);
+                this.save_settings();
+                cx.notify();
+            });
+        }),
     )
 }
