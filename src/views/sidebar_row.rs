@@ -18,7 +18,7 @@ use crate::model::Chat;
 use crate::views::nav_row::NavRow;
 use crate::workspace::Workspace;
 
-use sidebar_menu::{RowFlags, chat_row_menu};
+use sidebar_menu::{RowFlags, RowMenu, chat_row_menu};
 
 /// One chat row: icon + title (or inline rename editor) + status + "…" menu.
 pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<Workspace>) -> NavRow {
@@ -38,7 +38,7 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
         .group(format!("chat-row-{chat_id}"))
         .context_menu({
             let ws = ws_click.clone();
-            move |menu, _window, _cx| chat_row_menu(&ws, chat_id, flags, menu)
+            move |menu, window, cx| chat_row_menu(&ws, RowMenu { id: chat_id, flags }, menu, window, cx)
         });
     if renaming {
         row.body(rename_editor(ws_click.clone(), ws.rename.clone(), chat_id))
@@ -136,7 +136,7 @@ fn row_suffix(ws: Entity<Workspace>, chat_id: u64, flags: RowFlags, status: (boo
                             .icon(IconName::Ellipsis)
                             .dropdown_menu_with_anchor(Anchor::TopRight, {
                                 let ws = ws.clone();
-                                move |menu, _window, _cx| chat_row_menu(&ws, chat_id, flags, menu)
+                                move |menu, window, cx| chat_row_menu(&ws, RowMenu { id: chat_id, flags }, menu, window, cx)
                             })
                             .on_open_change({
                                 let menu_open = menu_open.clone();

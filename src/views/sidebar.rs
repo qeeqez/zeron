@@ -1,8 +1,10 @@
+mod group;
+
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::input::Input;
-use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible, SidebarGroup};
 
+use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -90,22 +92,11 @@ impl Workspace {
         let archived: Vec<usize> = (0..self.chats.len())
             .filter(|ix| self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query)))
             .collect();
-        let bucket = |ix: usize| self.chat_bucket(ix);
+        let ws = cx.entity();
         let mut row_of = |ix: usize| super::sidebar_row::chat_row(&self.chats[ix], ix, self, cx);
-
-        let group_names = ["Pinned", "Today", "Previous 7 Days", "Older"];
-        let mut groups: Vec<SidebarGroup<crate::views::nav_row::NavRow>> = Vec::new();
-        for (bucket_ix, name) in group_names.iter().enumerate() {
-            let items: Vec<crate::views::nav_row::NavRow> =
-                filtered.iter().copied().filter(|ix| bucket(*ix) == bucket_ix).map(&mut row_of).collect();
-            if !items.is_empty() {
-                groups.push(SidebarGroup::new(*name).children(items));
-            }
-        }
-        if !archived.is_empty() {
-            let items: Vec<crate::views::nav_row::NavRow> = archived.iter().copied().map(row_of).collect();
-            groups.push(SidebarGroup::new("Archived").children(items));
-        }
+        // Folders lead the list (collapsible); unfiled chats fall under
+        // "Unfiled". With no folders the flat recency groups render.
+        let mut groups = group::chat_groups(&ws, self, &filtered, &archived, &mut row_of);
 
         // The Resume section leads the list when open — past sessions sit
         // above the chat groups like Codex's history view.
@@ -130,10 +121,10 @@ impl Workspace {
                 })
                 .collect();
             let label = if self.sessions_loading { "Resume — loading…" } else { "Resume" };
-            groups.insert(0, SidebarGroup::new(label).children(items));
+            groups.insert(0, group::ChatGroup::new(label).children(items));
         }
 
-        let mut actions = SidebarGroup::new("").child(new_chat).child(search_all);
+        let mut actions = group::ChatGroup::new("").child(new_chat).child(search_all);
         if let Some(resume) = resume {
             actions = actions.child(resume);
         }

@@ -97,6 +97,13 @@ pub struct Workspace {
     pub renaming: Option<u64>,
     /// Which surface owns the rename — only `Inline` mounts the row editor.
     pub rename_mode: RenameMode,
+    /// Shared text field for the folder dialogs — "Move to folder" seeds it
+    /// empty, "Rename folder" with the current name.
+    pub folder_input: Entity<InputState>,
+    /// Folder names collapsed in the sidebar — runtime-only; folders are
+    /// just `Chat::folder` values, so this set may name a folder that no
+    /// longer exists.
+    pub collapsed_folders: std::collections::HashSet<String>,
     /// Index into user messages for Cmd+Shift+Up/Down recall cycling.
     pub recall_ix: Option<usize>,
     /// Composer text stashed when a recall cycle starts — restored when the

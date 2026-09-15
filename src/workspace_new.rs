@@ -147,6 +147,8 @@ impl Workspace {
             rename: cx.new(|cx| InputState::new(window, cx).placeholder("Chat title")),
             renaming: None,
             rename_mode: RenameMode::Inline,
+            folder_input: cx.new(|cx| InputState::new(window, cx).placeholder("Folder name")),
+            collapsed_folders: std::collections::HashSet::new(),
             recall_ix: None,
             palette,
             global_search,

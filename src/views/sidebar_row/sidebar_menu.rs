@@ -18,7 +18,18 @@ pub(super) struct RowFlags {
     pub only_chat: bool,
 }
 
-pub(super) fn chat_row_menu(ws: &Entity<Workspace>, id: u64, flags: RowFlags, menu: PopupMenu) -> PopupMenu {
+/// What the menu needs to know about its row — the stable chat id plus the
+/// per-render flags. Bundled to stay under the arg-count lint.
+#[derive(Clone, Copy)]
+pub(super) struct RowMenu {
+    pub id: u64,
+    pub flags: RowFlags,
+}
+
+pub(super) fn chat_row_menu(
+    ws: &Entity<Workspace>, row: RowMenu, menu: PopupMenu, window: &mut Window, cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let RowMenu { id, flags } = row;
     let RowFlags { pinned, archived, only_chat } = flags;
     let pin_label = if pinned { "Unpin" } else { "Pin" };
     let ws_pin = ws.clone();
@@ -45,6 +56,10 @@ pub(super) fn chat_row_menu(ws: &Entity<Workspace>, id: u64, flags: RowFlags, me
             f: |this, ix, w, cx| this.start_inline_rename(ix, w, cx),
         });
     }))
+    .submenu("Move to folder", window, cx, {
+        let ws = ws.clone();
+        move |m, _w, cx| folder_submenu(&ws, id, m, cx)
+    })
     .item(PopupMenuItem::new("Duplicate").icon(IconName::Copy).on_click(move |_, w, cx| {
         with_chat_ix(ChatIxArgs {
             ws: &ws_dup,
@@ -85,6 +100,37 @@ pub(super) fn chat_row_menu(ws: &Entity<Workspace>, id: u64, flags: RowFlags, me
                 });
             }),
     )
+}
+
+/// The "Move to folder" submenu: every existing folder (checked when it's
+/// the chat's current one), then "New folder…" and — for filed chats —
+/// "Remove from folder".
+fn folder_submenu(ws: &Entity<Workspace>, id: u64, menu: PopupMenu, cx: &mut Context<PopupMenu>) -> PopupMenu {
+    let state = ws.read(cx);
+    let current = state.chats.iter().find(|c| c.id == id).map(|c| c.folder.clone()).unwrap_or_default();
+    let mut menu = state.folder_names().into_iter().fold(menu, |m, name| {
+        let ws = ws.clone();
+        let folder = name.clone();
+        m.item(
+            PopupMenuItem::new(name)
+                .icon(IconName::Folder)
+                .checked(folder == current)
+                .on_click(move |_, _w, cx| {
+                    ws.update(cx, |this, cx| this.set_chat_folder(id, &folder, cx));
+                }),
+        )
+    });
+    if !current.is_empty() {
+        let ws = ws.clone();
+        menu = menu.item(PopupMenuItem::new("Remove from folder").icon(IconName::FolderOpen).on_click(move |_, _w, cx| {
+            ws.update(cx, |this, cx| this.set_chat_folder(id, "", cx));
+        }));
+    }
+    let ws = ws.clone();
+    menu.separator()
+        .item(PopupMenuItem::new("New folder…").icon(IconName::FolderPlus).on_click(move |_, w, cx| {
+            ws.update(cx, |this, cx| this.open_folder_dialog(id, w, cx));
+        }))
 }
 
 /// Args for `with_chat_ix` — bundled to stay under the arg-count lint.

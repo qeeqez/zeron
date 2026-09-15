@@ -1,3 +1,7 @@
+#[cfg(test)]
+mod folder_tests;
+mod folders;
+
 use std::rc::Rc;
 
 use gpui_kit::*;
@@ -174,6 +178,7 @@ impl Workspace {
         let mut copy = Chat::new(id, format!("{} (copy)", src.title));
         copy.messages = src.messages.clone();
         copy.draft = src.draft.clone();
+        copy.folder = src.folder.clone();
         self.chats.push(copy);
         let new_ix = self.chats.len() - 1;
         self.select_chat(new_ix, window, cx);

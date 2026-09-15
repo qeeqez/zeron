@@ -13,6 +13,10 @@ pub(crate) struct StoredChat {
     /// Missing in early v1 files.
     #[serde(default)]
     pub(crate) pinned: bool,
+    /// Sidebar folder — missing in files written before folders existed;
+    /// empty means "Unfiled".
+    #[serde(default)]
+    pub(crate) folder: String,
     #[serde(default)]
     pub(crate) archived: bool,
     #[serde(default)]
@@ -69,6 +73,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             messages: (*chat.messages).clone(),
             pinned: chat.pinned,
             archived: chat.archived,
+            folder: chat.folder.clone(),
             draft: chat.draft.clone(),
             created_at: chat.created_at,
             provider: chat.provider.clone(),
@@ -175,6 +180,7 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
             chat.messages = std::rc::Rc::new(stored.messages);
             chat.pinned = stored.pinned;
             chat.archived = stored.archived;
+            chat.folder = stored.folder;
             chat.draft = stored.draft;
             chat.created_at = stored.created_at;
             chat.provider = stored.provider;

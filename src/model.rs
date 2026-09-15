@@ -165,6 +165,10 @@ pub struct Chat {
     pub running: bool,
     pub failed_flag: bool,
     pub pinned: bool,
+    /// Folder this chat is filed under in the sidebar — empty means
+    /// "Unfiled". Persisted; folders exist only as long as a chat names
+    /// them, so renaming/deleting a folder rewrites every member chat.
+    pub folder: String,
     pub created_at: SystemTime,
     pub started_at: Option<Instant>,
     /// Wall-clock duration of the last completed turn — drives the
@@ -226,6 +230,7 @@ impl Chat {
             running: false,
             failed_flag: false,
             pinned: false,
+            folder: String::new(),
             created_at: SystemTime::now(),
             started_at: None,
             last_turn: None,

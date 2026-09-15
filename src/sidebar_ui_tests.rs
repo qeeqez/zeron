@@ -57,3 +57,39 @@ fn settings_nav_rows_share_chat_row_geometry() {
         assert!(window.find(("chat-row", chat_id)).visible(), "chat list returns after settings closes");
     });
 }
+
+/// Filed chats group under a collapsible folder header; unfiled chats sit
+/// under "Unfiled" below it.
+#[test]
+fn sidebar_groups_chats_under_folders() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    let (filed, unfiled) = cx.update(|_, cx| {
+        ws.update(cx, |this, cx| {
+            this.new_chat(cx);
+            let filed = this.chats[0].id;
+            this.set_chat_folder(filed, "Work", cx);
+            (filed, this.chats[1].id)
+        })
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        let folder = window.find("group-header-Work");
+        let unfiled_header = window.find("group-header-Unfiled");
+        assert!(folder.visible(), "folder group header should render");
+        assert!(unfiled_header.visible(), "unfiled group header should render");
+        assert!(folder.bounds().origin.y < unfiled_header.bounds().origin.y, "folders lead the list");
+        assert!(window.find(("chat-row", filed)).visible());
+        assert!(window.find(("chat-row", unfiled)).visible());
+
+        // Clicking the folder header folds its rows away.
+        window.click("group-header-Work", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.try_find(("chat-row", filed)).is_none(), "folded folder hides its chats");
+        assert!(window.find(("chat-row", unfiled)).visible(), "unfiled chats stay visible");
+
+        window.click("group-header-Work", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.find(("chat-row", filed)).visible(), "second click unfolds");
+    });
+}
