@@ -149,6 +149,9 @@ impl Workspace {
             crate::backend::TurnContext::at(crate::worktree::workdir_for(chat, self.project.root()), chat.access.unwrap_or(self.access));
         ctx.thread_id = if chat.thread_id.is_empty() { None } else { Some(chat.thread_id.clone()) };
         ctx.effort = chat.effort.clone().or_else(|| self.effort.clone());
+        // Custom instructions: the global setting merged with the project
+        // file (AGENTS.md & friends) — snapshotted per turn like the rest.
+        ctx.instructions = crate::instructions::for_turn(&self.instructions, self.project.root());
         // The turn's image attachments ride along — the user message was
         // already pushed by the caller, so its attachments are the snapshot.
         ctx.images = chat

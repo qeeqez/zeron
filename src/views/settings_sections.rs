@@ -69,12 +69,16 @@ pub struct SettingsView {
     pub voice_phase: crate::voice::DictationPhase,
     /// Last test-mic result line (or live partial while recording).
     pub voice_test_result: Option<String>,
+    /// The Custom Instructions section's multiline field — owned by the
+    /// workspace so typed text survives settings open/close.
+    pub instructions_input: Entity<gpui_kit::component::input::TextareaState>,
 }
 
 /// The content pane for the selected section.
 pub fn section_body(section: Section, s: &SettingsView, cx: &App) -> impl IntoElement {
     let body = match section {
         Section::General => crate::views::settings_general::general_section(s, cx).into_any_element(),
+        Section::Instructions => crate::views::settings_instructions::instructions_section(s, cx).into_any_element(),
         Section::Appearance => crate::views::settings_appearance::appearance_section(s, cx).into_any_element(),
         Section::Providers => crate::views::settings_providers::providers_section(s, cx).into_any_element(),
         Section::Shortcuts => crate::views::settings_shortcuts::shortcuts_section(cx).into_any_element(),
@@ -112,4 +116,16 @@ pub(crate) fn toggle_row(
             });
         }),
     )
+}
+
+/// A searchable font-family picker; `current` selects the matching row when
+/// it's a real family name (empty = default → no selection). The delegate is
+/// `SearchableVec`, not `Vec` — only it implements `perform_search`, so a
+/// plain `Vec` would render the search box but never filter the list.
+/// Lives here (not `settings.rs`) to keep that file under the SLOC cap.
+pub(crate) fn font_picker(
+    fonts: &[String], current: &str, window: &mut Window, cx: &mut Context<SettingsPanel>,
+) -> Entity<SelectState<SearchableVec<String>>> {
+    let selected = fonts.iter().position(|f| f == current).map(gpui_kit::component::IndexPath::new);
+    cx.new(|cx| SelectState::new(SearchableVec::new(fonts.to_vec()), selected, window, cx).searchable(true))
 }

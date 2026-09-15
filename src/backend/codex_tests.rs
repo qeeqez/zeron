@@ -135,6 +135,36 @@ mod tests {
         assert_eq!(req["params"]["input"][1], serde_json::json!({"type": "localImage", "path": "/tmp/shot.png"}));
     }
 
+    #[test]
+    fn thread_start_carries_developer_instructions() {
+        let mut t = turn("Agent", AccessMode::Auto);
+        t.instructions = Some("be terse".into());
+        let sent = handshake_writes(&t);
+        let start = sent.lines().find(|l| l.contains("thread/start")).expect("stdin was: {sent}");
+        let req: serde_json::Value = serde_json::from_str(start).unwrap();
+        assert_eq!(req["params"]["developerInstructions"], serde_json::json!("be terse"));
+        // The base instructions stay the server's — we never replace them.
+        assert!(req["params"].get("baseInstructions").is_none());
+    }
+
+    #[test]
+    fn thread_start_omits_instructions_when_unset() {
+        let sent = handshake_writes(&turn("Agent", AccessMode::Auto));
+        let start = sent.lines().find(|l| l.contains("thread/start")).expect("stdin was: {sent}");
+        let req: serde_json::Value = serde_json::from_str(start).unwrap();
+        assert!(req["params"].get("developerInstructions").is_none());
+    }
+
+    #[test]
+    fn thread_resume_reasserts_instructions() {
+        let mut t = turn("Agent", AccessMode::Auto).resuming("tid-7");
+        t.instructions = Some("be terse".into());
+        let sent = handshake_writes(&t);
+        let resume = sent.lines().find(|l| l.contains("thread/resume")).expect("stdin was: {sent}");
+        let req: serde_json::Value = serde_json::from_str(resume).unwrap();
+        assert_eq!(req["params"]["developerInstructions"], serde_json::json!("be terse"));
+    }
+
     /// Drive the handshake to `Phase::Run` over a captured stdin, then
     /// return the buffer the turn's steer writes into.
     fn running_turn(mode: &str) -> (CodexTurn, std::sync::Arc<parking_lot::Mutex<Vec<u8>>>) {

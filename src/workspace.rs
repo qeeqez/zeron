@@ -153,6 +153,12 @@ pub struct Workspace {
     /// Bottom terminal panel: PTY session, input line, scroll state (see
     /// `crate::views::terminal`). `open` persists via `Settings`.
     pub terminal: crate::views::terminal::TerminalPanel,
+    /// Global custom instructions — `Settings.instructions`, merged with
+    /// the project's instructions file into every turn's `TurnContext`.
+    pub instructions: String,
+    /// The Custom Instructions settings field — lives on the workspace so
+    /// typed text survives settings open/close like the other inputs.
+    pub instructions_input: Entity<TextareaState>,
 
     /// Past threads the backend can reopen — the sidebar's Resume section.
     /// Filled by `refresh_sessions`; empty until the first fetch lands.

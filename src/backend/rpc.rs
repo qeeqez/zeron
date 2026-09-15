@@ -18,18 +18,32 @@ pub(crate) fn initialize_req(id: i64) -> Value {
     })
 }
 
+/// Thread-level overrides shared by `thread/start` and `thread/resume`:
+/// the model plus the sandbox/approval policy, and the merged custom
+/// instructions carried as `developerInstructions` (additive — the
+/// server's own base instructions still apply).
+pub(crate) struct ThreadOpts<'a> {
+    pub model: &'a str,
+    pub sandbox: &'a str,
+    pub approval: &'a str,
+    /// Merged global + project instructions; `None` omits the field.
+    pub instructions: Option<&'a str>,
+}
+
 /// `thread/start`: one ephemeral thread per turn (no history is kept, so a
-/// fresh thread per send matches the old `codex exec` behavior). `sandbox`
-/// is a `SandboxMode` string, `approval` the `AskForApproval` policy, and
-/// `cwd` the thread's working directory (project root or its worktree).
-pub(crate) fn thread_start_req(id: i64, model: &str, sandbox: &str, approval: &str, cwd: &std::path::Path) -> Value {
+/// fresh thread per send matches the old `codex exec` behavior). `cwd` is
+/// the thread's working directory (project root or its worktree).
+pub(crate) fn thread_start_req(id: i64, cwd: &std::path::Path, opts: &ThreadOpts<'_>) -> Value {
     let mut params = json!({
-        "approvalPolicy": approval,
-        "sandbox": sandbox,
+        "approvalPolicy": opts.approval,
+        "sandbox": opts.sandbox,
         "ephemeral": true,
         "cwd": cwd.to_string_lossy(),
+        "model": opts.model,
     });
-    params["model"] = json!(model);
+    if let Some(instructions) = opts.instructions {
+        params["developerInstructions"] = json!(instructions);
+    }
     json!({"method": "thread/start", "id": id, "params": params})
 }
 
@@ -91,19 +105,19 @@ pub(crate) fn thread_list_req(id: i64, cursor: Option<&Value>) -> Value {
     json!({"method": "thread/list", "id": id, "params": params})
 }
 
-/// `thread/resume` — reopen a past thread. `model`/`sandbox`/`approval`
-/// override the thread's stored settings so a continued turn honors the
-/// chat's current configuration; pass `None`s for a read-only fetch.
-pub(crate) fn thread_resume_req(id: i64, thread_id: &str, model: Option<&str>, sandbox: Option<&str>, approval: Option<&str>) -> Value {
+/// `thread/resume` — reopen a past thread. `opts` overrides the thread's
+/// stored model/sandbox/approval and re-asserts the merged instructions so
+/// a continued turn honors the chat's current configuration; `None` is a
+/// read-only fetch.
+pub(crate) fn thread_resume_req(id: i64, thread_id: &str, opts: Option<&ThreadOpts<'_>>) -> Value {
     let mut params = json!({"threadId": thread_id});
-    if let Some(m) = model {
-        params["model"] = json!(m);
-    }
-    if let Some(s) = sandbox {
-        params["sandbox"] = json!(s);
-    }
-    if let Some(a) = approval {
-        params["approvalPolicy"] = json!(a);
+    if let Some(opts) = opts {
+        params["model"] = json!(opts.model);
+        params["sandbox"] = json!(opts.sandbox);
+        params["approvalPolicy"] = json!(opts.approval);
+        if let Some(instructions) = opts.instructions {
+            params["developerInstructions"] = json!(instructions);
+        }
     }
     json!({"method": "thread/resume", "id": id, "params": params})
 }
@@ -311,7 +325,16 @@ mod tests {
     #[test]
     fn thread_start_maps_sandbox_and_approval() {
         let cwd = std::path::Path::new("/tmp/thread-wt");
-        let req = thread_start_req(2, "gpt-5", "workspace-write", "on-failure", cwd);
+        let req = thread_start_req(
+            2,
+            cwd,
+            &ThreadOpts {
+                model: "gpt-5",
+                sandbox: "workspace-write",
+                approval: "on-failure",
+                instructions: None,
+            },
+        );
         assert_eq!(req["method"], json!("thread/start"));
         assert_eq!(req["params"]["sandbox"], json!("workspace-write"));
         assert_eq!(req["params"]["approvalPolicy"], json!("on-failure"));
@@ -325,7 +348,13 @@ mod tests {
     fn thread_start_always_sends_the_model() {
         // No synthetic "default" — the concrete id always goes on the wire.
         let cwd = std::path::Path::new("/tmp");
-        assert_eq!(thread_start_req(2, "gpt-5", "read-only", "on-request", cwd)["params"]["model"], json!("gpt-5"));
+        let opts = ThreadOpts {
+            model: "gpt-5",
+            sandbox: "read-only",
+            approval: "on-request",
+            instructions: None,
+        };
+        assert_eq!(thread_start_req(2, cwd, &opts)["params"]["model"], json!("gpt-5"));
     }
 
     #[test]
@@ -439,14 +468,20 @@ mod tests {
 
     #[test]
     fn thread_resume_sends_id_and_overrides() {
-        let req = thread_resume_req(2, "tid-1", Some("gpt-5"), Some("workspace-write"), Some("never"));
+        let opts = ThreadOpts {
+            model: "gpt-5",
+            sandbox: "workspace-write",
+            approval: "never",
+            instructions: None,
+        };
+        let req = thread_resume_req(2, "tid-1", Some(&opts));
         assert_eq!(req["method"], json!("thread/resume"));
         assert_eq!(req["params"]["threadId"], json!("tid-1"));
         assert_eq!(req["params"]["model"], json!("gpt-5"));
         assert_eq!(req["params"]["sandbox"], json!("workspace-write"));
         assert_eq!(req["params"]["approvalPolicy"], json!("never"));
         // A bare resume (history fetch) carries only the thread id.
-        let bare = thread_resume_req(3, "tid-1", None, None, None);
+        let bare = thread_resume_req(3, "tid-1", None);
         assert_eq!(bare["params"], json!({"threadId": "tid-1"}));
     }
 

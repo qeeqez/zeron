@@ -87,8 +87,8 @@ impl SettingsPanel {
         // Font pickers list every installed family; an empty persisted value
         // means "default" and maps to no selection.
         let fonts = cx.text_system().all_font_names();
-        let font_select = font_picker(&fonts, &settings.font_family, window, cx);
-        let code_font_select = font_picker(&fonts, &settings.code_font_family, window, cx);
+        let font_select = crate::views::settings_sections::font_picker(&fonts, &settings.font_family, window, cx);
+        let code_font_select = crate::views::settings_sections::font_picker(&fonts, &settings.code_font_family, window, cx);
         let ws_font = ws.clone();
         cx.subscribe_in(&font_select, window, move |_, _, event: &SelectEvent<SearchableVec<String>>, window, cx| {
             let SelectEvent::Confirm(family) = event;
@@ -187,17 +187,6 @@ impl SettingsPanel {
     }
 }
 
-/// A searchable font-family picker; `current` selects the matching row when
-/// it's a real family name (empty = default → no selection). The delegate is
-/// `SearchableVec`, not `Vec` — only it implements `perform_search`, so a
-/// plain `Vec` would render the search box but never filter the list.
-fn font_picker(
-    fonts: &[String], current: &str, window: &mut Window, cx: &mut Context<SettingsPanel>,
-) -> Entity<SelectState<SearchableVec<String>>> {
-    let selected = fonts.iter().position(|f| f == current).map(gpui_kit::component::IndexPath::new);
-    cx.new(|cx| SelectState::new(SearchableVec::new(fonts.to_vec()), selected, window, cx).searchable(true))
-}
-
 impl Render for SettingsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(ws) = self.ws.upgrade() else {
@@ -240,6 +229,7 @@ impl Render for SettingsPanel {
             voice_test_result: s.voice.test_result.clone(),
             permissions_select: self.permissions_select.clone(),
             workspace_select: self.workspace_select.clone(),
+            instructions_input: s.instructions_input.clone(),
         };
         let theme = cx.theme();
         // Left edge sits at the main sidebar's right edge — the sidebar (now

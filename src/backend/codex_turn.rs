@@ -8,7 +8,7 @@ use std::io::BufRead;
 use super::AgentEvent;
 use super::appserver::TurnDecoder;
 use super::codex::CodexTurn;
-use super::rpc::{initialize_req, thread_resume_req, thread_start_req, turn_start_req};
+use super::rpc::{ThreadOpts, initialize_req, thread_resume_req, thread_start_req, turn_start_req};
 use super::steer::kill_slot;
 
 pub(super) enum CodexOutcome {
@@ -161,8 +161,8 @@ pub(super) fn advance_phase(phase: &mut Phase, turn: &CodexTurn, msg: &Value, st
             // `initialized` notification, then open the turn's thread —
             // resume a bound session's thread, else start an ephemeral one.
             let open = match &turn.resume {
-                Some(tid) => thread_resume_req(2, tid, Some(&turn.model), Some(sandbox_of(turn)), Some(approval_of(turn))),
-                None => thread_start_req(2, &turn.model, sandbox_of(turn), approval_of(turn), &turn.cwd),
+                Some(tid) => thread_resume_req(2, tid, Some(&turn.thread_opts())),
+                None => thread_start_req(2, &turn.cwd, &turn.thread_opts()),
             };
             writeln!(stdin, "{}", serde_json::json!({"method": "initialized", "params": {}}))
                 .and_then(|()| writeln!(stdin, "{open}"))
@@ -213,5 +213,18 @@ pub(super) fn approval_route_of(turn: &CodexTurn) -> super::ApprovalRoute {
         turn.access.approval_route()
     } else {
         super::ApprovalRoute::Auto(super::ApprovalDecision::Deny)
+    }
+}
+
+impl CodexTurn {
+    /// The thread-level overrides for `thread/start`/`thread/resume` —
+    /// model, sandbox/approval mapping, and the merged instructions.
+    fn thread_opts(&self) -> ThreadOpts<'_> {
+        ThreadOpts {
+            model: &self.model,
+            sandbox: sandbox_of(self),
+            approval: approval_of(self),
+            instructions: self.instructions.as_deref(),
+        }
     }
 }

@@ -33,6 +33,9 @@ pub mod settings_default_model;
 pub mod settings_general;
 #[cfg(test)]
 mod settings_general_tests;
+pub mod settings_instructions;
+#[cfg(test)]
+mod settings_instructions_tests;
 pub mod settings_mcp;
 pub mod settings_mcp_ops;
 pub mod settings_nav;

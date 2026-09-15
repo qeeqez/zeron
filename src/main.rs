@@ -75,6 +75,9 @@ mod git_tests;
 mod global_search;
 #[cfg(test)]
 mod global_search_tests;
+mod instructions;
+#[cfg(test)]
+mod instructions_tests;
 mod lifecycle;
 mod mcp;
 mod mcp_config;

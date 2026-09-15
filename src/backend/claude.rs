@@ -59,6 +59,7 @@ impl AgentBackend for ClaudeCliBackend {
             mode: mode.to_string(),
             access: ctx.access,
             cwd: ctx.cwd.clone(),
+            instructions: ctx.instructions.clone(),
             env: self.env.clone(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -85,6 +86,9 @@ pub(super) struct ClaudeTurn {
     /// The thread's working directory — the project root, or its git
     /// worktree when the thread runs in one.
     pub(super) cwd: std::path::PathBuf,
+    /// Merged custom instructions — appended to claude's system prompt via
+    /// `--append-system-prompt`.
+    pub(super) instructions: Option<String>,
     /// The instance's Variables — injected into the spawned `claude`.
     pub(super) env: Vec<(String, String)>,
     pub(super) slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
@@ -129,6 +133,9 @@ pub(super) fn build_command(turn: &ClaudeTurn) -> std::process::Command {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     super::apply_env(&mut cmd, &turn.env);
+    if let Some(instructions) = turn.instructions.as_deref().filter(|i| !i.trim().is_empty()) {
+        cmd.arg("--append-system-prompt").arg(instructions);
+    }
     if !turn.model.is_empty() {
         cmd.arg("--model").arg(&turn.model);
     }

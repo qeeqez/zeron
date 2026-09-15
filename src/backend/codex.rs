@@ -48,6 +48,7 @@ impl AgentBackend for CodexCliBackend {
             images: ctx.images.clone(),
             resume: ctx.thread_id.clone(),
             effort: ctx.effort.clone(),
+            instructions: ctx.instructions.clone(),
             env: self.env.clone(),
             slot: std::sync::Arc::new(CodexSlot::new()),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -100,8 +101,11 @@ pub(super) struct CodexTurn {
     /// on chats bound to a past session.
     pub(super) resume: Option<String>,
     /// Reasoning effort for `turn/start` — `None` lets the server apply
-    /// the model's `defaultReasoningEffort`.
     pub(super) effort: Option<String>,
+    /// Merged custom instructions — sent as `developerInstructions` on
+    /// `thread/start`/`thread/resume` (additive to the server's own base
+    /// instructions).
+    pub(super) instructions: Option<String>,
     /// The instance's Variables — injected into the spawned `codex`.
     pub(super) env: Vec<(String, String)>,
     /// The turn's live handle: child slot, shared stdin, and the
@@ -125,6 +129,7 @@ impl CodexTurn {
             effort: None,
             images: Vec::new(),
             resume: None,
+            instructions: None,
             env: Vec::new(),
             slot: std::sync::Arc::new(CodexSlot::new()),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),

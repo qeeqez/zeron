@@ -45,7 +45,8 @@ impl Workspace {
         }
         // Task agents aren't tied to a chat — they run in the project root
         // with the workspace's current access mode.
-        let ctx = crate::backend::TurnContext::at(self.project.root().to_path_buf(), self.access);
+        let mut ctx = crate::backend::TurnContext::at(self.project.root().to_path_buf(), self.access);
+        ctx.instructions = crate::instructions::for_turn(&self.instructions, self.project.root());
         let stream = self.backend.send(&prompt, self.model.as_ref(), self.mode.as_ref(), &ctx);
         agent.stream = Some(stream);
         self.agents.push(agent);

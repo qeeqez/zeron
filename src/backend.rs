@@ -16,6 +16,7 @@ mod http;
 mod models;
 mod rpc;
 mod sessions;
+mod sim;
 mod steer;
 
 #[cfg(test)]
@@ -33,6 +34,8 @@ mod appserver_turn_tests;
 mod claude_tests;
 #[cfg(test)]
 mod codex_tests;
+#[cfg(test)]
+mod instructions_tests;
 #[cfg(test)]
 mod sessions_tests;
 pub use acp::AcpBackend;
@@ -170,6 +173,11 @@ pub struct TurnContext {
     /// the backend supports them (codex `localImage`, ACP `resource_link`),
     /// else carried by the prompt's `[Attached files:]` list.
     pub images: Vec<std::path::PathBuf>,
+    /// Merged custom instructions (global setting + project file) for this
+    /// turn — `None` when neither source has content. Each backend maps it
+    /// onto its own system channel (codex `developerInstructions`, claude
+    /// `--append-system-prompt`, ACP/HTTP a prompt prefix).
+    pub instructions: Option<String>,
 }
 
 impl TurnContext {
@@ -181,6 +189,7 @@ impl TurnContext {
             thread_id: None,
             effort: None,
             images: Vec::new(),
+            instructions: None,
         }
     }
 }
@@ -347,45 +356,4 @@ pub trait AgentBackend: Send + Sync {
         None
     }
 }
-pub struct SimBackend;
-
-impl AgentBackend for SimBackend {
-    fn name(&self) -> &'static str {
-        "sim"
-    }
-
-    /// One static model so the simulator is selectable end-to-end — a
-    /// provider with no catalog can't be sent to at all.
-    fn models(&self) -> Vec<crate::model::ModelInfo> {
-        vec![crate::model::ModelInfo {
-            id: "sim".into(),
-            label: "Sim".into(),
-            description: "built-in simulator".into(),
-            ..Default::default()
-        }]
-    }
-
-    fn send(&self, _prompt: &str, _model: &str, _mode: &str, _ctx: &TurnContext) -> ReplyStream {
-        let (tx, events) = std::sync::mpsc::channel();
-        for e in [
-            AgentEvent::ToolCallStart { ix: 0, name: "cargo build".into(), detail: "--locked".into() },
-            AgentEvent::ToolCallDelta { ix: 0, output: "   Compiling rixlcode v0.1.0\n".into() },
-            AgentEvent::ToolCallEnd { ix: 0, ok: true },
-            AgentEvent::Diff {
-                path: "src/main.rs".into(),
-                added: 24,
-                removed: 6,
-                hunks: "@@ -10,6 +10,24 @@\n fn main() {\n-    println!(\"old\");\n+    gpui_kit::application().run(|cx| {\n        gpui_kit::init(cx);\n    });\n }".into(),
-            },
-            AgentEvent::TextDelta("Done. The build is **green** — `0 warnings`, all checks passed.\n\n- `cargo build --locked` finished in 3.6s\n- clippy: clean\n- nextest: 0 tests".into()),
-            AgentEvent::Done,
-        ] {
-            let _ = tx.send(e);
-        }
-        ReplyStream {
-            events,
-            child: None,
-            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        }
-    }
-}
+pub use sim::SimBackend;

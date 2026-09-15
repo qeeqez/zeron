@@ -48,6 +48,7 @@ impl Default for Settings {
             voice_enabled: false,
             voice_language: String::new(),
             voice_on_device: false,
+            instructions: String::new(),
         }
     }
 }

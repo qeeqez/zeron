@@ -312,6 +312,10 @@ pub struct Settings {
     pub voice_language: String,
     /// Prefer on-device speech recognition (more private, fewer languages).
     pub voice_on_device: bool,
+    /// Global custom instructions — prepended to every turn's system
+    /// context ahead of the project's own instructions file (see
+    /// `crate::instructions`).
+    pub instructions: String,
 }
 
 fn settings_path() -> PathBuf {

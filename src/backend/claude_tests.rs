@@ -206,6 +206,7 @@ mod command_tests {
             mode: mode.into(),
             access,
             cwd: std::path::PathBuf::from("/tmp/thread-wt"),
+            instructions: None,
             env: Vec::new(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),

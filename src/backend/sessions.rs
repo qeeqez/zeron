@@ -133,7 +133,7 @@ pub(super) fn read_session(stdin: &mut dyn Write, stdout: impl std::io::Read, th
         match msg["id"].as_i64() {
             Some(1) => {
                 send(stdin, &serde_json::json!({"method": "initialized", "params": {}}))?;
-                send(stdin, &thread_resume_req(2, thread_id, None, None, None))?;
+                send(stdin, &thread_resume_req(2, thread_id, None))?;
             },
             Some(2) => return parse_resumed(&msg["result"]),
             _ => {},

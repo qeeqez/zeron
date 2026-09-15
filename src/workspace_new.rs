@@ -178,6 +178,14 @@ impl Workspace {
             sessions: Vec::new(),
             sessions_loading: false,
             voice: crate::voice::VoiceState::new(settings.voice_enabled, settings.voice_language.clone(), settings.voice_on_device),
+            instructions: settings.instructions.clone(),
+            instructions_input: cx.new(|cx| {
+                let mut input = TextareaState::new(window, cx)
+                    .auto_grow(4, 16)
+                    .placeholder("Instructions applied to every turn — e.g. \"Always write tests first.\"");
+                input.set_value(settings.instructions.clone(), window, cx);
+                input
+            }),
             resume_open: false,
             auth: crate::auth::AuthBook::seeded(),
             terminal: crate::views::terminal::TerminalPanel::new(settings.terminal_open, terminal_input),

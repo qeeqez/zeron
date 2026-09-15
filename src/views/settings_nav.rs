@@ -112,6 +112,7 @@ pub fn settings_nav(nav: SettingsNav<'_>, window: &mut Window, cx: &mut App) -> 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Section {
     General,
+    Instructions,
     Appearance,
     Voice,
     Profile,
@@ -121,8 +122,9 @@ pub enum Section {
 }
 
 impl Section {
-    pub(crate) const ALL: [Section; 7] = [
+    pub(crate) const ALL: [Section; 8] = [
         Self::General,
+        Self::Instructions,
         Self::Appearance,
         Self::Voice,
         Self::Profile,
@@ -133,13 +135,14 @@ impl Section {
     /// (group header, sections) pairs for the rail — matches the Codex
     /// settings sidebar grouping.
     pub(crate) const GROUPS: [(&'static str, &'static [Section]); 3] = [
-        ("Personal", &[Self::General, Self::Appearance, Self::Voice, Self::Profile]),
+        ("Personal", &[Self::General, Self::Instructions, Self::Appearance, Self::Voice, Self::Profile]),
         ("Coding", &[Self::Providers, Self::Shortcuts]),
         ("Integrations", &[Self::McpServers]),
     ];
     pub fn name(self) -> &'static str {
         match self {
             Self::General => "general",
+            Self::Instructions => "instructions",
             Self::Appearance => "appearance",
             Self::Voice => "voice",
             Self::Profile => "profile",
@@ -152,6 +155,7 @@ impl Section {
     pub fn label(self) -> &'static str {
         match self {
             Self::General => "General",
+            Self::Instructions => "Custom Instructions",
             Self::Appearance => "Appearance",
             Self::Voice => "Voice",
             Self::Profile => "Profile",
@@ -164,6 +168,7 @@ impl Section {
     pub(crate) fn icon(self) -> IconName {
         match self {
             Self::General => IconName::SlidersHorizontal,
+            Self::Instructions => IconName::ScrollText,
             Self::Appearance => IconName::Palette,
             Self::Voice => IconName::Mic,
             Self::Profile => IconName::CircleUser,

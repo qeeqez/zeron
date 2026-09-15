@@ -26,14 +26,14 @@ impl AgentBackend for HttpBackend {
         "http"
     }
 
-    fn send(&self, prompt: &str, model: &str, mode: &str, _ctx: &super::TurnContext) -> ReplyStream {
+    fn send(&self, prompt: &str, model: &str, mode: &str, ctx: &super::TurnContext) -> ReplyStream {
         let (tx, rx) = std::sync::mpsc::channel();
         let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let turn = std::sync::Arc::new(HttpTurn {
             url: self.url.clone(),
             key_env: self.key_env.clone(),
             env: self.env.clone(),
-            prompt: prompt.to_string(),
+            prompt: crate::instructions::prefixed(prompt, ctx.instructions.as_deref()),
             model: model.to_string(),
             mode: mode.to_string(),
             cancelled: cancelled.clone(),
@@ -61,7 +61,7 @@ struct HttpTurn {
 /// have been emitted, and pre-response failures surface as `Error`.
 fn run_http(turn: &HttpTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) {
     use std::io::BufRead;
-    let body = serde_json::json!({ "prompt": turn.prompt, "model": turn.model, "mode": turn.mode });
+    let body = request_body(turn);
     let mut req = ureq::post(&turn.url).config().timeout_global(Some(std::time::Duration::from_secs(300))).build();
     // The instance's Variables win over the process env — that's how a
     // per-provider API key works without touching the shell env.
@@ -106,8 +106,41 @@ fn run_http(turn: &HttpTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) {
     }
 }
 
+/// The POST body for one turn — `prompt` already carries any instructions
+/// prefix (`send` merges them in, since the endpoint has no system field).
+fn request_body(turn: &HttpTurn) -> serde_json::Value {
+    serde_json::json!({ "prompt": turn.prompt, "model": turn.model, "mode": turn.mode })
+}
+
 /// Parse one NDJSON line and forward its events. Returns false when the
 /// receiver is gone — the caller should stop the turn.
 fn emit_line(line: &str, tx: &std::sync::mpsc::Sender<AgentEvent>) -> bool {
     crate::backend_parse::parse_codex_line(line).iter().all(|e| tx.send(e.clone()).is_ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HttpTurn, request_body};
+
+    fn turn(prompt: &str) -> HttpTurn {
+        HttpTurn {
+            url: "http://x".into(),
+            key_env: String::new(),
+            env: Vec::new(),
+            prompt: prompt.into(),
+            model: "m".into(),
+            mode: "Agent".into(),
+            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+
+    #[test]
+    fn body_carries_the_prefixed_prompt() {
+        // `send` merges instructions into the prompt via
+        // `instructions::prefixed` — the body ships it verbatim.
+        let prompt = crate::instructions::prefixed("do it", Some("be terse"));
+        let body = request_body(&turn(&prompt));
+        assert_eq!(body["prompt"], serde_json::json!(prompt));
+        assert!(body["prompt"].as_str().unwrap().starts_with("<system_instructions>"));
+    }
 }

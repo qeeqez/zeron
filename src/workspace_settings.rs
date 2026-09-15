@@ -70,6 +70,7 @@ impl Workspace {
             voice_enabled: self.voice.enabled,
             voice_language: self.voice.language.clone(),
             voice_on_device: self.voice.on_device,
+            instructions: self.instructions.clone(),
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
             terminal_open: self.terminal.open,
@@ -93,6 +94,21 @@ impl Workspace {
         self.theme = theme.to_string();
         self.save_settings_inner(true);
         self.apply_theme(window, cx);
+    }
+
+    /// Set the global custom instructions and persist them —
+    /// `Settings.instructions`. The next turn's `TurnContext` picks them up.
+    pub fn set_instructions(&mut self, instructions: String, cx: &mut Context<Self>) {
+        self.instructions = instructions;
+        self.save_settings();
+        cx.notify();
+    }
+
+    /// The Custom Instructions section's Save button: copy the field's
+    /// text into `instructions` and persist.
+    pub(crate) fn save_instructions(&mut self, cx: &mut Context<Self>) {
+        let text = self.instructions_input.read(cx).value().to_string();
+        self.set_instructions(text, cx);
     }
 }
 

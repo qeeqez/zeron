@@ -67,6 +67,7 @@ impl AgentBackend for AcpBackend {
             access: ctx.access,
             cwd: ctx.cwd.clone(),
             images: ctx.images.clone(),
+            instructions: ctx.instructions.clone(),
             // Snapshot the configured MCP servers — `session/new` advertises
             // them so the agent spawns/connects them for this session.
             mcp_servers: crate::persist::load_settings().mcp_servers,
@@ -100,8 +101,10 @@ pub(super) struct AcpTurn {
     /// Session working directory — `session/new`'s `cwd` and the
     /// workspace-write confinement root for `fs/write_text_file`.
     cwd: std::path::PathBuf,
-    /// Image attachments — sent as `resource_link` blocks on `session/prompt`.
     images: Vec<std::path::PathBuf>,
+    /// Merged custom instructions — ACP has no system channel, so
+    /// `send_prompt` prepends them to the prompt text.
+    pub(super) instructions: Option<String>,
     /// The instance's Variables — injected into the spawned agent.
     pub(super) env: Vec<(String, String)>,
     slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
@@ -123,6 +126,7 @@ impl AcpTurn {
             access,
             cwd: std::path::PathBuf::from("/tmp"),
             images: Vec::new(),
+            instructions: None,
             env: Vec::new(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -408,10 +412,10 @@ impl Handshake {
         }
         Ok(Step::Next)
     }
-
     fn send_prompt(&mut self, turn: &AcpTurn, sid: &str) -> Result<Step, String> {
         self.seq += 1;
-        self.send(&wire::prompt_req(self.seq, sid, &turn.prompt, &turn.images))?;
+        let prompt = crate::instructions::prefixed(&turn.prompt, turn.instructions.as_deref());
+        self.send(&wire::prompt_req(self.seq, sid, &prompt, &turn.images))?;
         self.phase = Phase::Prompt;
         Ok(Step::Next)
     }
