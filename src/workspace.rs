@@ -68,6 +68,9 @@ pub struct Workspace {
     /// Plan/Ask are always read-only. Passed to the backend via
     /// `TurnContext` at send time; each chat stamps its own on creation.
     pub access: crate::backend::AccessMode,
+    /// "Always allow" on a command-run approval — later shell-block runs
+    /// this session skip the prompt (see `crate::run_cmd`).
+    pub run_approved: bool,
     /// Reasoning effort for the active thread's turns — `None` sends no
     /// override so the model's `default_effort` applies. Stamped per chat
     /// like `access`; the composer picker writes it via `set_effort`.

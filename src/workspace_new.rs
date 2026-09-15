@@ -129,6 +129,7 @@ impl Workspace {
                 "Agent".into()
             },
             access: crate::backend::AccessMode::from_name(&settings.access),
+            run_approved: false,
             effort: None,
             default_model: settings.default_model.clone(),
             default_permissions: (!settings.default_permissions.is_empty())

@@ -82,8 +82,10 @@ fn raw_markdown(ix: usize, text: &SharedString, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-/// Top-right affordance for a fenced code block: the language tag and a copy
-/// button that flips to a check for a moment after copying.
+/// Top-right affordance for a fenced code block: the language tag, a Run
+/// button on shell blocks (dispatches `RunShellCommand` — the workspace's
+/// `on_action` runs it), and a copy button that flips to a check for a
+/// moment after copying.
 fn code_block_actions(ix: usize, block: &CodeBlock, window: &mut Window, cx: &mut App) -> AnyElement {
     // Span start is unique per block in a message; unspanned blocks share 0 —
     // a cosmetic collision on the copied flag only.
@@ -92,6 +94,7 @@ fn code_block_actions(ix: usize, block: &CodeBlock, window: &mut Window, cx: &mu
     let is_copied = *copied.read(cx);
     let code = block.code().to_string();
     let lang = block.lang();
+    let shell = lang.as_deref().and_then(crate::run_cmd::shell_for);
     div()
         .flex()
         .items_center()
@@ -99,6 +102,23 @@ fn code_block_actions(ix: usize, block: &CodeBlock, window: &mut Window, cx: &mu
         .text_xs()
         .text_color(cx.theme().muted_foreground)
         .when_some(lang, |d, lang| d.child(div().id(ElementId::Name(format!("code-lang-{ix}-{lang}").into())).test_support().child(lang)))
+        .when_some(shell, |d, shell| {
+            let command = code.clone();
+            d.child(
+                div()
+                    .id(ElementId::Name(format!("run-code-{ix}-{key}").into()))
+                    .test_support()
+                    .cursor_pointer()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(IconName::Play)
+                    .child("Run")
+                    .on_click(move |_, window, cx| {
+                        window.dispatch_action(Box::new(crate::run_cmd::RunShellCommand { command: command.clone(), shell }), cx);
+                    }),
+            )
+        })
         .child(
             div()
                 .id(ElementId::Name(format!("copy-code-{ix}-{key}").into()))

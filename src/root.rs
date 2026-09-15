@@ -156,6 +156,12 @@ impl Render for Workspace {
             })
             .on_action({
                 let ws = cx.entity();
+                move |action: &crate::run_cmd::RunShellCommand, _window, cx| {
+                    ws.update(cx, |this, cx| this.run_command_block(action.command.clone(), action.shell, cx));
+                }
+            })
+            .on_action({
+                let ws = cx.entity();
                 move |_: &ToggleDictation, window, cx| {
                     ws.update(cx, |this, cx| this.toggle_dictation(window, cx));
                 }

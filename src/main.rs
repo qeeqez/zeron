@@ -115,6 +115,9 @@ mod review;
 #[cfg(test)]
 mod review_tests;
 mod root;
+mod run_cmd;
+#[cfg(test)]
+mod run_cmd_tests;
 mod send;
 mod send_queue;
 #[cfg(test)]
