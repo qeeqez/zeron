@@ -78,6 +78,7 @@ mod palette_items;
 mod palette_tests;
 mod persist;
 mod persist_migrate;
+mod persist_model_cache;
 #[cfg(test)]
 mod persist_tests;
 mod project;
