@@ -229,5 +229,6 @@ fn mi(id: &str) -> ModelInfo {
         id: id.into(),
         label: id.into(),
         description: Default::default(),
+        ..Default::default()
     }
 }

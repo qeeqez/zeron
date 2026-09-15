@@ -40,6 +40,7 @@ fn mi(id: &str, label: &str) -> ModelInfo {
         id: id.into(),
         label: label.into(),
         description: SharedString::default(),
+        ..Default::default()
     }
 }
 

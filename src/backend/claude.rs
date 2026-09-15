@@ -38,6 +38,7 @@ impl AgentBackend for ClaudeCliBackend {
                 id: (*id).into(),
                 label: (*label).into(),
                 description: "".into(),
+                ..Default::default()
             })
             .collect()
     }

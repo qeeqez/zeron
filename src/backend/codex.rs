@@ -25,7 +25,7 @@ impl AgentBackend for CodexCliBackend {
     /// Static catalog — the live list comes from `model/list` via
     /// `fetch_codex_models` and lands on the workspace's catalog.
     fn models(&self) -> Vec<crate::model::ModelInfo> {
-        crate::model::codex_fallback_models()
+        crate::model_catalog::codex_fallback_models()
     }
 
     fn send(&self, prompt: &str, model: &str, mode: &str, ctx: &super::TurnContext) -> ReplyStream {
@@ -38,6 +38,7 @@ impl AgentBackend for CodexCliBackend {
             access: ctx.access,
             cwd: ctx.cwd.clone(),
             resume: ctx.thread_id.clone(),
+            effort: ctx.effort.clone(),
             slot: std::sync::Arc::new(CodexSlot::new()),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         });
@@ -86,6 +87,9 @@ pub(super) struct CodexTurn {
     /// Resume this codex thread instead of starting an ephemeral one — set
     /// on chats bound to a past session.
     pub(super) resume: Option<String>,
+    /// Reasoning effort for `turn/start` — `None` lets the server apply
+    /// the model's `defaultReasoningEffort`.
+    pub(super) effort: Option<String>,
     /// The turn's live handle: child slot, shared stdin, and the
     /// thread/turn ids `turn/steer` addresses.
     pub(super) slot: std::sync::Arc<CodexSlot>,
@@ -104,6 +108,7 @@ impl CodexTurn {
             mode: mode.into(),
             access,
             cwd: std::path::PathBuf::from("/tmp/thread-wt"),
+            effort: None,
             resume: None,
             slot: std::sync::Arc::new(CodexSlot::new()),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),

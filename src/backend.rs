@@ -153,12 +153,15 @@ pub struct TurnContext {
     /// chats created by resuming a past session (`thread/resume` on codex).
     /// `None` = the backend starts a new thread for this turn.
     pub thread_id: Option<String>,
+    /// Reasoning effort for the turn — `None` lets the backend apply the
+    /// model's own default (codex's `defaultReasoningEffort`).
+    pub effort: Option<String>,
 }
 
 impl TurnContext {
     /// A turn rooted at `cwd` with `access`, starting a fresh thread.
     pub fn at(cwd: std::path::PathBuf, access: AccessMode) -> Self {
-        Self { cwd, access, thread_id: None }
+        Self { cwd, access, thread_id: None, effort: None }
     }
 }
 
@@ -338,6 +341,7 @@ impl AgentBackend for SimBackend {
             id: "sim".into(),
             label: "Sim".into(),
             description: "built-in simulator".into(),
+            ..Default::default()
         }]
     }
 

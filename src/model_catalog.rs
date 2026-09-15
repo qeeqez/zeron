@@ -13,6 +13,26 @@ use crate::model::ModelInfo;
 use crate::providers::{ProviderInstance, apply_model_config};
 use crate::workspace::Workspace;
 
+/// Codex model ids the picker falls back to when the app-server catalog
+/// can't be fetched (codex missing, offline, error).
+pub const CODEX_FALLBACK: [&str; 3] = ["gpt-5-codex", "gpt-5", "gpt-5-mini"];
+
+/// Codex's static catalog — used until `model/list` lands and whenever the
+/// fetch fails. The efforts are a static approximation; the fetched
+/// catalog's `supportedReasoningEfforts` replaces them.
+pub fn codex_fallback_models() -> Vec<ModelInfo> {
+    CODEX_FALLBACK
+        .iter()
+        .map(|id| ModelInfo {
+            id: (*id).into(),
+            label: (*id).into(),
+            default_effort: "medium".into(),
+            efforts: ["low", "medium", "high"].iter().map(|e| (*e).into()).collect(),
+            ..ModelInfo::default()
+        })
+        .collect()
+}
+
 /// Seed every instance's catalog: static `models()` first, then the
 /// persisted cache overlays kinds that fetch at runtime. An instance whose
 /// backend has no static catalog (http, acp before its first session)
@@ -66,6 +86,35 @@ impl Workspace {
     /// The selected model id — empty when the provider has no catalog.
     pub fn selected_model(&self) -> &str {
         &self.model
+    }
+
+    /// The selected instance+model's catalog entry — `None` when the
+    /// selection doesn't resolve to a catalog model.
+    pub(crate) fn selected_model_info(&self) -> Option<ModelInfo> {
+        self.models_for(&self.selected_provider).into_iter().find(|m| m.id.as_ref() == self.model.as_ref())
+    }
+
+    /// The effort picker's options for the current selection — the
+    /// selected model's `supportedReasoningEfforts`. Empty hides the
+    /// picker (non-codex catalogs and unfetched models advertise none).
+    pub(crate) fn effort_options(&self) -> Vec<String> {
+        self.selected_model_info()
+            .map(|m| m.efforts.iter().map(ToString::to_string).collect())
+            .unwrap_or_default()
+    }
+
+    /// Drop a selected effort the current model doesn't advertise —
+    /// called after the selection or catalog changes so a stale effort
+    /// can't reach the wire. Models with no advertised list keep any
+    /// effort (nothing to validate against).
+    pub(crate) fn reconcile_effort(&mut self) {
+        let keep = self.effort.as_ref().is_none_or(|e| {
+            self.selected_model_info()
+                .is_none_or(|m| m.efforts.is_empty() || m.efforts.iter().any(|o| o.as_ref() == e))
+        });
+        if !keep {
+            self.effort = None;
+        }
     }
 
     /// The configured default provider+model for new threads —
@@ -157,6 +206,9 @@ impl Workspace {
                 self.model = effective.first().map_or_else(String::new, |m| m.id.to_string()).into();
                 self.save_settings();
             }
+            // A refreshed catalog may advertise a different effort list —
+            // drop a selection the model no longer supports.
+            self.reconcile_effort();
         }
         cx.notify();
     }

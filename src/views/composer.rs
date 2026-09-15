@@ -1,7 +1,6 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::Textarea;
-use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::{Disableable, Sizable};
 use gpui_kit::prelude::*;
@@ -9,19 +8,12 @@ use gpui_kit::*;
 
 use crate::slash::SLASH_COMMANDS;
 use crate::views::{
-    ModelPickerSpec, PickerProvider, apply_pick, attachment_chips, mention_item, model_picker, queued_item, slash_item, usage_indicator,
+    EffortPickerSpec, ModelPickerSpec, PickerProvider, PickerSpec, attachment_chips, effort_picker, mention_item, model_picker, picker,
+    queued_item, slash_item, usage_indicator,
 };
 use crate::workspace::Workspace;
 
 const MODES: [&str; 3] = ["Agent", "Plan", "Ask"];
-
-struct PickerSpec {
-    id: &'static str,
-    current: SharedString,
-    options: &'static [&'static str],
-    ws: Entity<Workspace>,
-    set: fn(&mut Workspace, &'static str),
-}
 
 impl Workspace {
     pub fn render_composer(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -103,6 +95,18 @@ impl Workspace {
                 this.mode = v.into();
                 this.save_settings();
             },
+        });
+        // The effort picker rides the selected model's advertised efforts —
+        // hidden when the catalog entry carries none (non-codex providers,
+        // unfetched catalogs).
+        let effort_options = self.effort_options();
+        let effort = (!effort_options.is_empty()).then(|| {
+            effort_picker(EffortPickerSpec {
+                current: self.effort.clone(),
+                default_effort: self.selected_model_info().map(|m| m.default_effort.to_string()).unwrap_or_default(),
+                options: effort_options,
+                ws: ws.clone(),
+            })
         });
         let composer_text = self.composer.read(cx).value().to_string();
         // The mention menu tracks the LAST `@` token: it must sit at a word
@@ -228,6 +232,7 @@ impl Workspace {
                             .gap_2()
                             .child(model_picker)
                             .child(mode_picker)
+                            .when_some(effort, |d, e| d.child(e))
                             .child(div().flex_1())
                             .child(
                                 div()
@@ -245,21 +250,4 @@ impl Workspace {
                     ),
             )
     }
-}
-
-fn picker(spec: PickerSpec) -> impl IntoElement {
-    let PickerSpec { id, current, options, ws, set } = spec;
-    Button::new(id)
-        .ghost()
-        .label(current.clone())
-        .icon(IconName::ChevronsUpDown)
-        .dropdown_menu(move |menu, _window, _cx| {
-            options.iter().fold(menu, |menu, opt| {
-                let ws = ws.clone();
-                let checked = *opt == current.as_str();
-                menu.item(PopupMenuItem::new(*opt).checked(checked).on_click(move |_, _, cx| {
-                    apply_pick(&ws, set, opt, cx);
-                }))
-            })
-        })
 }

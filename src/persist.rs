@@ -28,6 +28,9 @@ pub(crate) struct StoredChat {
     model: String,
     #[serde(default)]
     access: String,
+    /// Reasoning effort override — missing/empty = the model's default.
+    #[serde(default)]
+    effort: String,
     #[serde(default)]
     workdir: String,
     #[serde(default)]
@@ -68,6 +71,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             model: chat.model.clone(),
             access: chat.access.map_or_else(String::new, |a| a.name().to_string()),
             workdir: chat.workdir.clone(),
+            effort: chat.effort.clone().unwrap_or_default(),
             worktree: chat.worktree,
             thread_id: chat.thread_id.clone(),
             checkpoints: chat.checkpoints.clone(),
@@ -172,6 +176,7 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
             } else {
                 Some(crate::backend::AccessMode::from_name(&stored.access))
             };
+            chat.effort = if stored.effort.is_empty() { None } else { Some(stored.effort) };
             chat.workdir = stored.workdir;
             chat.worktree = stored.worktree;
             chat.checkpoints = stored.checkpoints;

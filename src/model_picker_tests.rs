@@ -36,6 +36,7 @@ fn mi(id: &str, label: &str) -> ModelInfo {
         id: id.into(),
         label: label.into(),
         description: SharedString::default(),
+        ..Default::default()
     }
 }
 
@@ -194,4 +195,79 @@ fn empty_fetch_keeps_existing_catalog() {
     let after = ws.read_with(cx, |w, _| w.models_for("codex-cli").len());
     assert_eq!(before, after, "an empty fetch must not wipe the catalog");
     assert!(after > 0, "codex seeds from its static fallback");
+}
+
+/// A catalog model advertising reasoning efforts like `model/list` does.
+fn mi_efforts(id: &str, default: &str, efforts: &[&str]) -> ModelInfo {
+    ModelInfo {
+        id: id.into(),
+        label: id.into(),
+        default_effort: default.into(),
+        efforts: efforts.iter().map(|e| (*e).into()).collect(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn effort_picker_seeds_from_model_default_and_selects() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    inject(&ws, cx, "codex-cli", vec![mi_efforts("gpt-9", "medium", &["low", "medium", "high"])]);
+    ws.update(cx, |this, cx| {
+        assert!(this.select_model("codex-cli", "gpt-9", cx));
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        // The button shows the model's defaultReasoningEffort until the
+        // user picks another.
+        let btn = window.find("effort");
+        assert!(btn.visible(), "effort picker should render for a model with efforts");
+        assert_eq!(btn.label(), Some("medium"));
+        window.click("effort", cx);
+        window.draw(cx).clear(cx);
+        window.draw(cx).clear(cx);
+        // Menu: Default row, separator, then low/medium/high → "high" is ix 4.
+        window.within("popup-menu").click(4usize, cx);
+        window.draw(cx).clear(cx);
+    });
+    let (effort, stamped) = ws.read_with(cx, |w, _| (w.effort.clone(), w.chats[w.active].effort.clone()));
+    assert_eq!(effort.as_deref(), Some("high"), "the pick lands on the workspace");
+    assert_eq!(stamped.as_deref(), Some("high"), "the pick stamps the active thread");
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert_eq!(window.find("effort").label(), Some("high"));
+    });
+}
+
+#[test]
+fn effort_picker_hidden_without_advertised_efforts() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    inject(&ws, cx, "codex-cli", vec![mi("gpt-9", "GPT-9")]);
+    ws.update(cx, |this, cx| {
+        assert!(this.select_model("codex-cli", "gpt-9", cx));
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.try_find("effort").is_none(), "no advertised efforts → no picker");
+    });
+}
+
+#[test]
+fn effort_resets_when_model_drops_it() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    inject(&ws, cx, "codex-cli", vec![mi_efforts("gpt-9", "medium", &["low", "medium", "high"]), mi_efforts("gpt-8", "low", &["low"])]);
+    ws.update(cx, |this, cx| {
+        assert!(this.select_model("codex-cli", "gpt-9", cx));
+        this.set_effort(Some("high"), cx);
+        assert_eq!(this.effort.as_deref(), Some("high"));
+        // gpt-8 doesn't advertise "high" — the pick falls back to default.
+        assert!(this.select_model("codex-cli", "gpt-8", cx));
+        assert_eq!(this.effort, None);
+        // A supported pick survives the switch.
+        this.set_effort(Some("low"), cx);
+        assert!(this.select_model("codex-cli", "gpt-9", cx));
+        assert_eq!(this.effort.as_deref(), Some("low"));
+    });
 }

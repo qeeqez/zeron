@@ -202,6 +202,7 @@ mod tests {
         chat.provider = "claude-cli".into();
         chat.model = "opus".into();
         chat.access = Some(crate::backend::AccessMode::Supervised);
+        chat.effort = Some("high".into());
         chat.workdir = "/repo/.worktrees/thread-0".into();
         chat.worktree = true;
         save_chats(&dir, &[chat]);
@@ -212,6 +213,7 @@ mod tests {
         assert_eq!(chat.provider, "claude-cli");
         assert_eq!(chat.model, "opus");
         assert_eq!(chat.access, Some(crate::backend::AccessMode::Supervised));
+        assert_eq!(chat.effort.as_deref(), Some("high"));
         assert_eq!(chat.workdir, "/repo/.worktrees/thread-0");
         assert!(chat.worktree);
     }
@@ -225,6 +227,7 @@ mod tests {
         let chat = &loaded[0];
         assert!(chat.provider.is_empty() && chat.model.is_empty());
         assert!(chat.access.is_none());
+        assert!(chat.effort.is_none());
         assert!(chat.workdir.is_empty() && !chat.worktree);
     }
 }

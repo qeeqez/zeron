@@ -188,3 +188,26 @@ fn worktree_mode_creates_plumbs_cwd_and_cleans_up() {
     assert!(!wt.exists());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn effort_is_per_thread_and_reaches_turn_context() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app, "effort");
+    cx.update(|window, cx| {
+        ws.update(cx, |this, cx| {
+            // Thread 1 picks "high"; thread 2 stays on the model default.
+            this.set_effort(Some("high"), cx);
+            let t1 = this.chats[this.active].id;
+            this.new_chat(cx);
+            assert_eq!(this.effort, None, "a fresh thread starts on the model default");
+            assert_eq!(this.turn_context().effort, None);
+
+            // Switching back restores thread 1's pick — and the turn
+            // context carries it to the backend.
+            let ix1 = this.chat_index(t1);
+            this.select_chat(ix1.unwrap(), window, cx);
+            assert_eq!(this.effort.as_deref(), Some("high"));
+            assert_eq!(this.turn_context().effort.as_deref(), Some("high"));
+        });
+    });
+}

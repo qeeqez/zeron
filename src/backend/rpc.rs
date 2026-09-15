@@ -33,16 +33,18 @@ pub(crate) fn thread_start_req(id: i64, model: &str, sandbox: &str, approval: &s
     json!({"method": "thread/start", "id": id, "params": params})
 }
 
-/// `turn/start`: the user's prompt as a single text input.
-pub(crate) fn turn_start_req(id: i64, thread_id: &str, prompt: &str) -> Value {
-    json!({
-        "method": "turn/start",
-        "id": id,
-        "params": {
-            "threadId": thread_id,
-            "input": [{"type": "text", "text": prompt, "text_elements": []}],
-        },
-    })
+/// `turn/start`: the user's prompt as a single text input. `effort` is
+/// the app-server's `ReasoningEffort` override — `None` lets the thread
+/// keep the model's `defaultReasoningEffort`.
+pub(crate) fn turn_start_req(id: i64, thread_id: &str, prompt: &str, effort: Option<&str>) -> Value {
+    let mut params = json!({
+        "threadId": thread_id,
+        "input": [{"type": "text", "text": prompt, "text_elements": []}],
+    });
+    if let Some(e) = effort {
+        params["effort"] = json!(e);
+    }
+    json!({"method": "turn/start", "id": id, "params": params})
 }
 
 /// `model/list` — one page of the provider's catalog. `cursor` is the
@@ -139,6 +141,11 @@ pub(crate) fn parse_model_page(result: &Value) -> (Vec<crate::model::ModelInfo>,
                         id: id.into(),
                         label: m["displayName"].as_str().unwrap_or(id).into(),
                         description: m["description"].as_str().unwrap_or("").into(),
+                        default_effort: m["defaultReasoningEffort"].as_str().unwrap_or("").into(),
+                        efforts: m["supportedReasoningEfforts"]
+                            .as_array()
+                            .map(|opts| opts.iter().filter_map(|o| o["reasoningEffort"].as_str().map(Into::into)).collect())
+                            .unwrap_or_default(),
                     })
                 })
                 .collect()
@@ -162,10 +169,7 @@ fn review_decision(d: ApprovalDecision) -> &'static str {
 fn is_approval(method: &str) -> bool {
     matches!(
         method,
-        "item/commandExecution/requestApproval"
-            | "item/fileChange/requestApproval"
-            | "applyPatchApproval"
-            | "execCommandApproval"
+        "item/commandExecution/requestApproval" | "item/fileChange/requestApproval" | "applyPatchApproval" | "execCommandApproval"
     )
 }
 
@@ -253,9 +257,7 @@ impl PendingApproval {
 /// reply under `Auto`; everything else gets a canned reply. Returns
 /// `(events, response, pending)` for the decoder's `Decoded`.
 pub(crate) fn route_request(
-    route: ApprovalRoute,
-    method: &str,
-    msg: &Value,
+    route: ApprovalRoute, method: &str, msg: &Value,
 ) -> (Vec<crate::backend::AgentEvent>, Option<Value>, Option<PendingApproval>) {
     let Some((kind, detail)) = approval_detail(method, &msg["params"]) else {
         return (vec![], Some(request_reply(method, msg, ApprovalDecision::Deny)), None);
@@ -304,10 +306,21 @@ mod tests {
 
     #[test]
     fn turn_start_wraps_prompt_as_text_input() {
-        let req = turn_start_req(3, "tid", "hello");
+        let req = turn_start_req(3, "tid", "hello", None);
         assert_eq!(req["params"]["threadId"], json!("tid"));
         assert_eq!(req["params"]["input"][0]["type"], json!("text"));
         assert_eq!(req["params"]["input"][0]["text"], json!("hello"));
+    }
+
+    #[test]
+    fn turn_start_sends_effort_only_when_set() {
+        // The app-server's `effort` override rides turn/start — set it and
+        // the param lands; unset it and the param is absent entirely so the
+        // thread keeps the model's defaultReasoningEffort.
+        let req = turn_start_req(3, "tid", "hello", Some("high"));
+        assert_eq!(req["params"]["effort"], json!("high"));
+        let unset = turn_start_req(3, "tid", "hello", None);
+        assert!(unset["params"].get("effort").is_none(), "unset effort must not reach the wire");
     }
 
     #[test]
@@ -346,6 +359,31 @@ mod tests {
         // Missing displayName falls back to the id.
         assert_eq!(models[1].label.as_ref(), "gpt-5");
         assert_eq!(cursor, Some(json!("page-2")));
+    }
+
+    #[test]
+    fn parse_model_page_captures_reasoning_efforts() {
+        let result = json!({
+            "data": [
+                {
+                    "id": "gpt-6",
+                    "displayName": "GPT-6",
+                    "defaultReasoningEffort": "medium",
+                    "supportedReasoningEfforts": [
+                        {"reasoningEffort": "low", "description": "fast"},
+                        {"reasoningEffort": "high", "description": "deep"},
+                    ],
+                },
+                {"id": "gpt-5"},
+            ],
+        });
+        let (models, _) = parse_model_page(&result);
+        assert_eq!(models[0].default_effort.as_ref(), "medium");
+        let efforts: Vec<&str> = models[0].efforts.iter().map(|e| e.as_ref()).collect();
+        assert_eq!(efforts, ["low", "high"]);
+        // Models without the fields parse with empty effort metadata.
+        assert_eq!(models[1].default_effort.as_ref(), "");
+        assert!(models[1].efforts.is_empty());
     }
 
     #[test]

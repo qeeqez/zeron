@@ -61,6 +61,10 @@ pub struct Workspace {
     /// Plan/Ask are always read-only. Passed to the backend via
     /// `TurnContext` at send time; each chat stamps its own on creation.
     pub access: crate::backend::AccessMode,
+    /// Reasoning effort for the active thread's turns — `None` sends no
+    /// override so the model's `default_effort` applies. Stamped per chat
+    /// like `access`; the composer picker writes it via `set_effort`.
+    pub effort: Option<String>,
     /// Provider+model new threads start on — `Settings.default_model`.
     /// Empty fields follow the current selection.
     pub default_model: crate::persist::DefaultModel,
@@ -243,6 +247,7 @@ impl Workspace {
                 "Agent".into()
             },
             access: crate::backend::AccessMode::from_name(&settings.access),
+            effort: None,
             default_model: settings.default_model.clone(),
             default_permissions: if settings.default_permissions.is_empty() {
                 None

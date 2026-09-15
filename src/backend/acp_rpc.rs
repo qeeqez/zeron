@@ -260,6 +260,7 @@ fn push_model(out: &mut Vec<ModelInfo>, id: &Value, name: &Value) {
             id: id.into(),
             label: name.as_str().unwrap_or(id).into(),
             description: "".into(),
+            ..Default::default()
         });
     }
 }

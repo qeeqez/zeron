@@ -172,7 +172,8 @@ pub(super) fn advance_phase(phase: &mut Phase, turn: &CodexTurn, msg: &Value, st
         (Phase::Thread, 2) => {
             let tid = msg["result"]["thread"]["id"].as_str().ok_or("codex: no thread id")?.to_string();
             turn.slot.ids.lock().0 = Some(tid.clone());
-            writeln!(stdin, "{}", turn_start_req(3, &tid, &turn.prompt)).map_err(|e| format!("codex stdin: {e}"))?;
+            writeln!(stdin, "{}", turn_start_req(3, &tid, &turn.prompt, turn.effort.as_deref()))
+                .map_err(|e| format!("codex stdin: {e}"))?;
             *phase = Phase::Turn;
             Ok(true)
         },

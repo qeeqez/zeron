@@ -44,6 +44,20 @@ impl Workspace {
         chat.provider = self.selected_provider.clone();
         chat.model = self.model.to_string();
         chat.access = Some(self.access);
+        chat.effort = self.effort.clone();
+    }
+
+    /// Set the active thread's reasoning effort and stamp it on the chat —
+    /// the composer picker's write path. `None` (or an empty/unsupported
+    /// value) restores the model's `default_effort`.
+    pub fn set_effort(&mut self, effort: Option<&str>, cx: &mut Context<Self>) {
+        self.effort = effort.filter(|e| !e.is_empty()).map(str::to_string);
+        self.reconcile_effort();
+        if let Some(chat) = self.chats.get_mut(self.active) {
+            chat.effort = self.effort.clone();
+        }
+        self.save();
+        cx.notify();
     }
 
     /// Apply the persisted thread defaults to the just-created active
@@ -84,6 +98,9 @@ impl Workspace {
                 },
             },
         }
+        // A fresh thread starts on its model's default effort — the
+        // outgoing thread's pick doesn't carry over.
+        self.effort = None;
         self.stamp_thread();
     }
 
@@ -95,6 +112,7 @@ impl Workspace {
         let provider = chat.provider.clone();
         let model = chat.model.clone();
         let access = chat.access;
+        let effort = chat.effort.clone();
         if !provider.is_empty()
             && self.providers.iter().any(|p| p.id == provider && p.enabled)
             && !self.select_model(&provider, &model, cx)
@@ -105,16 +123,22 @@ impl Workspace {
         if let Some(access) = access {
             self.access = access;
         }
+        // The thread's own effort stamp replaces the workspace selection;
+        // `None` (legacy or untouched) follows the model's default.
+        self.effort = effort;
+        self.reconcile_effort();
     }
 
     /// The `TurnContext` for the active chat's next backend turn — its
-    /// worktree or the project root, plus its access mode. A chat bound to
-    /// a past session carries its backend thread id so the turn resumes it.
+    /// worktree or the project root, plus its access mode and effort. A
+    /// chat bound to a past session carries its backend thread id so the
+    /// turn resumes it.
     pub(crate) fn turn_context(&self) -> crate::backend::TurnContext {
         let chat = &self.chats[self.active];
         let mut ctx =
             crate::backend::TurnContext::at(crate::worktree::workdir_for(chat, self.project.root()), chat.access.unwrap_or(self.access));
         ctx.thread_id = if chat.thread_id.is_empty() { None } else { Some(chat.thread_id.clone()) };
+        ctx.effort = chat.effort.clone().or_else(|| self.effort.clone());
         ctx
     }
 }

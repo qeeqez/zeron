@@ -24,7 +24,12 @@ impl AgentBackend for SessionBackend {
     }
 
     fn models(&self) -> Vec<crate::model::ModelInfo> {
-        vec![crate::model::ModelInfo { id: "m".into(), label: "M".into(), description: "".into() }]
+        vec![crate::model::ModelInfo {
+            id: "m".into(),
+            label: "M".into(),
+            description: "".into(),
+            ..Default::default()
+        }]
     }
 
     fn send(&self, _prompt: &str, _model: &str, _mode: &str, ctx: &TurnContext) -> ReplyStream {

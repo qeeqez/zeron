@@ -2,13 +2,9 @@ use std::time::{Instant, SystemTime};
 
 use gpui_kit::{SharedString, Task};
 
-/// Codex model ids the picker falls back to when the app-server catalog
-/// can't be fetched (codex missing, offline, error).
-pub const CODEX_FALLBACK: [&str; 3] = ["gpt-5-codex", "gpt-5", "gpt-5-mini"];
-
 /// One selectable model in a provider's catalog — backends return these
 /// from `AgentBackend::models` for the provider→model picker.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModelInfo {
     /// Value passed to `send`'s `model` arg.
     pub id: SharedString,
@@ -16,19 +12,15 @@ pub struct ModelInfo {
     pub label: SharedString,
     /// One-line provider description; may be empty.
     pub description: SharedString,
-}
-
-/// Codex's static catalog — used until `model/list` lands and whenever the
-/// fetch fails.
-pub fn codex_fallback_models() -> Vec<ModelInfo> {
-    CODEX_FALLBACK
-        .iter()
-        .map(|id| ModelInfo {
-            id: (*id).into(),
-            label: (*id).into(),
-            description: SharedString::default(),
-        })
-        .collect()
+    /// The model's `defaultReasoningEffort` — the effort the composer
+    /// picker shows until the user picks another. Empty = the backend
+    /// decides; the effort picker stays hidden.
+    #[serde(default)]
+    pub default_effort: SharedString,
+    /// The model's `supportedReasoningEfforts` — the effort picker's
+    /// options. Empty = the model doesn't advertise efforts.
+    #[serde(default)]
+    pub efforts: Vec<SharedString>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -200,6 +192,9 @@ pub struct Chat {
     /// Filesystem access for this thread's turns; `None` = legacy chat,
     /// follow the workspace setting.
     pub access: Option<crate::backend::AccessMode>,
+    /// Reasoning effort this thread's turns request — `None` = the
+    /// model's `default_effort`. Same lifecycle as `provider`/`model`.
+    pub effort: Option<String>,
     /// The thread's working directory — the project root, or its git
     /// worktree when `default_workspace` is Worktree. Empty = project root.
     pub workdir: String,
@@ -241,6 +236,7 @@ impl Chat {
             provider: String::new(),
             model: String::new(),
             access: None,
+            effort: None,
             workdir: String::new(),
             worktree: false,
             thread_id: String::new(),

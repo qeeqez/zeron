@@ -35,6 +35,7 @@ fn mi(id: &str) -> ModelInfo {
         id: id.into(),
         label: id.into(),
         description: SharedString::default(),
+        ..Default::default()
     }
 }
 

@@ -86,6 +86,32 @@ mod tests {
         assert!(!sent.contains("thread/resume"), "stdin was: {sent}");
     }
 
+    /// Drive the handshake through `Phase::Thread` and return everything
+    /// written to stdin — the turn/start request is the second write.
+    fn turn_start_wire(turn: &CodexTurn) -> String {
+        let mut stdin = Vec::new();
+        let mut phase = Phase::Init;
+        advance_phase(&mut phase, turn, &serde_json::json!({"id": 1, "result": {}}), &mut stdin).unwrap();
+        advance_phase(&mut phase, turn, &serde_json::json!({"id": 2, "result": {"thread": {"id": "tid-9"}}}), &mut stdin).unwrap();
+        String::from_utf8(stdin).unwrap()
+    }
+
+    #[test]
+    fn turn_start_carries_the_selected_effort() {
+        let mut t = turn("Agent", AccessMode::Auto);
+        t.effort = Some("high".into());
+        let sent = turn_start_wire(&t);
+        assert!(sent.contains(r#""method":"turn/start""#), "stdin was: {sent}");
+        assert!(sent.contains(r#""effort":"high""#), "stdin was: {sent}");
+    }
+
+    #[test]
+    fn turn_start_omits_effort_when_unset() {
+        let sent = turn_start_wire(&turn("Agent", AccessMode::Auto));
+        assert!(sent.contains(r#""method":"turn/start""#), "stdin was: {sent}");
+        assert!(!sent.contains("effort"), "stdin was: {sent}");
+    }
+
     /// Drive the handshake to `Phase::Run` over a captured stdin, then
     /// return the buffer the turn's steer writes into.
     fn running_turn(mode: &str) -> (CodexTurn, std::sync::Arc<parking_lot::Mutex<Vec<u8>>>) {

@@ -7,6 +7,7 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::popover::{Popover, PopoverState};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::{h_flex, v_flex};
@@ -202,4 +203,78 @@ fn empty_row(text: &str, cx: &App) -> impl IntoElement {
         .text_sm()
         .text_color(cx.theme().muted_foreground)
         .child(text.to_string())
+}
+
+/// Owned inputs for the composer's small option pickers (mode, effort) —
+/// the button shows `current`, the menu lists `options` with a check on
+/// the current one, and `set` applies a pick on the workspace.
+pub struct PickerSpec {
+    pub id: &'static str,
+    pub current: SharedString,
+    pub options: &'static [&'static str],
+    pub ws: Entity<Workspace>,
+    pub set: fn(&mut Workspace, &'static str),
+}
+
+/// A ghost button opening a dropdown of static options — the mode
+/// picker's shape.
+pub fn picker(spec: PickerSpec) -> impl IntoElement {
+    let PickerSpec { id, current, options, ws, set } = spec;
+    Button::new(id)
+        .ghost()
+        .label(current.clone())
+        .icon(IconName::ChevronsUpDown)
+        .dropdown_menu(move |menu, _window, _cx| {
+            options.iter().fold(menu, |menu, opt| {
+                let ws = ws.clone();
+                let checked = *opt == current.as_str();
+                menu.item(PopupMenuItem::new(*opt).checked(checked).on_click(move |_, _, cx| {
+                    crate::views::apply_pick(&ws, set, opt, cx);
+                }))
+            })
+        })
+}
+
+/// Owned inputs for `effort_picker` — the composer builds this from
+/// `&Workspace` so the returned element holds no borrow.
+pub struct EffortPickerSpec {
+    /// The thread's explicit pick — `None` follows `default_effort`.
+    pub current: Option<String>,
+    /// The selected model's `defaultReasoningEffort`; may be empty.
+    pub default_effort: String,
+    /// The selected model's `supportedReasoningEfforts`.
+    pub options: Vec<String>,
+    pub ws: Entity<Workspace>,
+}
+
+/// The reasoning-effort dropdown beside the model picker: one item per
+/// advertised effort, a check on the effective one, and a "Default" row
+/// that clears the override back to the model's `defaultReasoningEffort`.
+pub fn effort_picker(spec: EffortPickerSpec) -> impl IntoElement {
+    let effective = spec.current.clone().unwrap_or_else(|| spec.default_effort.clone());
+    Button::new("effort")
+        .ghost()
+        .label(if effective.is_empty() { "Effort".to_string() } else { effective.clone() })
+        .icon(IconName::ChevronsUpDown)
+        .dropdown_menu(move |menu, _window, _cx| {
+            let default_label = if spec.default_effort.is_empty() {
+                "Default".to_string()
+            } else {
+                format!("Default ({})", spec.default_effort)
+            };
+            let ws = spec.ws.clone();
+            let menu = menu
+                .item(PopupMenuItem::new(default_label).checked(spec.current.is_none()).on_click(move |_, _, cx| {
+                    ws.update(cx, |this, cx| this.set_effort(None, cx));
+                }))
+                .separator();
+            spec.options.iter().fold(menu, |menu, opt| {
+                let ws = spec.ws.clone();
+                let value = opt.clone();
+                let checked = spec.current.as_deref() == Some(opt.as_str());
+                menu.item(PopupMenuItem::new(opt.clone()).checked(checked).on_click(move |_, _, cx| {
+                    ws.update(cx, |this, cx| this.set_effort(Some(&value), cx));
+                }))
+            })
+        })
 }

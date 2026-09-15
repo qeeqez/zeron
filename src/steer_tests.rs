@@ -99,7 +99,12 @@ impl AgentBackend for SteerBackend {
     }
 
     fn models(&self) -> Vec<crate::model::ModelInfo> {
-        vec![crate::model::ModelInfo { id: "m".into(), label: "M".into(), description: "".into() }]
+        vec![crate::model::ModelInfo {
+            id: "m".into(),
+            label: "M".into(),
+            description: "".into(),
+            ..Default::default()
+        }]
     }
 
     fn supports_steer(&self) -> bool {

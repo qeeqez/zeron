@@ -21,6 +21,9 @@ impl Workspace {
             self.select_instance(instance_id);
         }
         self.model = model_id.into();
+        // Keep the effort pick when the new model advertises it, else
+        // fall back to the new model's `default_effort`.
+        self.reconcile_effort();
         self.save_settings();
         cx.notify();
         true
