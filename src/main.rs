@@ -130,6 +130,11 @@ mod usage;
 #[cfg(test)]
 mod usage_tests;
 mod views;
+mod voice;
+#[cfg(target_os = "macos")]
+mod voice_apple;
+#[cfg(test)]
+mod voice_tests;
 mod window;
 #[cfg(test)]
 mod window_chrome_tests;
@@ -146,9 +151,8 @@ use gpui_kit::*;
 actions!([
     NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleSnapshots, ToggleExplorer, OpenPalette, ThemeLight, ThemeDark,
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, SearchAllChats,
-    FindInChat,
-    CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow, AboutApp, HideApp,
-    HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront,
+    FindInChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow,
+    AboutApp, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront, ToggleDictation,
 ]);
 
 /// The macOS menu bar. Menu actions dispatch to the active window (or the

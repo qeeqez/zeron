@@ -7,6 +7,7 @@ mod changes_git;
 mod chat_view;
 mod composer;
 mod composer_helpers;
+mod composer_voice;
 mod diff;
 mod empty;
 pub(crate) mod explorer;
@@ -41,6 +42,7 @@ pub mod settings_sections;
 pub mod settings_shortcuts;
 #[cfg(test)]
 mod settings_shortcuts_tests;
+pub mod settings_voice;
 pub mod shortcuts;
 
 pub(crate) mod sidebar;

@@ -65,6 +65,9 @@ pub struct SettingsPanel {
     pub(crate) mcp_error: Option<String>,
     /// The add form's inputs — created once so typed text survives renders.
     pub(crate) mcp_inputs: crate::views::settings_mcp::McpInputs,
+    /// Dictation-language picker — `VOICE_LANGUAGES` labels; Confirm maps
+    /// back to the locale id (empty = system default).
+    pub(crate) voice_language_select: Entity<SelectState<Vec<String>>>,
 }
 
 impl SettingsPanel {
@@ -148,6 +151,7 @@ impl SettingsPanel {
             }
         })
         .detach();
+        let voice_language_select = crate::views::settings_voice::language_picker(&ws, settings, window, cx);
         let editor_select = crate::views::settings_general::editor_picker(&ws, settings, window, cx);
         let mcp_inputs = Self::new_mcp_inputs(window, cx);
         // The detail panel opens on the active provider (or the first one).
@@ -176,6 +180,7 @@ impl SettingsPanel {
             mcp_status: HashMap::new(),
             mcp_status_loading: false,
             mcp_adding: false,
+            voice_language_select,
             mcp_error: None,
             mcp_inputs,
         }
@@ -228,6 +233,11 @@ impl Render for SettingsPanel {
             code_font_select: self.code_font_select.clone(),
             contrast_slider: self.contrast_slider.clone(),
             editor_select: self.editor_select.clone(),
+            voice_enabled: s.voice.enabled,
+            voice_language_select: self.voice_language_select.clone(),
+            voice_on_device: s.voice.on_device,
+            voice_phase: s.voice.phase,
+            voice_test_result: s.voice.test_result.clone(),
             permissions_select: self.permissions_select.clone(),
             workspace_select: self.workspace_select.clone(),
         };

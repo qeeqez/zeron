@@ -131,6 +131,8 @@ pub struct Workspace {
     /// The folder this window runs against — chats, @-mentions, git and
     /// the backend all scope to it (see `crate::project`).
     pub project: crate::project::Project,
+    /// Voice dictation settings + live take state (see `crate::voice`).
+    pub voice: crate::voice::VoiceState,
 
     /// Past threads the backend can reopen — the sidebar's Resume section.
     /// Filled by `refresh_sessions`; empty until the first fetch lands.
@@ -302,6 +304,7 @@ impl Workspace {
             project,
             sessions: Vec::new(),
             sessions_loading: false,
+            voice: crate::voice::VoiceState::new(settings.voice_enabled, settings.voice_language.clone(), settings.voice_on_device),
             resume_open: false,
             auth: crate::auth::AuthBook::seeded(),
         };

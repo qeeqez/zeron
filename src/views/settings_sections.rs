@@ -62,6 +62,13 @@ pub struct SettingsView {
     pub mcp_error: Option<String>,
     /// The add form's inputs.
     pub mcp_inputs: crate::views::settings_mcp::McpInputs,
+    /// Voice dictation state for the Voice section.
+    pub voice_enabled: bool,
+    pub voice_language_select: Entity<SelectState<Vec<String>>>,
+    pub voice_on_device: bool,
+    pub voice_phase: crate::voice::DictationPhase,
+    /// Last test-mic result line (or live partial while recording).
+    pub voice_test_result: Option<String>,
 }
 
 /// The content pane for the selected section.
@@ -71,7 +78,7 @@ pub fn section_body(section: Section, s: &SettingsView, cx: &App) -> impl IntoEl
         Section::Appearance => crate::views::settings_appearance::appearance_section(s, cx).into_any_element(),
         Section::Providers => crate::views::settings_providers::providers_section(s, cx).into_any_element(),
         Section::Shortcuts => crate::views::settings_shortcuts::shortcuts_section(cx).into_any_element(),
-        Section::Voice => placeholder_section("Voice input and dictation are not configured yet.", cx),
+        Section::Voice => crate::views::settings_voice::voice_section(s, cx).into_any_element(),
         Section::Profile => crate::views::settings_profile::profile_section(s, cx).into_any_element(),
         Section::McpServers => crate::views::settings_mcp::mcp_section(s, cx).into_any_element(),
     };
@@ -82,10 +89,6 @@ pub fn section_body(section: Section, s: &SettingsView, cx: &App) -> impl IntoEl
         .flex_col()
         .gap_4()
         .child(body)
-}
-
-fn placeholder_section(text: &'static str, cx: &App) -> AnyElement {
-    div().text_sm().text_color(cx.theme().muted_foreground).child(text).into_any_element()
 }
 
 pub(crate) fn group_label(text: &'static str, cx: &App) -> Div {

@@ -226,8 +226,12 @@ impl Workspace {
                             .child(Button::new("attach").ghost().icon(IconName::Paperclip).on_click(cx.listener(|this, _, _, cx| {
                                 this.attach_file(cx);
                             })))
+                            .child(crate::views::composer_voice::dictate_button(self.voice.phase, cx))
                             .child(send_controls),
                     )
+                    .when_some(self.voice.note.clone(), |d, note| {
+                        d.child(crate::views::composer_voice::dictate_note(note, self.voice.note_is_error, cx))
+                    })
                     .child(
                         div()
                             .flex()

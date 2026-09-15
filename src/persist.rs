@@ -292,6 +292,13 @@ pub struct Settings {
     /// no cap). See `crate::snapshots`.
     pub snapshot_retention_days: Option<u32>,
     pub snapshot_cap_mb: Option<u32>,
+    /// Voice dictation master switch — the composer's mic button and
+    /// Cmd-Shift-D only record when this is on.
+    pub voice_enabled: bool,
+    /// BCP-47 locale for the speech recognizer; empty = system default.
+    pub voice_language: String,
+    /// Prefer on-device speech recognition (more private, fewer languages).
+    pub voice_on_device: bool,
 }
 
 fn settings_path() -> PathBuf {
