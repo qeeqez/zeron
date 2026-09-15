@@ -6,25 +6,8 @@ use gpui_kit::*;
 
 use crate::model::{ChatMessage, MessageKind, Role};
 use crate::send_queue::Queued;
+use crate::slash::{is_slash, runs_now};
 use crate::workspace::Workspace;
-
-/// Slash commands executable locally; anything else falls through to the backend.
-pub(crate) const SLASH_COMMANDS: [&str; 6] = ["clear", "compact", "export", "help", "model", "rename"];
-
-/// Split `/cmd arg` into `(cmd, arg)`; `None` when `text` isn't a slash command.
-fn slash_cmd(text: &str) -> Option<(&str, &str)> {
-    let body = text.strip_prefix('/')?;
-    Some(body.split_once(' ').map_or((body, ""), |(c, a)| (c, a.trim())))
-}
-
-/// Commands that must run even mid-reply: `/compact` stops the turn itself,
-/// `/clear` and `/rename` never touch the message list. Note-producing
-/// commands (`/help`, `/model`, `/export`) queue like text instead — run
-/// mid-stream their note becomes the last message and the streaming reply
-/// appends into (or replaces) it.
-fn slash_runs_now(cmd: &str) -> bool {
-    matches!(cmd, "clear" | "compact" | "rename")
-}
 
 /// Outcome of one queue-drain attempt for a chat.
 pub(crate) enum Drain {
@@ -66,8 +49,8 @@ impl Workspace {
         if self.chats[self.active].running {
             // Codex parity: Enter during a reply queues the message; it sends
             // when the turn ends (see `drain_queued`). Slash commands queue
-            // too — except the few that are safe mid-reply (`slash_runs_now`).
-            if slash_cmd(text).is_some_and(|(cmd, _)| slash_runs_now(cmd)) && self.run_slash(text, window, cx) {
+            // too — except the few that are safe mid-reply (`runs_now`).
+            if runs_now(text) && self.run_slash(text, window, cx) {
                 self.clear_composer(window, cx);
                 return;
             }
@@ -75,11 +58,7 @@ impl Workspace {
             let chat_id = self.chats[self.active].id;
             // Snapshot the attachments into the queued item — local commands
             // don't consume them, so those stay on the composer.
-            let attachments = if slash_cmd(text).is_some_and(|(cmd, _)| SLASH_COMMANDS.contains(&cmd)) {
-                Vec::new()
-            } else {
-                std::mem::take(&mut self.chats[self.active].attachments)
-            };
+            let attachments = if is_slash(text) { Vec::new() } else { std::mem::take(&mut self.chats[self.active].attachments) };
             self.send_queue
                 .enqueue(chat_id, Queued::new(text.to_string(), attachments), |id| live.contains(&id));
             self.persist_queue();
@@ -201,61 +180,6 @@ impl Workspace {
         } else {
             crate::backend_run::run_backend(self, prompt, cx);
         }
-    }
-
-    /// Run a `/command` locally. Returns true when the input was consumed.
-    fn run_slash(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let Some((cmd, arg)) = slash_cmd(text) else { return false };
-        match cmd {
-            "clear" => self.clear_all_chats(window, cx),
-            "export" => self.export_active(cx),
-            "rename" => self.rename_active(window, cx),
-            "model" => {
-                // `instance/model` selects across instances; a bare id
-                // stays on the selected instance.
-                let current = self.selected_provider.clone();
-                let (instance, model_id) = arg.split_once('/').map_or((current.as_str(), arg), |(i, m)| (i, m));
-                let instance = instance.to_string();
-                let known: Vec<String> = self.models_for(&instance).iter().map(|m| m.id.to_string()).collect();
-                if arg.is_empty() {
-                    self.push_note(
-                        format!(
-                            "Current model: **{} · {}** — pick one of: {}",
-                            self.selected_provider,
-                            self.selected_model(),
-                            known.join(", ")
-                        ),
-                        cx,
-                    );
-                } else if self.select_model(&instance, model_id, cx) {
-                    self.push_note(format!("Model set to **{instance} · {model_id}**"), cx);
-                } else {
-                    self.push_note(format!("Unknown model `{arg}` — pick one of: {} (or `instance/model`)", known.join(", ")), cx);
-                }
-            },
-            "compact" => {
-                if self.chats[self.active].running {
-                    self.stop_reply(cx);
-                }
-                let chat = &mut self.chats[self.active];
-                let keep = 4.min(chat.messages.len());
-                let drain_to = chat.messages.len() - keep;
-                Rc::make_mut(&mut chat.messages).drain(..drain_to);
-                self.recall_ix = None;
-                self.recall_saved = None;
-                self.search_match_ix = 0;
-                let count = self.filtered_count(cx);
-                self.scroller.update(cx, |s, cx| s.reset(count, cx));
-                self.save();
-                self.push_note(format!("Compacted — kept the last {keep} messages."), cx);
-            },
-            "help" => {
-                let list = SLASH_COMMANDS.iter().map(|c| format!("`/{c}`")).collect::<Vec<_>>().join(" ");
-                self.push_note(format!("Commands: {list}"), cx);
-            },
-            _ => return false,
-        }
-        true
     }
 
     /// Append a local assistant note (command feedback, not a backend reply).

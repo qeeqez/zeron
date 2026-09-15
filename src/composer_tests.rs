@@ -86,6 +86,8 @@ fn slash_menu_filters_and_dispatches(cx: &mut TestAppContext) {
         window.input("/", cx);
         assert!(window.try_find("slash-help").is_some());
         assert!(window.try_find("slash-model").is_some());
+        // Every row carries its description from SLASH_COMMANDS.
+        assert!(window.try_find("slash-help-desc").is_some());
         window.input("he", cx);
         assert!(window.try_find("slash-help").is_some());
         assert!(window.try_find("slash-model").is_none());
@@ -100,6 +102,31 @@ fn slash_menu_filters_and_dispatches(cx: &mut TestAppContext) {
             .any(|m| matches!(&m.kind, MessageKind::Text(t) if t.contains("/help")))
     });
     assert!(note, "expected a /help note message in the chat");
+}
+
+#[gpui_kit::test]
+fn slash_menu_filters_by_prefix(cx: &mut TestAppContext) {
+    let (_workspace, cx) = open_workspace(cx);
+    cx.update(|window, cx| {
+        window.input("/st", cx);
+        assert!(window.try_find("slash-status").is_some());
+        // Prefix match: "status" contains "ta" but doesn't start with it.
+        assert!(window.try_find("slash-help").is_none());
+        assert!(window.try_find("slash-clear").is_none());
+    });
+}
+
+#[gpui_kit::test]
+fn clear_command_empties_chat(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    use_sim(&workspace, cx);
+    type_and_send(cx, "hello");
+    until(&workspace, cx, |ws| !ws.chats[ws.active].running);
+    assert!(!workspace.read_with(cx, |ws, _| ws.chats[ws.active].messages.is_empty()));
+    type_and_send(cx, "/clear");
+    workspace.read_with(cx, |ws, _| {
+        assert!(ws.chats[ws.active].messages.is_empty(), "/clear must empty the transcript");
+    });
 }
 
 /// Send `text` through the real input path: type, then Enter.

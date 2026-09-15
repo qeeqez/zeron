@@ -7,7 +7,7 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::send::SLASH_COMMANDS;
+use crate::slash::SLASH_COMMANDS;
 use crate::views::{ModelPickerSpec, PickerProvider, apply_pick, attachment_chips, mention_item, model_picker, queued_item, slash_item};
 use crate::workspace::Workspace;
 
@@ -95,8 +95,8 @@ impl Workspace {
             .map(|q| {
                 SLASH_COMMANDS
                     .iter()
-                    .filter(|c| q.is_empty() || c.contains(q.as_str()))
-                    .map(|cmd| slash_item(cmd, &ws, cx).into_any_element())
+                    .filter(|(c, _)| q.is_empty() || c.starts_with(q.as_str()))
+                    .map(|&(cmd, desc)| slash_item(cmd, desc, &ws, cx).into_any_element())
                     .collect()
             })
             .unwrap_or_default();

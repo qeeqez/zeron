@@ -9,7 +9,7 @@ use crate::model::Chat;
 use crate::send_queue::Queued;
 use crate::workspace::Workspace;
 
-pub fn slash_item(cmd: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
+pub fn slash_item(cmd: &str, desc: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
     let ws = ws.clone();
     let cmd_str = cmd.to_string();
     div()
@@ -21,7 +21,16 @@ pub fn slash_item(cmd: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoE
         .rounded_md()
         .text_sm()
         .hover(|d| d.bg(cx.theme().accent))
-        .child(format!("/{cmd}"))
+        .child(
+            div().flex().items_baseline().gap_2().child(format!("/{cmd}")).child(
+                div()
+                    .id(SharedString::from(format!("slash-{cmd}-desc")))
+                    .test_support()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(desc.to_string()),
+            ),
+        )
         .on_click(move |_, window, cx| {
             apply_slash(&ws, &cmd_str, window, cx);
         })
