@@ -180,9 +180,10 @@ pub struct Chat {
     /// `complete_turn`; not persisted.
     pub last_turn: Option<std::time::Duration>,
     pub reply_task: Option<Task<()>>,
-    /// Backend child slot for the in-flight turn — lets stop/delete kill a
-    /// hung process without waiting for the pump thread.
-    pub child: Option<std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>>,
+    /// The in-flight turn's stream (events receiver moved to the pump
+    /// thread) — dropping it kills the child and sets `cancelled`, and
+    /// `ReplyStream::steer` writes into the turn when the backend allows.
+    pub stream: Option<crate::backend::ReplyStream>,
     /// Agents-panel row tracking the in-flight turn — lets stop/finish
     /// close the row without scanning by name.
     pub run_agent: Option<u64>,
@@ -231,7 +232,7 @@ impl Chat {
             started_at: None,
             last_turn: None,
             reply_task: None,
-            child: None,
+            stream: None,
             run_agent: None,
             attachments: Vec::new(),
             archived: false,
@@ -247,23 +248,8 @@ impl Chat {
             checkpoints: Vec::new(),
         }
     }
-
-    /// Record how long the just-finished turn took and clear `started_at`.
-    /// Callers: `finish_reply` (chat_ops.rs), `finish_stream`
-    /// (simulate.rs), `stop_reply` (chat_ops.rs) — each replaces its
-    /// `chat.started_at = None` with this.
-    pub fn complete_turn(&mut self) {
-        self.last_turn = self.started_at.take().map(|t| t.elapsed());
-    }
 }
 
-impl Drop for Chat {
-    fn drop(&mut self) {
-        if let Some(slot) = &self.child {
-            crate::backend::kill_slot(slot);
-        }
-    }
-}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AgentStatus {
     Running,

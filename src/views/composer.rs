@@ -1,9 +1,9 @@
 use gpui_kit::assets::IconName;
-use gpui_kit::component::Disableable;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::Textarea;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::theme::ActiveTheme;
+use gpui_kit::component::{Disableable, Sizable};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
@@ -29,19 +29,54 @@ impl Workspace {
         // was pending when the app closed (see `SendQueue::hydrate`).
         self.send_queue.hydrate(&self.project.chats_dir(), &self.chats);
         let running = self.chats[self.active].running;
+        // The running turn's own handle decides steerability — a provider
+        // switch mid-turn leaves the old turn's channel live.
+        let steerable = running && self.backend.supports_steer() && self.chats[self.active].stream.is_some();
+        let empty = self.composer.read(cx).value().trim().is_empty();
         let ws = cx.entity();
 
-        let send_button = if running {
-            Button::new("stop").danger().icon(IconName::Pause).on_click(cx.listener(|this, _, _, cx| {
+        // While a steerable turn runs, Enter still queues — the explicit
+        // Steer button injects into the turn instead.
+        let send_controls = if steerable {
+            div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(
+                    div().id("steer").test_support().child(
+                        Button::new("steer-btn")
+                            .primary()
+                            .xsmall()
+                            .icon(IconName::Send)
+                            .label("Steer")
+                            .disabled(empty)
+                            .on_click(cx.listener(|this, _, window, cx| this.send_steer(window, cx))),
+                    ),
+                )
+                .child(
+                    div().id("queue").test_support().child(
+                        Button::new("queue-btn")
+                            .ghost()
+                            .xsmall()
+                            .icon(IconName::Plus)
+                            .label("Queue")
+                            .disabled(empty)
+                            .on_click(cx.listener(|this, _, window, cx| this.send(window, cx))),
+                    ),
+                )
+                .child(Button::new("stop").danger().icon(IconName::Pause).on_click(cx.listener(|this, _, _, cx| {
+                    this.stop_reply(cx);
+                })))
+        } else if running {
+            div().child(Button::new("stop").danger().icon(IconName::Pause).on_click(cx.listener(|this, _, _, cx| {
                 this.stop_reply(cx);
-            }))
+            })))
         } else {
-            let empty = self.composer.read(cx).value().trim().is_empty();
             let btn = Button::new("send")
                 .primary()
                 .icon(IconName::ArrowUp)
                 .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)));
-            if empty { btn.disabled(true) } else { btn }
+            div().child(if empty { btn.disabled(true) } else { btn })
         };
 
         let model_picker = model_picker(ModelPickerSpec {
@@ -184,7 +219,7 @@ impl Workspace {
                             .child(Button::new("attach").ghost().icon(IconName::Paperclip).on_click(cx.listener(|this, _, _, cx| {
                                 this.attach_file(cx);
                             })))
-                            .child(send_button),
+                            .child(send_controls),
                     )
                     .child(
                         div()

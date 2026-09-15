@@ -10,10 +10,12 @@ mod appserver;
 mod claude;
 mod claude_parse;
 mod codex;
+mod codex_turn;
 mod http;
 mod models;
 mod rpc;
 mod sessions;
+mod steer;
 
 #[cfg(test)]
 mod acp_rpc_tests;
@@ -36,6 +38,8 @@ pub use claude::ClaudeCliBackend;
 pub use codex::CodexCliBackend;
 pub use http::HttpBackend;
 pub use models::fetch_codex_models;
+pub use steer::TurnHandle;
+pub(crate) use steer::kill_slot;
 
 /// How much filesystem access an Agent-mode turn gets. Plan/Ask turns are
 /// always read-only regardless of this setting.
@@ -235,9 +239,11 @@ pub enum AgentEvent {
 /// Dropping the stream (task cancel, chat delete, quit) kills the child.
 pub struct ReplyStream {
     pub events: std::sync::mpsc::Receiver<AgentEvent>,
-    /// Backend child for the in-flight turn — shared with the chat so
-    /// stop/delete can kill a hung process without waiting for the pump.
-    pub child: Option<std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>>,
+    /// Live handle for the in-flight turn — shared with the chat so
+    /// stop/delete can kill a hung process without waiting for the pump,
+    /// and so a steer can write into the turn's stdin when the backend
+    /// supports it (`TurnHandle::can_steer`).
+    pub child: Option<std::sync::Arc<dyn TurnHandle>>,
     /// Set on drop so the backend's retry loop can't spawn a fresh child
     /// after cancellation.
     pub(crate) cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -249,6 +255,15 @@ impl Drop for ReplyStream {
         if let Some(slot) = &self.child {
             kill_slot(slot);
         }
+    }
+}
+
+impl ReplyStream {
+    /// Inject `text` into the running turn (codex `turn/steer`). False when
+    /// the backend has no mid-turn input or the turn already ended — the
+    /// caller queues the message instead.
+    pub fn steer(&self, text: &str) -> bool {
+        self.child.as_ref().is_some_and(|h| h.steer(text))
     }
 }
 
@@ -286,6 +301,11 @@ pub trait AgentBackend: Send + Sync {
     /// events until `Done`/`Error` or cancellation (drop the stream to
     /// cancel).
     fn send(&self, prompt: &str, model: &str, mode: &str, ctx: &TurnContext) -> ReplyStream;
+    /// Whether this backend can inject user text into a running turn
+    /// (codex `turn/steer`). When false, steering falls back to queueing.
+    fn supports_steer(&self) -> bool {
+        false
+    }
     /// Whether this backend keeps resumable threads — gates the sidebar's
     /// Resume section. Cheap: no I/O, just capability.
     fn supports_sessions(&self) -> bool {
@@ -343,18 +363,6 @@ impl AgentBackend for SimBackend {
             child: None,
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
-    }
-}
-
-/// Kill and reap the child in the slot, if any.
-pub(crate) fn kill_slot(slot: &parking_lot::Mutex<Option<std::process::Child>>) {
-    if let Some(mut c) = slot.lock().take() {
-        let _ = c.kill();
-        // Reap off-thread — a child in uninterruptible sleep would block
-        // the UI on wait().
-        std::thread::spawn(move || {
-            let _ = c.wait();
-        });
     }
 }
 

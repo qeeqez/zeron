@@ -19,18 +19,21 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     // Snapshot the workdir before the backend can touch it — the turn's
     // "Undo" restores this checkpoint.
     this.record_turn_checkpoint(chat_id, &ctx.cwd);
-    let stream = this.backend.send(prompt, &model, &mode, &ctx);
+    let mut stream = this.backend.send(prompt, &model, &mode, &ctx);
     this.spawn_run_agent(crate::agents::RunAgentSpec { chat_id, name: this.backend.name(), lane: &model }, cx);
-    // Share the child slot with the chat so stop/delete can kill a hung
-    // process directly — dropping the stream only cancels once the pump
-    // thread wakes on the next event.
-    let child = stream.child.clone();
+    // The pump needs the receiver; the stream itself lands on the chat so
+    // stop/delete drop it (killing the child, setting `cancelled`) and the
+    // composer can steer into the turn. A dummy receiver stands in — the
+    // chat never reads events.
+    let (dead_tx, events) = std::sync::mpsc::channel();
+    let events = std::mem::replace(&mut stream.events, events);
+    drop(dead_tx);
     // The task's future owns this guard: dropping the task (stop, chat
     // delete, quit) drops the future and sets `cancelled` right away —
     // the pump thread's stream drop only fires once it wakes on an event.
     let cancel = stream.cancel_guard();
     let (tx, rx) = std::sync::mpsc::channel::<AgentEvent>();
-    std::thread::spawn(move || pump_stream(stream, tx));
+    std::thread::spawn(move || pump_stream(events, tx));
 
     let task = cx.spawn(async move |this, cx| {
         let _cancel = cancel;
@@ -59,7 +62,7 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     });
     if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
         chat.reply_task = Some(task);
-        chat.child = child;
+        chat.stream = Some(stream);
         // A fresh turn starts the meter's per-turn counter over.
         chat.usage.begin_turn();
     }
@@ -98,7 +101,10 @@ impl Workspace {
             AgentEvent::ApprovalRequest { kind, detail, .. } => {
                 self.agent_log(
                     chat_id,
-                    crate::agents::AgentLogEntry { line: format!("approval: {} {detail}", kind.label()), count_step: false },
+                    crate::agents::AgentLogEntry {
+                        line: format!("approval: {} {detail}", kind.label()),
+                        count_step: false,
+                    },
                     cx,
                 );
             },
@@ -221,10 +227,10 @@ fn update_tool(chat: &mut crate::model::Chat, ix: usize, f: impl FnOnce(&mut Too
 }
 
 /// Drain the backend event channel into `tx` on a blocking thread.
-/// `recv` returns `Err` when the producer exits; dropping `stream` here
-/// kills the child process if the UI side went away first.
-fn pump_stream(stream: crate::backend::ReplyStream, tx: std::sync::mpsc::Sender<AgentEvent>) {
-    while let Ok(e) = stream.events.recv() {
+/// `recv` returns `Err` when the producer exits. The `ReplyStream` itself
+/// lives on the chat — dropping it there kills the child.
+fn pump_stream(events: std::sync::mpsc::Receiver<AgentEvent>, tx: std::sync::mpsc::Sender<AgentEvent>) {
+    while let Ok(e) = events.recv() {
         if tx.send(e).is_err() {
             break;
         }

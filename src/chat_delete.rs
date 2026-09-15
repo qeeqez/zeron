@@ -39,7 +39,7 @@ impl Workspace {
         // A worktree thread's checkout goes with it — remove before the
         // chat drops so the path is still known.
         crate::worktree::remove_for(self.project.root(), &self.chats[index]);
-        // Chat::drop kills the child slot and cancels the reply task.
+        // Chat drop kills the turn: the stream's Drop kills the child.
         self.chats.remove(index);
         if self.active >= self.chats.len() {
             self.active = self.chats.len() - 1;

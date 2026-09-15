@@ -20,7 +20,7 @@ pub(crate) enum Drain {
 }
 
 /// User text plus attachment paths so the backend can open the files.
-fn build_prompt(text: &str, attachments: &[SharedString]) -> String {
+pub(crate) fn build_prompt(text: &str, attachments: &[SharedString]) -> String {
     if attachments.is_empty() {
         return text.to_string();
     }
@@ -81,7 +81,7 @@ impl Workspace {
         self.send_text(Queued::new(text.to_string(), attachments), window, cx);
     }
 
-    fn clear_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn clear_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.composer.update(cx, |state, cx| {
             state.set_value("", window, cx);
         });
@@ -92,8 +92,22 @@ impl Workspace {
     /// the caller already cleared the live composer list. Caller guarantees
     /// the chat is idle and clears the composer.
     pub(crate) fn send_text(&mut self, item: Queued, window: &mut Window, cx: &mut Context<Self>) {
+        let prompt = build_prompt(&item.text, &item.attachments);
+        self.push_user_message(item, window, cx);
+        let chat = &mut self.chats[self.active];
+        chat.running = true;
+        chat.failed_flag = false;
+        chat.started_at = Some(std::time::Instant::now());
+        self.recall_ix = None;
+        self.recall_saved = None;
+        self.start_reply(&prompt, cx);
+    }
+
+    /// Append `item` as a user message on the active chat — shared by
+    /// `send_text` (new turn) and `send_steer` (mid-turn injection). Sets
+    /// the title on a fresh chat and grows the scroller.
+    pub(crate) fn push_user_message(&mut self, item: Queued, window: &mut Window, cx: &mut Context<Self>) {
         let Queued { text, attachments, .. } = item;
-        let prompt = build_prompt(&text, &attachments);
         let chat = &mut self.chats[self.active];
         if chat.messages.is_empty() && chat.title == "New chat" {
             let title = text.lines().next().unwrap_or("").chars().take(40).collect::<String>();
@@ -114,18 +128,11 @@ impl Workspace {
             attachments,
             at: SystemTime::now(),
         });
-        chat.running = true;
-        chat.failed_flag = false;
-        chat.started_at = Some(std::time::Instant::now());
-        self.recall_ix = None;
-        self.recall_saved = None;
-
         if self.push_visible(cx) {
             self.scroller.update(cx, |s, cx| s.append(1, cx));
         }
         cx.notify();
         self.save();
-        self.start_reply(&prompt, cx);
     }
 
     /// Poll the queue on a timer and drain it when the turn ends. Spawned on

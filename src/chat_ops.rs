@@ -84,18 +84,16 @@ impl Workspace {
         self.stop_chat_reply(id, cx);
     }
 
-    /// Stop the in-flight reply for chat `id`. Kills the backend child
-    /// directly — a hung child would otherwise leak because the pump
-    /// thread only drops the stream when it wakes on an event.
+    /// Stop the in-flight reply for chat `id`. Dropping the stream kills
+    /// the backend child directly — a hung child would otherwise leak
+    /// because the pump thread only ends when the event channel closes.
     pub(crate) fn stop_chat_reply(&mut self, chat_id: u64, cx: &mut Context<Self>) {
         // Snapshot the turn's tool calls onto the agent row while the link
         // still resolves — clearing `run_agent` first would leave the
         // cancelled card with no tool rows.
         self.snapshot_chat_tools(chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
-        if let Some(slot) = chat.child.take() {
-            crate::backend::kill_slot(&slot);
-        }
+        drop(chat.stream.take()); // kills the child, sets `cancelled`
         if let Some(task) = chat.reply_task.take() {
             drop(task); // non-detached Task cancels on drop
         }
@@ -133,7 +131,7 @@ impl Workspace {
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.running = false;
         chat.complete_turn();
-        chat.child = None;
+        chat.stream = None;
         // The backend stopped waiting — any approval card still showing
         // buttons can no longer reach it, so drop the responder and let
         // the card render as expired.
@@ -300,5 +298,14 @@ impl Workspace {
 
     pub fn running_agents(&self) -> usize {
         self.agents.iter().filter(|a| a.status == crate::model::AgentStatus::Running).count()
+    }
+}
+
+impl Chat {
+    /// Record how long the just-finished turn took and clear `started_at`.
+    /// Callers: `finish_reply`, `finish_stream` (simulate.rs),
+    /// `stop_reply` — each replaces its `chat.started_at = None` with this.
+    pub fn complete_turn(&mut self) {
+        self.last_turn = self.started_at.take().map(|t| t.elapsed());
     }
 }

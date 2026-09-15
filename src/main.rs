@@ -82,7 +82,6 @@ mod send;
 mod send_queue;
 #[cfg(test)]
 mod send_tests;
-mod speech;
 #[cfg(test)]
 mod settings_providers_tests;
 #[cfg(test)]
@@ -91,6 +90,10 @@ mod sidebar_resize_tests;
 mod sidebar_ui_tests;
 mod simulate;
 mod slash;
+mod speech;
+mod steer;
+#[cfg(test)]
+mod steer_tests;
 mod thread_defaults;
 #[cfg(test)]
 mod thread_defaults_tests;
