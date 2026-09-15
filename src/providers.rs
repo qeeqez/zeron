@@ -4,6 +4,8 @@
 //! `ProviderInstance` is one configured entry — its own id, name, enabled
 //! flag, connection fields and per-model configuration.
 
+use gpui_kit::assets::IconName;
+
 use crate::model::ModelInfo;
 
 /// A provider catalog refresh — runs on a background thread, returns the
@@ -34,6 +36,8 @@ pub struct ProviderKindInfo {
     pub label: &'static str,
     /// One-line description shown in the Providers settings section.
     pub tagline: &'static str,
+    /// Icon shown next to instances of this kind (picker, settings).
+    pub icon: IconName,
     /// Refresh an instance's catalog from the provider itself; `None` for
     /// kinds whose `models()` list is already complete.
     pub fetch: Option<ModelFetch>,
@@ -48,30 +52,35 @@ impl ProviderKind {
             slug: "codex-cli",
             label: "Codex",
             tagline: "codex app-server over stdio",
+            icon: IconName::Bot,
             fetch: Some(crate::backend::fetch_codex_models),
         };
         const CLAUDE: ProviderKindInfo = ProviderKindInfo {
             slug: "claude-cli",
             label: "Claude",
             tagline: "claude CLI over stdio",
+            icon: IconName::Sparkles,
             fetch: None,
         };
         const ACP: ProviderKindInfo = ProviderKindInfo {
             slug: "acp",
             label: "ACP",
             tagline: "Agent Client Protocol agent",
+            icon: IconName::Network,
             fetch: None,
         };
         const HTTP: ProviderKindInfo = ProviderKindInfo {
             slug: "http",
             label: "HTTP",
             tagline: "custom NDJSON endpoint",
+            icon: IconName::Globe,
             fetch: None,
         };
         const SIM: ProviderKindInfo = ProviderKindInfo {
             slug: "sim",
             label: "Sim",
             tagline: "built-in simulator (no backend)",
+            icon: IconName::FlaskConical,
             fetch: None,
         };
         match self {

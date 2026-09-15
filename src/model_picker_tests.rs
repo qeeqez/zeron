@@ -1,11 +1,12 @@
-//! Headless tests for the provider→model picker: injected catalogs render
-//! under instance submenus, picks switch instance+model, and disabled
-//! instances stay out of the menu. There is no synthetic `default` entry —
-//! a provider with no catalog shows an empty submenu.
+//! Headless tests for the two-pane provider→model picker: the left pane
+//! lists enabled instances with their kind icons, the right pane lists the
+//! browsed instance's models, picks switch instance+model and close the
+//! popover, and disabled instances stay out. There is no synthetic
+//! `default` entry — a provider with no catalog shows an empty state.
 
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, Entity, SharedString, TestAppContext, VisualTestContext};
+use gpui_kit::{App, AppContext, Entity, SharedString, TestAppContext, VisualTestContext, Window};
 
 use crate::model::ModelInfo;
 use crate::workspace::Workspace;
@@ -42,6 +43,14 @@ fn inject(ws: &Entity<Workspace>, cx: &mut VisualTestContext, instance: &str, mo
     ws.update(cx, |this, cx| this.land_catalog(instance, models, cx));
 }
 
+/// Open the picker popover and let the deferred content paint.
+fn open_picker(window: &mut Window, cx: &mut App) {
+    window.draw(cx).clear(cx);
+    window.click("model", cx);
+    window.draw(cx).clear(cx);
+    window.draw(cx).clear(cx);
+}
+
 #[test]
 fn picker_options_have_no_default_entry() {
     let mut app = TestAppContext::single();
@@ -52,21 +61,40 @@ fn picker_options_have_no_default_entry() {
 }
 
 #[test]
-fn picker_shows_injected_catalog_under_provider() {
+fn picker_opens_two_panes_listing_providers_and_models() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     inject(&ws, cx, "codex-cli", vec![mi("gpt-9", "GPT-9")]);
     cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        window.click("model", cx);
-        window.draw(cx).clear(cx);
-        assert!(window.find("popup-menu").visible(), "model menu should open");
-        // Hover the first provider submenu (codex-cli) to reveal its models.
-        window.within("popup-menu").hover(0usize, cx);
-        window.draw(cx).clear(cx);
+        open_picker(window, cx);
+        assert!(window.find("model-picker-panes").visible(), "picker popover should open");
+        // LEFT: every enabled instance renders a row.
+        for id in ["codex-cli", "claude-cli", "acp", "http", "sim"] {
+            assert!(window.find(format!("provider-{id}")).visible(), "provider {id} should be listed");
+        }
+        // RIGHT: the active provider's models — injected catalog, no default row.
         assert!(window.try_find("model-opt-codex-cli-default").is_none(), "no synthetic default row");
         assert!(window.find("model-opt-codex-cli-gpt-9").visible(), "injected model should render");
+        // Another provider's models stay out of the right pane.
+        assert!(window.try_find("model-opt-sim-sim").is_none(), "only the browsed provider's models render");
     });
+}
+
+#[test]
+fn browsing_provider_swaps_the_model_pane() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    inject(&ws, cx, "codex-cli", vec![mi("gpt-9", "GPT-9")]);
+    cx.update(|window, cx| {
+        open_picker(window, cx);
+        window.click("provider-sim", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.find("model-opt-sim-sim").visible(), "browsed provider's model should render");
+        assert!(window.try_find("model-opt-codex-cli-gpt-9").is_none(), "previous provider's models are gone");
+    });
+    // Browsing must not change the selection.
+    let provider = ws.read_with(cx, |w, _| w.selected_provider().map(str::to_string));
+    assert_eq!(provider.as_deref(), Some("codex-cli"));
 }
 
 #[test]
@@ -75,14 +103,12 @@ fn picking_model_selects_provider_and_model() {
     let (ws, cx) = mount(&mut app);
     inject(&ws, cx, "sim", vec![mi("sim-x", "Sim X")]);
     cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        window.click("model", cx);
-        window.draw(cx).clear(cx);
-        // sim is the last provider submenu.
-        window.within("popup-menu").hover(4usize, cx);
+        open_picker(window, cx);
+        window.click("provider-sim", cx);
         window.draw(cx).clear(cx);
         window.click("model-opt-sim-sim-x", cx);
         window.draw(cx).clear(cx);
+        assert!(window.try_find("model-picker-panes").is_none(), "picking a model closes the popover");
     });
     let (provider, model, backend) =
         ws.read_with(cx, |w, _| (w.selected_provider().map(str::to_string), w.model.to_string(), w.backend.name()));
@@ -97,18 +123,28 @@ fn disabled_provider_hidden_and_unselectable() {
     ws.update(cx, |this, cx| this.set_provider_enabled("sim", false, cx));
     assert!(!ws.read_with(cx, |w, _| w.enabled_providers().iter().any(|p| p.id == "sim")));
     cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        window.click("model", cx);
-        window.draw(cx).clear(cx);
-        // Four enabled providers remain; sim's submenu is gone.
-        assert!(window.within("popup-menu").try_find(4usize).is_none(), "disabled provider must not render");
-        window.within("popup-menu").hover(0usize, cx);
-        window.draw(cx).clear(cx);
-        assert!(window.try_find("model-opt-sim-sim-x").is_none(), "disabled provider's models stay hidden");
+        open_picker(window, cx);
+        assert!(window.try_find("provider-sim").is_none(), "disabled provider must not render");
+        assert!(window.find("provider-http").visible(), "enabled providers still render");
     });
     // And the command path refuses it too.
     let changed = ws.update(cx, |this, cx| this.select_model("sim", "sim-x", cx));
     assert!(!changed, "disabled provider must not be selectable");
+}
+
+#[test]
+fn empty_provider_shows_empty_state() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    // acp learns its catalog at runtime — nothing injected, nothing listed.
+    assert!(ws.read_with(cx, |w, _| w.models_for("acp").is_empty()));
+    cx.update(|window, cx| {
+        open_picker(window, cx);
+        window.click("provider-acp", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.find("model-picker-empty").visible(), "empty provider shows an empty state");
+        assert!(window.try_find("model-opt-acp-default").is_none(), "no synthetic default row");
+    });
 }
 
 #[test]
