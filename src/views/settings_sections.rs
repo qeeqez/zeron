@@ -70,7 +70,7 @@ pub fn section_body(section: Section, s: &SettingsView, cx: &App) -> impl IntoEl
         Section::Providers => crate::views::settings_providers::providers_section(s, cx).into_any_element(),
         Section::Shortcuts => crate::views::settings_shortcuts::shortcuts_section(cx).into_any_element(),
         Section::Voice => placeholder_section("Voice input and dictation are not configured yet.", cx),
-        Section::Profile => placeholder_section("Signed in as a local account — no profile to manage.", cx),
+        Section::Profile => crate::views::settings_profile::profile_section(s, cx).into_any_element(),
         Section::McpServers => crate::views::settings_mcp::mcp_section(s, cx).into_any_element(),
     };
     div()

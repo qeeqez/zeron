@@ -215,6 +215,16 @@ impl Workspace {
             .detach();
     }
 
+    /// Sign out every provider that has a logout flow — the Profile
+    /// section's "Sign out all". Env-keyed credentials aren't sessions, so
+    /// they're untouched (the env var stays set).
+    pub fn sign_out_all(&mut self, cx: &mut Context<Self>) {
+        let ids: Vec<String> = self.providers.iter().filter(|p| logout_flow(p.kind).is_some()).map(|p| p.id.clone()).collect();
+        for id in ids {
+            self.sign_out(&id, cx);
+        }
+    }
+
     /// `Some(reason)` when the selected provider can't take a send — the
     /// caller shows the reason instead of spawning a turn. Only a known
     /// `SignedOut` gates; `Unknown` stays permissive so a broken status
