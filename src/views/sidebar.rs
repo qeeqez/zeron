@@ -13,6 +13,7 @@ impl Workspace {
     pub fn render_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let collapsed = self.sidebar_collapsed;
         let header = div()
+            .w_full()
             .flex()
             .flex_col()
             .gap_2()
