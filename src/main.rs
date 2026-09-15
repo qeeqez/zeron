@@ -7,6 +7,9 @@ mod agents_tests;
 mod appearance;
 #[cfg(test)]
 mod appearance_tests;
+mod approval_ops;
+#[cfg(test)]
+mod approval_tests;
 mod backend;
 mod backend_parse;
 #[cfg(test)]
@@ -79,6 +82,7 @@ mod send;
 mod send_queue;
 #[cfg(test)]
 mod send_tests;
+mod speech;
 #[cfg(test)]
 mod settings_providers_tests;
 #[cfg(test)]

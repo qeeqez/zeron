@@ -20,6 +20,10 @@ impl Workspace {
                 MessageKind::Tool(t) => format!("`{} {}`\n```\n{}\n```", t.name, t.detail, t.output),
                 MessageKind::Diff(d) => format!("`{}` +{} -{}\n```diff\n{}\n```", d.path, d.added, d.removed, d.hunks),
                 MessageKind::Plan(p) => p.markdown(),
+                MessageKind::Approval(a) => {
+                    let outcome = a.decision.map_or("pending", |d| d.label());
+                    format!("**{}:** `{}` — {}", a.kind.label(), a.detail, outcome)
+                },
             };
             out.push_str(&format!("## {role}\n\n{body}\n\n"));
         }
@@ -57,6 +61,10 @@ impl Workspace {
                     MessageKind::Tool(t) => format!("`{} {}`\n```\n{}\n```", t.name, t.detail, t.output),
                     MessageKind::Diff(d) => format!("`{}` +{} -{}\n```diff\n{}\n```", d.path, d.added, d.removed, d.hunks),
                     MessageKind::Plan(p) => p.markdown(),
+                    MessageKind::Approval(a) => {
+                        let outcome = a.decision.map_or("pending", |d| d.label());
+                        format!("**{}:** `{}` — {}", a.kind.label(), a.detail, outcome)
+                    },
                 };
                 format!("{role}: {body}")
             })

@@ -2,7 +2,7 @@
 //! no subprocess or network. Line shapes mirror a captured 0.154.0 stream.
 
 use super::appserver::TurnDecoder;
-use crate::backend::AgentEvent;
+use crate::backend::{AgentEvent, ApprovalRoute};
 
 fn events(d: &mut TurnDecoder, line: &str) -> Vec<AgentEvent> {
     d.line(line).events
@@ -10,7 +10,7 @@ fn events(d: &mut TurnDecoder, line: &str) -> Vec<AgentEvent> {
 
 #[test]
 fn agent_message_streams_deltas() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     let evs = events(
         &mut d,
         r#"{"method":"item/started","params":{"item":{"type":"agentMessage","id":"m1","text":"","phase":"final_answer"},"threadId":"t","turnId":"u","startedAtMs":1}}"#,
@@ -35,7 +35,7 @@ fn agent_message_streams_deltas() {
 
 #[test]
 fn agent_message_completed_without_deltas() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     let evs = events(
         &mut d,
         r#"{"method":"item/completed","params":{"item":{"type":"agentMessage","id":"m1","text":"hi"},"threadId":"t","turnId":"u","completedAtMs":1}}"#,
@@ -46,7 +46,7 @@ fn agent_message_completed_without_deltas() {
 
 #[test]
 fn command_execution_streams_output() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     let evs = events(
         &mut d,
         r#"{"method":"item/started","params":{"item":{"type":"commandExecution","id":"c1","command":"/bin/zsh -lc 'ls'","status":"inProgress","aggregatedOutput":null,"exitCode":null},"threadId":"t","turnId":"u","startedAtMs":1}}"#,
@@ -71,7 +71,7 @@ fn command_execution_streams_output() {
 
 #[test]
 fn command_execution_completed_without_deltas() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     let evs = events(
         &mut d,
         r#"{"method":"item/completed","params":{"item":{"type":"commandExecution","id":"c1","command":"ls","status":"completed","aggregatedOutput":"out","exitCode":0},"threadId":"t","turnId":"u","completedAtMs":1}}"#,
@@ -85,7 +85,7 @@ fn command_execution_completed_without_deltas() {
 
 #[test]
 fn failed_command_marks_not_ok() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     let evs = events(
         &mut d,
         r#"{"method":"item/completed","params":{"item":{"type":"commandExecution","id":"c1","command":"false","status":"failed","aggregatedOutput":"","exitCode":1},"threadId":"t","turnId":"u","completedAtMs":1}}"#,
@@ -95,7 +95,7 @@ fn failed_command_marks_not_ok() {
 
 #[test]
 fn reasoning_streams_into_thinking_card() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     let evs = events(
         &mut d,
         r#"{"method":"item/started","params":{"item":{"type":"reasoning","id":"r1","summary":[],"content":[]},"threadId":"t","turnId":"u","startedAtMs":1}}"#,
@@ -118,7 +118,7 @@ fn reasoning_streams_into_thinking_card() {
 
 #[test]
 fn plan_updates_replace_checklist() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     let evs = events(
         &mut d,
         r#"{"method":"turn/plan/updated","params":{"threadId":"t","turnId":"u","explanation":null,"plan":[{"step":"scan","status":"inProgress"},{"step":"edit","status":"pending"}]}}"#,
@@ -143,7 +143,7 @@ fn plan_updates_replace_checklist() {
 
 #[test]
 fn plan_item_completed_decodes_checklist_text() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     // A `plan` item whose text is a markdown checklist becomes Plan steps.
     let evs = events(
         &mut d,
@@ -155,7 +155,7 @@ fn plan_item_completed_decodes_checklist_text() {
     assert_eq!(steps[1].status, crate::model::PlanStatus::Pending);
 
     // Prose plans keep the old text card — opened and closed in one shot.
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     let evs = events(
         &mut d,
         r#"{"method":"item/completed","params":{"item":{"type":"plan","id":"p2","text":"Approach:\nDo the thing."},"threadId":"t","turnId":"u"}}"#,
@@ -168,7 +168,7 @@ fn plan_item_completed_decodes_checklist_text() {
 
 #[test]
 fn mcp_tool_call_lifecycle() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     let evs = events(
         &mut d,
         r#"{"method":"item/started","params":{"item":{"type":"mcpToolCall","id":"p1","server":"docs","tool":"search","status":"inProgress","arguments":{}},"threadId":"t","turnId":"u","startedAtMs":1}}"#,
@@ -194,7 +194,7 @@ fn mcp_tool_call_lifecycle() {
 
 #[test]
 fn web_search_card() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     let evs = events(
         &mut d,
         r#"{"method":"item/started","params":{"item":{"type":"webSearch","id":"w1","query":"rust async","action":null},"threadId":"t","turnId":"u","startedAtMs":1}}"#,
@@ -209,7 +209,7 @@ fn web_search_card() {
 
 #[test]
 fn error_will_retry_is_transient() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     let evs = events(
         &mut d,
         r#"{"method":"error","params":{"error":{"message":"Reconnecting... 1/5","additionalDetails":null},"willRetry":true,"threadId":"t","turnId":"u"}}"#,
@@ -227,7 +227,7 @@ fn error_will_retry_is_transient() {
 fn mcp_structured_only_result_renders() {
     // `structuredContent` as an object with an empty `content` array must
     // still produce output — `as_str()` alone would render it blank.
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     events(
         &mut d,
         r#"{"method":"item/started","params":{"item":{"type":"mcpToolCall","id":"m1","server":"db","tool":"query","status":"inProgress","arguments":{}},"threadId":"t","turnId":"u","startedAtMs":1}}"#,
@@ -244,33 +244,8 @@ fn mcp_structured_only_result_renders() {
 }
 
 #[test]
-fn server_requests_get_declined() {
-    let mut d = TurnDecoder::new();
-    let dec = d.line(
-        r#"{"method":"item/commandExecution/requestApproval","id":9,"params":{"threadId":"t","turnId":"u","itemId":"c1","command":"rm -rf /"}}"#,
-    );
-    let resp = dec.response.expect("approval needs a reply");
-    assert_eq!(resp["id"], serde_json::json!(9));
-    assert_eq!(resp["result"]["decision"], serde_json::json!("decline"));
-
-    let dec = d.line(r#"{"method":"item/fileChange/requestApproval","id":10,"params":{"threadId":"t","turnId":"u","itemId":"f1"}}"#);
-    assert_eq!(dec.response.unwrap()["result"]["decision"], serde_json::json!("decline"));
-
-    let dec = d.line(r#"{"method":"applyPatchApproval","id":11,"params":{"conversationId":"t","callId":"c","fileChanges":{}}}"#);
-    assert_eq!(dec.response.unwrap()["result"]["decision"], serde_json::json!("denied"));
-
-    let dec = d.line(r#"{"method":"mcpServer/elicitation/request","id":12,"params":{"threadId":"t","message":"need input"}}"#);
-    assert_eq!(dec.response.unwrap()["result"]["action"], serde_json::json!("decline"));
-
-    // Unknown requests get a JSON-RPC error so the server can't hang.
-    let dec = d.line(r#"{"method":"item/tool/requestUserInput","id":13,"params":{"threadId":"t","turnId":"u","itemId":"x","questions":[],"isBlocking":true}}"#);
-    let resp = dec.response.unwrap();
-    assert!(resp.get("error").is_some());
-}
-
-#[test]
 fn malformed_and_unrelated_lines_ignored() {
-    let mut d = TurnDecoder::new();
+    let mut d = TurnDecoder::new(ApprovalRoute::Ask);
     assert!(events(&mut d, "not json").is_empty());
     assert!(events(&mut d, r#"{"method":"mcpServer/startupStatus/updated","params":{"name":"x","status":"ready"}}"#).is_empty());
     assert!(events(&mut d, r#"{"method":"thread/started","params":{"thread":{"id":"t"}}}"#).is_empty());

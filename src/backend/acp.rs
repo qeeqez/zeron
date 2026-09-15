@@ -98,13 +98,13 @@ pub(super) struct AcpTurn {
 #[cfg(test)]
 impl AcpTurn {
     /// A turn over a fake command for pump/decoder tests — never spawned.
-    pub(super) fn for_test(model: &str, mode: &str) -> Self {
+    pub(super) fn for_test(model: &str, mode: &str, access: super::AccessMode) -> Self {
         Self {
             command: vec!["acp-agent".into()],
             prompt: "hi".into(),
             model: model.into(),
             mode: mode.into(),
-            access: super::AccessMode::Auto,
+            access,
             cwd: std::path::PathBuf::from("/tmp"),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -246,11 +246,8 @@ pub(super) fn pump(turn: &AcpTurn, reader: impl BufRead, stdin: Box<dyn Write>, 
             continue;
         }
         if msg.get("id").is_some() {
-            // Agent→client request (permission, fs/*): answer so the turn
-            // can't hang waiting on a UI we don't have.
-            let reply = wire::request_reply(msg["method"].as_str().unwrap_or(""), &msg, &policy);
-            if hs.send(&reply).is_err() {
-                return PumpEnd::Dead;
+            if let Some(end) = agent_request(&msg, &mut hs, &policy, tx) {
+                return end;
             }
             continue;
         }
@@ -266,6 +263,42 @@ pub(super) fn pump(turn: &AcpTurn, reader: impl BufRead, stdin: Box<dyn Write>, 
 /// Emit the turn's final events; `Dead` when the receiver is gone.
 fn drain_done(events: Vec<AgentEvent>, tx: &std::sync::mpsc::Sender<AgentEvent>) -> PumpEnd {
     if events.into_iter().any(|e| tx.send(e).is_err()) { PumpEnd::Dead } else { PumpEnd::Done }
+}
+
+/// Handle an agent→client request (`id` + `method`). Permission prompts in
+/// "ask" modes surface as a card: emit the event, then block until the user
+/// answers (a dropped responder — stop/delete — answers Deny). Other
+/// requests (fs/*, unknown) get a canned reply so the turn can't hang.
+/// `Some(end)` when the pump should stop.
+fn agent_request(
+    msg: &Value,
+    hs: &mut Handshake,
+    policy: &wire::Policy,
+    tx: &std::sync::mpsc::Sender<AgentEvent>,
+) -> Option<PumpEnd> {
+    let method = msg["method"].as_str().unwrap_or("");
+    if method == "session/request_permission" && matches!(policy.route, super::ApprovalRoute::Ask) {
+        let (respond, rx) = std::sync::mpsc::channel();
+        let tool_id = msg["params"]["toolCall"]["toolCallId"].as_str().unwrap_or("");
+        let key = if tool_id.is_empty() { msg["id"].to_string() } else { tool_id.to_string() };
+        let ev = AgentEvent::ApprovalRequest {
+            ix: super::acp_decode::ix_of(&key),
+            kind: super::ApprovalKind::Permission,
+            detail: wire::permission_detail(&msg["params"]).into(),
+            respond,
+        };
+        if tx.send(ev).is_err() {
+            return Some(PumpEnd::Dead);
+        }
+        let decision = rx.recv().unwrap_or(super::ApprovalDecision::Deny);
+        let reply = wire::permission_answer(msg["id"].clone(), &msg["params"], decision);
+        if hs.send(&reply).is_err() {
+            return Some(PumpEnd::Dead);
+        }
+        return None;
+    }
+    let reply = wire::request_reply(method, msg, policy);
+    if hs.send(&reply).is_err() { Some(PumpEnd::Dead) } else { None }
 }
 
 /// Result of handling one response: keep pumping, or the turn is over

@@ -1,5 +1,6 @@
 mod agents_card;
 mod agents_panel;
+mod approval;
 mod cards;
 mod changes;
 mod chat_view;

@@ -7,7 +7,8 @@ use std::io::Write;
 
 use serde_json::{Value, json};
 
-use super::AccessMode;
+use super::{AccessMode, ApprovalDecision, ApprovalRoute};
+
 use crate::model::ModelInfo;
 
 /// Write one JSON-RPC message as a single NDJSON line.
@@ -89,10 +90,11 @@ pub(super) fn set_model_req(id: i64, session_id: &str, model_id: &str) -> Value 
 /// What the client may do on the agent's behalf — derived from the chat
 /// mode and access setting at spawn time.
 pub(super) struct Policy {
-    /// Auto-approve `session/request_permission` (Agent mode + write
-    /// access — the codex backend's `approvalPolicy: "never"` equivalent).
-    pub auto_allow: bool,
-    /// Honor `fs/write_text_file` requests (same condition as `auto_allow`).
+    /// How `session/request_permission` is answered: a card the user
+    /// clicks (Agent mode in the "ask" access levels), or an immediate
+    /// canned decision — auto modes approve, read-only modes deny.
+    pub route: ApprovalRoute,
+    /// Honor `fs/write_text_file` requests (Agent mode with write access).
     pub write_fs: bool,
     /// Confine `fs/write_text_file` to the working directory
     /// (workspace-write access).
@@ -105,7 +107,7 @@ impl Policy {
     pub(super) fn of(mode: &str, access: AccessMode, cwd: std::path::PathBuf) -> Self {
         let agent = mode == "Agent";
         Self {
-            auto_allow: agent && access.auto_allows(),
+            route: if agent { access.approval_route() } else { ApprovalRoute::Auto(ApprovalDecision::Deny) },
             write_fs: agent && access.writes(),
             workspace_only: access.workspace_only(),
             cwd,
@@ -114,32 +116,47 @@ impl Policy {
 }
 
 /// JSON-RPC response for an agent-initiated request. Permission prompts
-/// follow `policy` (no approval UI exists); `fs/*` does real file I/O;
-/// everything else gets method-not-found so the agent can't hang waiting.
+/// follow `policy`; `fs/*` does real file I/O; everything else gets
+/// method-not-found so the agent can't hang waiting.
 pub(super) fn request_reply(method: &str, msg: &Value, policy: &Policy) -> Value {
     let id = msg["id"].clone();
     match method {
-        "session/request_permission" => permission_reply(id, &msg["params"], policy),
+        "session/request_permission" => {
+            let decision = match policy.route {
+                ApprovalRoute::Auto(d) => d,
+                // The pump intercepts Ask before calling us — a request
+                // that still lands here (shouldn't happen) is denied.
+                ApprovalRoute::Ask => ApprovalDecision::Deny,
+            };
+            permission_answer(id, &msg["params"], decision)
+        },
         "fs/read_text_file" => read_file_reply(id, &msg["params"]),
         "fs/write_text_file" => write_file_reply(id, &msg["params"], policy),
         _ => json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": format!("rixlcode cannot answer {method}")}}),
     }
 }
 
-/// Pick a permission option without a UI: `allow_once` when the turn may
-/// write, otherwise `reject_once`. `cancelled` is the fallback when the
-/// agent offered no option of the right kind.
-fn permission_reply(id: Value, params: &Value, policy: &Policy) -> Value {
+/// Card detail for a `session/request_permission`: the tool call's title,
+/// falling back to its kind — that's all the agent tells us.
+pub(super) fn permission_detail(params: &Value) -> String {
+    let tool = &params["toolCall"];
+    tool["title"].as_str().or_else(|| tool["kind"].as_str()).unwrap_or("").to_string()
+}
+
+/// Answer a `session/request_permission` with the user's decision: pick
+/// the offered option whose kind matches (`allow_once`/`allow_always`/
+/// `reject_once`), `cancelled` when the agent offered nothing suitable.
+pub(super) fn permission_answer(id: Value, params: &Value, decision: ApprovalDecision) -> Value {
     let options = params["options"].as_array();
     let pick = |kind: &str| {
         options
             .and_then(|os| os.iter().find(|o| o["kind"].as_str() == Some(kind)))
             .and_then(|o| o["optionId"].as_str())
     };
-    let selected = if policy.auto_allow {
-        pick("allow_once").or_else(|| pick("allow_always"))
-    } else {
-        pick("reject_once").or_else(|| pick("reject_always"))
+    let selected = match decision {
+        ApprovalDecision::Approve => pick("allow_once").or_else(|| pick("allow_always")),
+        ApprovalDecision::ApproveForSession => pick("allow_always").or_else(|| pick("allow_once")),
+        ApprovalDecision::Deny => pick("reject_once").or_else(|| pick("reject_always")),
     };
     let outcome = match selected {
         Some(option_id) => json!({"outcome": "selected", "optionId": option_id}),

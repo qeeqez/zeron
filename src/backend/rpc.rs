@@ -4,6 +4,8 @@
 
 use serde_json::{Value, json};
 
+use super::{ApprovalDecision, ApprovalKind, ApprovalRoute};
+
 /// `initialize` request — clientInfo identifies us in the server's logs.
 pub(crate) fn initialize_req(id: i64) -> Value {
     json!({
@@ -145,20 +147,135 @@ pub(crate) fn parse_model_page(result: &Value) -> (Vec<crate::model::ModelInfo>,
     (models, result["nextCursor"].as_str().map(|s| json!(s)))
 }
 
-/// JSON-RPC response for a server-initiated request. There's no approval
-/// UI, so approvals are declined and everything else gets a generic error —
-/// matching `codex exec`'s non-interactive behavior.
-pub(crate) fn request_reply(method: &str, msg: &Value) -> Value {
+/// The codex `ReviewDecision` wire value for a UI decision — shared by the
+/// v2 `item/*/requestApproval` methods and the legacy `*Approval` ones.
+fn review_decision(d: ApprovalDecision) -> &'static str {
+    match d {
+        ApprovalDecision::Approve => "approved",
+        ApprovalDecision::Deny => "denied",
+        ApprovalDecision::ApproveForSession => "approved_for_session",
+    }
+}
+
+/// Whether a server-initiated method is an approval request the user can
+/// answer — the rest (elicitation, user input) still get canned replies.
+fn is_approval(method: &str) -> bool {
+    matches!(
+        method,
+        "item/commandExecution/requestApproval"
+            | "item/fileChange/requestApproval"
+            | "applyPatchApproval"
+            | "execCommandApproval"
+    )
+}
+
+/// Card kind + detail for an approval request, or `None` when the method
+/// isn't an approval. `command` arrives as a string or an argv array;
+/// patch requests summarize their `fileChanges`/`files` keys.
+pub(crate) fn approval_detail(method: &str, params: &Value) -> Option<(ApprovalKind, String)> {
+    let kind = match method {
+        "item/commandExecution/requestApproval" | "execCommandApproval" => ApprovalKind::Command,
+        "item/fileChange/requestApproval" | "applyPatchApproval" => ApprovalKind::Patch,
+        _ => return None,
+    };
+    let detail = match kind {
+        ApprovalKind::Command => command_text(params),
+        ApprovalKind::Patch => patch_text(params),
+        _ => unreachable!(),
+    };
+    Some((kind, detail))
+}
+
+/// Command text from an approval's params: `command` may be a string or
+/// an argv array; `reason` fills in when no command is carried.
+fn command_text(params: &Value) -> String {
+    if let Some(cmd) = params["command"].as_str() {
+        return cmd.to_string();
+    }
+    if let Some(argv) = params["command"].as_array() {
+        return argv.iter().filter_map(|a| a.as_str()).collect::<Vec<_>>().join(" ");
+    }
+    params["reason"].as_str().unwrap_or("").to_string()
+}
+
+/// Patch summary: the changed paths when `fileChanges` is an object keyed
+/// by path (or a `files` array), else the request's `reason`.
+fn patch_text(params: &Value) -> String {
+    if let Some(files) = params["fileChanges"].as_object() {
+        return files.keys().cloned().collect::<Vec<_>>().join("\n");
+    }
+    if let Some(files) = params["files"].as_array() {
+        let names: Vec<&str> = files.iter().filter_map(|f| f.as_str()).collect();
+        if !names.is_empty() {
+            return names.join("\n");
+        }
+    }
+    params["reason"].as_str().unwrap_or("").to_string()
+}
+
+/// JSON-RPC response for a server-initiated request. Approval methods get
+/// the user's `decision`; elicitation is declined; everything else gets a
+/// generic error so the server can't hang waiting on us.
+pub(crate) fn request_reply(method: &str, msg: &Value, decision: ApprovalDecision) -> Value {
     let id = msg["id"].clone();
     let result = match method {
-        "item/commandExecution/requestApproval" | "item/fileChange/requestApproval" => json!({"decision": "decline"}),
-        "applyPatchApproval" | "execCommandApproval" => json!({"decision": "denied"}),
+        m if is_approval(m) => json!({"decision": review_decision(decision)}),
         "mcpServer/elicitation/request" => json!({"action": "decline", "content": null, "_meta": null}),
         _ => {
             return json!({"id": id, "error": {"code": -32603, "message": format!("rixlcode cannot answer {method}")}});
         },
     };
     json!({"id": id, "result": result})
+}
+
+/// An approval request waiting on the UI: the original server message plus
+/// the channel the card's responder feeds. `answer` blocks the pump until
+/// the user decides — or the responder drops (cancel), which denies.
+pub(crate) struct PendingApproval {
+    pub msg: Value,
+    pub rx: std::sync::mpsc::Receiver<ApprovalDecision>,
+}
+
+impl PendingApproval {
+    /// Block for the UI's decision and write the JSON-RPC response.
+    /// A dropped responder (stop, chat deleted, quit) answers Deny so the
+    /// server never sees an approval it didn't get.
+    pub fn answer(self, stdin: &mut dyn std::io::Write) -> Result<(), String> {
+        let decision = self.rx.recv().unwrap_or(ApprovalDecision::Deny);
+        let method = self.msg["method"].as_str().unwrap_or("");
+        let reply = request_reply(method, &self.msg, decision);
+        writeln!(stdin, "{reply}").map_err(|e| format!("codex stdin: {e}"))
+    }
+}
+
+/// Route a server-initiated request: approvals become an
+/// `ApprovalRequest` event + `PendingApproval` under `Ask`, an immediate
+/// reply under `Auto`; everything else gets a canned reply. Returns
+/// `(events, response, pending)` for the decoder's `Decoded`.
+pub(crate) fn route_request(
+    route: ApprovalRoute,
+    method: &str,
+    msg: &Value,
+) -> (Vec<crate::backend::AgentEvent>, Option<Value>, Option<PendingApproval>) {
+    let Some((kind, detail)) = approval_detail(method, &msg["params"]) else {
+        return (vec![], Some(request_reply(method, msg, ApprovalDecision::Deny)), None);
+    };
+    match route {
+        ApprovalRoute::Auto(decision) => (vec![], Some(request_reply(method, msg, decision)), None),
+        ApprovalRoute::Ask => {
+            let (respond, rx) = std::sync::mpsc::channel();
+            let key = msg["params"]["itemId"].as_str().unwrap_or("").to_string()
+                + msg["params"]["callId"].as_str().unwrap_or("")
+                + &msg["id"].to_string();
+            let ev = crate::backend::AgentEvent::ApprovalRequest {
+                ix: crate::backend_parse::item_ix(&json!({"id": key})),
+                kind,
+                detail: detail.into(),
+                respond,
+            };
+            (vec![ev], None, Some(PendingApproval { msg: msg.clone(), rx }))
+        },
+    }
 }
 
 #[cfg(test)]

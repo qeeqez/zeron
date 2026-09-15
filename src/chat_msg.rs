@@ -1,10 +1,7 @@
 //! Per-message operations: rate, edit, recall, copy, retry — plus the
 //! queued-message edit path (a queued item reopens in the composer).
 
-use std::process::{Child, Command};
 use std::rc::Rc;
-
-use parking_lot::Mutex;
 
 use gpui_kit::*;
 
@@ -158,6 +155,10 @@ impl Workspace {
             MessageKind::Tool(t) => format!("{}: {}\n{}", t.name, t.detail, t.output),
             MessageKind::Diff(d) => format!("{} (+{} -{})\n{}", d.path, d.added, d.removed, d.hunks),
             MessageKind::Plan(p) => p.markdown(),
+            MessageKind::Approval(a) => {
+                let outcome = a.decision.map_or("pending", |d| d.label());
+                format!("{}: {} ({})", a.kind.label(), a.detail, outcome)
+            },
         };
         cx.write_to_clipboard(ClipboardItem::new_string(text));
     }
@@ -261,26 +262,39 @@ impl Workspace {
     }
 }
 
-/// The single in-flight `say` process — read-aloud is a toggle, so a new
-/// click kills whatever is speaking. Finished children are reaped on the
-/// next click via `try_wait`.
-static SPEECH: Mutex<Option<Child>> = Mutex::new(None);
-
 impl Workspace {
-    /// Read message `ix` aloud via macOS `say`; clicking again stops it.
-    pub fn speak_message(&self, ix: usize) {
-        let Some(msg) = self.chats[self.active].messages.get(ix) else { return };
-        let MessageKind::Text(text) = &msg.kind else { return };
-        let mut slot = SPEECH.lock();
-        if let Some(mut child) = slot.take()
-            && child.try_wait().ok().flatten().is_none()
-        {
-            let _ = child.kill();
-            let _ = child.wait(); // reap — kill alone leaves a zombie
-            return;
+    /// Append a text delta to the chat's last assistant Text message,
+    /// creating the bubble on the first delta.
+    pub(crate) fn apply_text_delta(&mut self, chat_id: u64, text: &str, cx: &mut Context<Self>) {
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
+        let query = if self.chat_search_open {
+            self.chat_search.read(cx).value().to_string().to_lowercase()
+        } else {
+            String::new()
+        };
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
+        // Must be an assistant Text message — the last message right after
+        // send is the user's own text.
+        let needs_new = !matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant && matches!(m.kind, MessageKind::Text(_)));
+        if needs_new {
+            Rc::make_mut(&mut chat.messages).push(crate::model::ChatMessage {
+                role: Role::Assistant,
+                kind: MessageKind::Text("".into()),
+                rating: None,
+                usage: None,
+                attachments: vec![],
+                at: std::time::SystemTime::now(),
+            });
+            if is_active && (query.is_empty() || crate::chat_search::msg_matches(chat.messages.last().unwrap(), &query)) {
+                self.scroller.update(cx, |s, cx| s.append(1, cx));
+            }
         }
-        if let Ok(child) = Command::new("say").arg(&**text).spawn() {
-            *slot = Some(child);
+        let Some(last) = Rc::make_mut(&mut chat.messages).last_mut() else { return };
+        let MessageKind::Text(t) = &mut last.kind else { return };
+        *t = format!("{t}{text}").into();
+        if is_active {
+            let pos = crate::chat_search::last_scroller_pos(&chat.messages, &query);
+            self.scroller.update(cx, |s, cx| s.remeasure_items(pos..pos + 1, cx));
         }
     }
 }

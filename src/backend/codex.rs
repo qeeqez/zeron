@@ -120,9 +120,7 @@ fn run_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) {
         if turn.cancelled.load(std::sync::atomic::Ordering::Relaxed) {
             return;
         }
-        if attempt > 0 {
-            std::thread::sleep(std::time::Duration::from_millis(400 * attempt));
-        }
+        if attempt > 0 { std::thread::sleep(std::time::Duration::from_millis(400 * attempt)); }
         let (outcome, got_events) = spawn_codex(turn, tx);
         emitted |= got_events;
         match outcome {
@@ -195,7 +193,7 @@ fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (C
 
     use std::io::BufRead;
     let reader = std::io::BufReader::new(stdout);
-    let mut decoder = TurnDecoder::new();
+    let mut decoder = TurnDecoder::new(approval_route_of(turn));
     let mut phase = Phase::Init;
     let (mut done, mut emitted) = (false, false);
     for line in reader.lines().map_while(Result::ok) {
@@ -215,18 +213,27 @@ fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (C
             continue;
         }
         let decoded = decoder.line(&line);
-        if let Some(resp) = decoded.response {
-            // Server request (approval, elicitation): answer it so the
-            // turn can't hang waiting on a UI we don't have.
-            if send_req(&mut stdin, &resp).is_err() {
-                kill_slot(&turn.slot);
-                return (CodexOutcome::Dead, emitted);
-            }
-        }
         done |= decoded.turn_over;
         for e in decoded.events {
             emitted = true;
             if tx.send(e).is_err() {
+                kill_slot(&turn.slot);
+                return (CodexOutcome::Dead, emitted);
+            }
+        }
+        if let Some(pending) = decoded.pending {
+            // The approval card is on screen — block until the user
+            // answers (or the responder drops on cancel → Deny), then
+            // write the decision back to the server.
+            if pending.answer(&mut stdin).is_err() {
+                kill_slot(&turn.slot);
+                return (CodexOutcome::Dead, emitted);
+            }
+        }
+        if let Some(resp) = decoded.response {
+            // Other server requests (elicitation, user input): answer
+            // immediately so the turn can't hang waiting on us.
+            if send_req(&mut stdin, &resp).is_err() {
                 kill_slot(&turn.slot);
                 return (CodexOutcome::Dead, emitted);
             }
@@ -309,4 +316,11 @@ pub(super) fn sandbox_of(turn: &CodexTurn) -> &'static str {
 /// ask/auto split; Plan/Ask never prompt (their sandbox is read-only).
 pub(super) fn approval_of(turn: &CodexTurn) -> &'static str {
     if turn.mode == "Agent" { turn.access.approval_arg() } else { "never" }
+}
+
+/// How this turn answers approval requests: Agent mode honors the access
+/// setting's ask/auto split; Plan/Ask deny outright — their read-only
+/// sandbox must never see an approval it could grant.
+pub(super) fn approval_route_of(turn: &CodexTurn) -> super::ApprovalRoute {
+    if turn.mode == "Agent" { turn.access.approval_route() } else { super::ApprovalRoute::Auto(super::ApprovalDecision::Deny) }
 }

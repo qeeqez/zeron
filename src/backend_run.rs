@@ -95,6 +95,13 @@ impl Workspace {
             AgentEvent::Error(msg) => {
                 self.agent_log(chat_id, crate::agents::AgentLogEntry { line: format!("error: {msg}"), count_step: false }, cx);
             },
+            AgentEvent::ApprovalRequest { kind, detail, .. } => {
+                self.agent_log(
+                    chat_id,
+                    crate::agents::AgentLogEntry { line: format!("approval: {} {detail}", kind.label()), count_step: false },
+                    cx,
+                );
+            },
             _ => {},
         }
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
@@ -123,24 +130,14 @@ impl Workspace {
                 }
             },
             AgentEvent::ToolCallDelta { ix, output } => {
-                let pos = chat.messages.iter().rposition(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix));
-                if let Some(pos) = pos
-                    && let MessageKind::Tool(t) = &mut Rc::make_mut(&mut chat.messages)[pos].kind
-                {
-                    t.output = format!("{}{}", t.output, output).into();
-                }
+                let pos = update_tool(chat, ix, |t| t.output = format!("{}{}", t.output, output).into());
                 if is_active && let Some(pos) = pos {
                     let sp = self.filtered_pos(pos, cx);
                     self.scroller.update(cx, |s, cx| s.remeasure_items(sp..sp + 1, cx));
                 }
             },
             AgentEvent::ToolCallSet { ix, output } => {
-                let pos = chat.messages.iter().rposition(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix));
-                if let Some(pos) = pos
-                    && let MessageKind::Tool(t) = &mut Rc::make_mut(&mut chat.messages)[pos].kind
-                {
-                    t.output = output;
-                }
+                let pos = update_tool(chat, ix, |t| t.output = output);
                 if is_active && let Some(pos) = pos {
                     let sp = self.filtered_pos(pos, cx);
                     self.scroller.update(cx, |s, cx| s.remeasure_items(sp..sp + 1, cx));
@@ -148,15 +145,29 @@ impl Workspace {
             },
             AgentEvent::ToolCallEnd { ix, ok } => {
                 let status = if ok { ToolStatus::Done } else { ToolStatus::Failed };
-                let pos = chat.messages.iter().rposition(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix));
-                if let Some(pos) = pos
-                    && let MessageKind::Tool(t) = &mut Rc::make_mut(&mut chat.messages)[pos].kind
-                {
-                    t.status = status;
-                }
+                let pos = update_tool(chat, ix, |t| t.status = status);
                 if is_active && let Some(pos) = pos {
                     let sp = self.filtered_pos(pos, cx);
                     self.scroller.update(cx, |s, cx| s.remeasure_items(sp..sp + 1, cx));
+                }
+            },
+            AgentEvent::ApprovalRequest { ix, kind, detail, respond } => {
+                Rc::make_mut(&mut chat.messages).push(ChatMessage {
+                    role: Role::Assistant,
+                    kind: MessageKind::Approval(crate::backend::ApprovalCard {
+                        request_ix: ix,
+                        kind,
+                        detail,
+                        decision: None,
+                        respond: Some(respond),
+                    }),
+                    rating: None,
+                    usage: None,
+                    attachments: vec![],
+                    at: SystemTime::now(),
+                });
+                if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
+                    self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
             },
             AgentEvent::Diff { path, added, removed, hunks } => {
@@ -199,41 +210,14 @@ impl Workspace {
     }
 }
 
-impl Workspace {
-    /// Append a text delta to the chat's last assistant Text message,
-    /// creating the bubble on the first delta.
-    fn apply_text_delta(&mut self, chat_id: u64, text: &str, cx: &mut Context<Self>) {
-        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
-        let query = if self.chat_search_open {
-            self.chat_search.read(cx).value().to_string().to_lowercase()
-        } else {
-            String::new()
-        };
-        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
-        // Must be an assistant Text message — the last message right after
-        // send is the user's own text.
-        let needs_new = !matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant && matches!(m.kind, MessageKind::Text(_)));
-        if needs_new {
-            Rc::make_mut(&mut chat.messages).push(ChatMessage {
-                role: Role::Assistant,
-                kind: MessageKind::Text("".into()),
-                rating: None,
-                usage: None,
-                attachments: vec![],
-                at: SystemTime::now(),
-            });
-            if is_active && (query.is_empty() || crate::chat_search::msg_matches(chat.messages.last().unwrap(), &query)) {
-                self.scroller.update(cx, |s, cx| s.append(1, cx));
-            }
-        }
-        let Some(last) = Rc::make_mut(&mut chat.messages).last_mut() else { return };
-        let MessageKind::Text(t) = &mut last.kind else { return };
-        *t = format!("{t}{text}").into();
-        if is_active {
-            let pos = crate::chat_search::last_scroller_pos(&chat.messages, &query);
-            self.scroller.update(cx, |s, cx| s.remeasure_items(pos..pos + 1, cx));
-        }
+/// Mutate the tool card keyed by `ix`; returns its message index so the
+/// caller can re-measure the scroller row when the chat is on screen.
+fn update_tool(chat: &mut crate::model::Chat, ix: usize, f: impl FnOnce(&mut ToolCall)) -> Option<usize> {
+    let pos = chat.messages.iter().rposition(|m| matches!(&m.kind, MessageKind::Tool(t) if t.tool_ix == ix))?;
+    if let MessageKind::Tool(t) = &mut Rc::make_mut(&mut chat.messages)[pos].kind {
+        f(t);
     }
+    Some(pos)
 }
 
 /// Drain the backend event channel into `tx` on a blocking thread.

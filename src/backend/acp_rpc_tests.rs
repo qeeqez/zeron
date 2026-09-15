@@ -4,7 +4,7 @@
 use serde_json::{Value, json};
 
 use super::acp_rpc as wire;
-use crate::backend::AccessMode;
+use crate::backend::{AccessMode, ApprovalDecision, ApprovalRoute};
 
 #[test]
 fn initialize_advertises_fs_caps() {
@@ -120,18 +120,22 @@ fn permission_msg() -> Value {
 #[test]
 fn policy_maps_each_access_mode() {
     let sup = wire::Policy::of("Agent", AccessMode::Supervised, "/tmp".into());
-    assert!(!sup.write_fs && !sup.auto_allow);
+    assert!(!sup.write_fs && matches!(sup.route, ApprovalRoute::Ask));
 
-    // Auto-accept-edits: writes allowed inside the workspace, but
-    // permission prompts still ask (auto_allow off → reject_once).
+    // Auto-accept-edits: writes allowed inside the workspace, and
+    // permission prompts surface to the user (route Ask).
     let edits = wire::Policy::of("Agent", AccessMode::AutoAcceptEdits, "/tmp".into());
-    assert!(edits.write_fs && edits.workspace_only && !edits.auto_allow);
+    assert!(edits.write_fs && edits.workspace_only && matches!(edits.route, ApprovalRoute::Ask));
 
     let auto = wire::Policy::of("Agent", AccessMode::Auto, "/tmp".into());
-    assert!(auto.write_fs && auto.workspace_only && auto.auto_allow);
+    assert!(auto.write_fs && auto.workspace_only && matches!(auto.route, ApprovalRoute::Auto(ApprovalDecision::Approve)));
 
     let full = wire::Policy::of("Agent", AccessMode::FullAccess, "/tmp".into());
-    assert!(full.write_fs && !full.workspace_only && full.auto_allow);
+    assert!(full.write_fs && !full.workspace_only && matches!(full.route, ApprovalRoute::Auto(ApprovalDecision::Approve)));
+
+    // Read-only chat modes never ask — they deny.
+    let plan = wire::Policy::of("Plan", AccessMode::Auto, "/tmp".into());
+    assert!(matches!(plan.route, ApprovalRoute::Auto(ApprovalDecision::Deny)));
 }
 
 #[test]
@@ -149,6 +153,30 @@ fn permission_follows_turn_policy() {
     msg["params"]["options"] = json!([]);
     let reply = wire::request_reply("session/request_permission", &msg, &allow);
     assert_eq!(reply["result"]["outcome"], json!({"outcome": "cancelled"}));
+}
+
+#[test]
+fn permission_answer_maps_decisions_to_option_kinds() {
+    let msg = permission_msg();
+    let params = &msg["params"];
+    let id = msg["id"].clone();
+
+    let reply = wire::permission_answer(id.clone(), params, ApprovalDecision::Approve);
+    assert_eq!(reply["result"]["outcome"], json!({"outcome": "selected", "optionId": "allow"}));
+
+    let reply = wire::permission_answer(id.clone(), params, ApprovalDecision::Deny);
+    assert_eq!(reply["result"]["outcome"], json!({"outcome": "selected", "optionId": "deny"}));
+
+    // Always-allow prefers the allow_always kind, falling back to once.
+    let mut always = permission_msg();
+    always["params"]["options"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"optionId": "always", "name": "Always", "kind": "allow_always"}));
+    let reply = wire::permission_answer(id.clone(), &always["params"], ApprovalDecision::ApproveForSession);
+    assert_eq!(reply["result"]["outcome"], json!({"outcome": "selected", "optionId": "always"}));
+    let reply = wire::permission_answer(id, params, ApprovalDecision::ApproveForSession);
+    assert_eq!(reply["result"]["outcome"], json!({"outcome": "selected", "optionId": "allow"}));
 }
 
 #[test]

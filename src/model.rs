@@ -80,10 +80,7 @@ impl PlanCard {
     pub fn markdown(&self) -> String {
         self.steps
             .iter()
-            .map(|s| {
-                let mark = if s.status == PlanStatus::Done { "x" } else { " " };
-                format!("- [{mark}] {}", s.label)
-            })
+            .map(|s| format!("- [{}] {}", if s.status == PlanStatus::Done { "x" } else { " " }, s.label))
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -104,6 +101,9 @@ pub enum MessageKind {
     Tool(ToolCall),
     Diff(DiffCard),
     Plan(PlanCard),
+    /// An approval prompt card — `ApprovalCard.respond` is `Some` while
+    /// the backend is still waiting on the answer.
+    Approval(crate::backend::ApprovalCard),
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]

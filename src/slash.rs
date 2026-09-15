@@ -87,6 +87,7 @@ fn compact_digest(dropped: &[ChatMessage]) -> String {
             MessageKind::Tool(t) => format!("- tool `{}`: {}", t.name, snippet(&t.output)),
             MessageKind::Diff(d) => format!("- diff `{}`: +{} −{}", d.path, d.added, d.removed),
             MessageKind::Plan(p) => format!("- plan: {}", p.steps.iter().map(|s| s.label.as_str()).collect::<Vec<_>>().join("; ")),
+            MessageKind::Approval(a) => format!("- approval {}: {}", a.kind.label().to_lowercase(), snippet(&a.detail)),
         };
         out.push_str(&row);
         out.push('\n');

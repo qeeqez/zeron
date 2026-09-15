@@ -13,7 +13,9 @@ fn toggle_expanded(ws: Entity<Workspace>, ix: usize) -> impl Fn(&ClickEvent, &mu
             match &mut msg.kind {
                 MessageKind::Tool(tool) => tool.expanded = !tool.expanded,
                 MessageKind::Diff(diff) => diff.expanded = !diff.expanded,
-                MessageKind::Text(_) | MessageKind::Plan(_) => {},
+                // Approval cards always show their detail — there's
+                // nothing to collapse.
+                MessageKind::Text(_) | MessageKind::Plan(_) | MessageKind::Approval(_) => {},
             }
             // Height changed — the virtual scroller must re-measure or the
             // expanded body renders clipped. Under an open search the
@@ -25,7 +27,7 @@ fn toggle_expanded(ws: Entity<Workspace>, ix: usize) -> impl Fn(&ClickEvent, &mu
     }
 }
 
-fn card_frame(cx: &App) -> Div {
+pub(crate) fn card_frame(cx: &App) -> Div {
     div().flex().flex_col().rounded_md().border_1().border_color(cx.theme().border).bg(cx.theme().muted)
 }
 
@@ -33,7 +35,7 @@ fn card_header(id: impl Into<ElementId>) -> Stateful<Div> {
     div().id(id).flex().items_center().gap_2().px_3().py_2().cursor_pointer().text_sm()
 }
 
-fn detail_block(text: &SharedString, cx: &App) -> Div {
+pub(crate) fn detail_block(text: &SharedString, cx: &App) -> Div {
     div()
         .px_3()
         .py_2()

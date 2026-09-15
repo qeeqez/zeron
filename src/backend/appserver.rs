@@ -7,8 +7,8 @@
 
 use serde_json::{Value, json};
 
-use super::rpc::request_reply;
-use crate::backend::AgentEvent;
+use super::rpc::PendingApproval;
+use crate::backend::{AgentEvent, ApprovalRoute};
 use crate::backend_parse::{file_change_events, item_id, item_ix, mcp_result_text, plan_steps, plan_steps_from_text, reasoning_text};
 
 /// Item id of the synthetic plan card — `turn/plan/updated` has no item
@@ -28,6 +28,9 @@ pub(crate) struct TurnDecoder {
     /// Set once a terminal error was emitted so `turn/completed` doesn't
     /// push a second error bubble.
     errored: bool,
+    /// How approval requests are answered: a card the user clicks, or an
+    /// immediate canned decision (auto modes approve, read-only deny).
+    route: ApprovalRoute,
 }
 
 /// One decoded line: events for the UI plus an optional JSON-RPC response
@@ -35,41 +38,53 @@ pub(crate) struct TurnDecoder {
 pub(crate) struct Decoded {
     pub events: Vec<AgentEvent>,
     pub response: Option<Value>,
+    /// An approval request routed to the UI — the pump answers it after
+    /// the events are sent so the card is on screen while it waits.
+    pub pending: Option<PendingApproval>,
     /// `turn/completed` arrived — the turn is over regardless of status.
     pub turn_over: bool,
 }
 
 impl TurnDecoder {
-    pub fn new() -> Self {
+    /// `route` decides how server approval requests are answered: `Ask`
+    /// surfaces an `ApprovalRequest` event and a `PendingApproval` the pump
+    /// blocks on; `Auto(d)` replies immediately with that decision.
+    pub fn new(route: ApprovalRoute) -> Self {
         Self {
             started: std::collections::HashSet::new(),
             streamed: std::collections::HashSet::new(),
             plan_item: json!({"id": PLAN_ID}),
             errored: false,
+            route,
         }
     }
 
     /// Decode one stdout line. Malformed JSON and unknown methods are
     /// ignored — the server emits many notifications we don't render.
     pub fn line(&mut self, line: &str) -> Decoded {
+        let empty = |events| Decoded { events, response: None, pending: None, turn_over: false };
         let Ok(msg) = serde_json::from_str::<Value>(line) else {
-            return Decoded { events: vec![], response: None, turn_over: false };
+            return empty(vec![]);
         };
         // Responses to our own requests are handled by the caller's phase
         // machine; here only server-initiated messages matter.
         let Some(method) = msg["method"].as_str() else {
-            return Decoded { events: vec![], response: None, turn_over: false };
+            return empty(vec![]);
         };
         if msg.get("id").is_some() {
-            return Decoded {
-                events: vec![],
-                response: Some(request_reply(method, &msg)),
-                turn_over: false,
-            };
+            return self.server_request(method, &msg);
         }
         let params = &msg["params"];
         let (events, turn_over) = self.notification(method, params);
-        Decoded { events, response: None, turn_over }
+        Decoded { events, response: None, pending: None, turn_over }
+    }
+
+    /// A server-initiated request (has an `id`): approvals route to the UI
+    /// under `Ask` — the pump sends the card's event, then blocks on
+    /// `pending.answer`. Everything else gets an immediate canned reply.
+    fn server_request(&mut self, method: &str, msg: &Value) -> Decoded {
+        let (events, response, pending) = super::rpc::route_request(self.route, method, msg);
+        Decoded { events, response, pending, turn_over: false }
     }
 
     fn notification(&mut self, method: &str, params: &Value) -> (Vec<AgentEvent>, bool) {

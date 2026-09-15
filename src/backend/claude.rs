@@ -198,7 +198,9 @@ fn spawn_claude(turn: &ClaudeTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> 
 /// levels like codex's `-s`; the closest mapping:
 /// - Plan/Ask → `--permission-mode plan` (read-only planning mode).
 /// - Agent + supervised → `--permission-mode default` (every action asks;
-///   headless `-p` auto-denies, so the turn stays read-only).
+///   headless `-p` emits no answerable prompt — the CLI auto-denies, so
+///   the turn stays read-only. Unlike codex/ACP there's no wire to route
+///   an `ApprovalRequest` over, so the card can't help here).
 /// - Agent + auto-accept-edits → `--permission-mode acceptEdits` (file
 ///   edits auto-accepted, other actions still gated).
 /// - Agent + auto → `--permission-mode acceptEdits` — claude can't confine

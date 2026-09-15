@@ -102,13 +102,14 @@ impl Workspace {
         chat.running = false;
         chat.complete_turn();
         // A cancelled call never produced a result — close this turn's
-        // tool rows so they don't spin forever.
+        // tool rows so they don't spin forever, and answer any pending
+        // approval Deny so the backend's blocked read unblocks.
         let start = chat.messages.iter().rposition(|m| m.role == Role::User).map_or(0, |i| i + 1);
         for msg in Rc::make_mut(&mut chat.messages)[start..].iter_mut() {
-            if let MessageKind::Tool(t) = &mut msg.kind
-                && t.status == ToolStatus::Running
-            {
-                t.status = ToolStatus::Failed;
+            match &mut msg.kind {
+                MessageKind::Tool(t) if t.status == ToolStatus::Running => t.status = ToolStatus::Failed,
+                MessageKind::Approval(a) if a.decision.is_none() => crate::approval_ops::deny_approval(a),
+                _ => {},
             }
         }
         if let Some(id) = chat.run_agent.take()
@@ -133,6 +134,14 @@ impl Workspace {
         chat.running = false;
         chat.complete_turn();
         chat.child = None;
+        // The backend stopped waiting — any approval card still showing
+        // buttons can no longer reach it, so drop the responder and let
+        // the card render as expired.
+        for msg in Rc::make_mut(&mut chat.messages).iter_mut() {
+            if let MessageKind::Approval(a) = &mut msg.kind {
+                a.respond = None;
+            }
+        }
         if !is_active {
             chat.unread = true;
         }
@@ -238,6 +247,7 @@ impl Workspace {
                 MessageKind::Tool(t) => t.output.len(),
                 MessageKind::Diff(d) => d.hunks.len(),
                 MessageKind::Plan(p) => p.steps.iter().map(|s| s.label.len()).sum(),
+                MessageKind::Approval(a) => a.detail.len(),
             })
             .sum::<usize>()
             / 4

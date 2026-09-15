@@ -5,6 +5,7 @@ use crate::model::PlanStep;
 mod acp;
 mod acp_decode;
 mod acp_rpc;
+mod approval;
 mod appserver;
 mod claude;
 mod claude_parse;
@@ -29,8 +30,8 @@ mod claude_tests;
 mod codex_tests;
 #[cfg(test)]
 mod sessions_tests;
-
 pub use acp::AcpBackend;
+pub use approval::{ApprovalCard, ApprovalDecision, ApprovalKind, ApprovalResponder, ApprovalRoute};
 pub use claude::ClaudeCliBackend;
 pub use codex::CodexCliBackend;
 pub use http::HttpBackend;
@@ -108,10 +109,17 @@ impl AccessMode {
         matches!(self, AccessMode::AutoAcceptEdits | AccessMode::Auto)
     }
 
-    /// Whether permission prompts auto-approve (no approval UI exists, so
-    /// "ask" modes decline instead).
+    /// Whether permission prompts are answered without asking the user.
+    /// Auto/FullAccess auto-approve; the "ask" modes surface an
+    /// `AgentEvent::ApprovalRequest` card instead.
     pub fn auto_allows(self) -> bool {
         matches!(self, AccessMode::Auto | AccessMode::FullAccess)
+    }
+
+    /// How the backend answers an approval request in this mode: prompt
+    /// the user, or reply immediately with a fixed decision.
+    pub fn approval_route(self) -> ApprovalRoute {
+        if self.auto_allows() { ApprovalRoute::Auto(ApprovalDecision::Approve) } else { ApprovalRoute::Ask }
     }
 
     /// Parse a settings.json value; anything unknown falls back to the
@@ -201,6 +209,18 @@ pub enum AgentEvent {
     /// The agent's plan checklist — a full snapshot that replaces the plan
     /// card keyed by `ix` (created on first sight).
     Plan { ix: usize, steps: Vec<PlanStep> },
+    /// The backend needs the user's decision before this tool call can
+    /// proceed — the pump thread blocks on `respond`'s pair until the UI
+    /// answers (or the card's responder drops, which answers Deny).
+    /// `ix` hashes the request's item/call id, matching tool-card keys.
+    ApprovalRequest {
+        ix: usize,
+        kind: ApprovalKind,
+        /// What will run — the command line, patch summary, or the ACP
+        /// tool call's title.
+        detail: SharedString,
+        respond: ApprovalResponder,
+    },
     /// A diff card to append.
     Diff { path: SharedString, added: usize, removed: usize, hunks: SharedString },
     /// Token usage for the completed turn.

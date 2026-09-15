@@ -221,7 +221,7 @@ fn terminal_ok(status: Option<&str>) -> Option<bool> {
 }
 
 /// Stable per-tool-call card index — hash the id like the codex decoder.
-fn ix_of(id: &str) -> usize {
+pub(super) fn ix_of(id: &str) -> usize {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     id.hash(&mut h);

@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use super::acp::{AcpBackend, AcpTurn, PumpEnd, pump};
 use super::acp_decode::AcpDecoder;
 use super::acp_rpc_tests::session_result;
-use super::{AgentBackend, AgentEvent};
+use super::{AccessMode, AgentBackend, AgentEvent};
 
 // ---- backend_for / provider plumbing ----
 
@@ -185,7 +185,7 @@ fn pump_runs_full_handshake_and_streams() {
         json!({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s1", "update": {"sessionUpdate": "agent_message_chunk", "messageId": "m1", "content": {"type": "text", "text": "Hi there"}}}}),
         json!({"jsonrpc": "2.0", "id": 5, "result": {"stopReason": "end_turn"}}),
     ];
-    let turn = AcpTurn::for_test("m2", "Plan");
+    let turn = AcpTurn::for_test("m2", "Plan", AccessMode::Auto);
     let (end, reqs, events) = drive(&agent_out, &turn);
     assert_eq!(end, PumpEnd::Done);
 
@@ -211,7 +211,7 @@ fn pump_answers_permission_and_reports_errors() {
         json!({"jsonrpc": "2.0", "id": 3, "error": {"code": -32603, "message": "boom"}}),
     ];
     // Agent mode + workspace-write → permission auto-allowed.
-    let turn = AcpTurn::for_test("m1", "Agent");
+    let turn = AcpTurn::for_test("m1", "Agent", AccessMode::Auto);
     let (end, reqs, events) = drive(&agent_out, &turn);
     assert_eq!(end, PumpEnd::Done);
 
@@ -230,7 +230,70 @@ fn pump_answers_permission_and_reports_errors() {
 #[test]
 fn pump_eof_before_prompt_response() {
     let input = [json!({"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": 1}})];
-    let turn = AcpTurn::for_test("m1", "Agent");
+    let turn = AcpTurn::for_test("m1", "Agent", AccessMode::Auto);
     let (end, _, _) = drive(&input, &turn);
     assert_eq!(end, PumpEnd::Eof);
+}
+
+/// Drive the pump on a worker thread so a blocking approval `recv` doesn't
+/// deadlock the test — the test answers through the event's responder.
+fn drive_threaded(agent_out: &[Value], turn: AcpTurn) -> (std::sync::mpsc::Receiver<AgentEvent>, SharedBuf, std::thread::JoinHandle<PumpEnd>) {
+    let input = agent_out.iter().map(|v| format!("{v}\n")).collect::<String>();
+    let buf = SharedBuf(std::sync::Arc::new(parking_lot::Mutex::new(vec![])));
+    let (tx, rx) = std::sync::mpsc::channel();
+    let writer = SharedBuf(buf.0.clone());
+    let handle = std::thread::spawn(move || pump(&turn, std::io::BufReader::new(std::io::Cursor::new(input.into_bytes())), Box::new(writer), &tx));
+    (rx, buf, handle)
+}
+
+#[test]
+fn pump_permission_asks_the_user_when_supervised() {
+    let agent_out = [
+        json!({"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": 1}}),
+        json!({"jsonrpc": "2.0", "id": 2, "result": {"sessionId": "s1"}}),
+        json!({"jsonrpc": "2.0", "id": 9, "method": "session/request_permission", "params": {"sessionId": "s1", "toolCall": {"toolCallId": "t1", "title": "rm -rf build/"}, "options": [
+            {"optionId": "a", "name": "Allow", "kind": "allow_once"},
+            {"optionId": "r", "name": "Deny", "kind": "reject_once"},
+        ]}}),
+        json!({"jsonrpc": "2.0", "id": 3, "result": {"stopReason": "end_turn"}}),
+    ];
+    // Agent + Supervised → the permission request becomes a card.
+    let turn = AcpTurn::for_test("m1", "Agent", AccessMode::Supervised);
+    let (rx, buf, handle) = drive_threaded(&agent_out, turn);
+
+    // The pump blocks until the ApprovalRequest's responder answers.
+    let ev = rx.recv_timeout(std::time::Duration::from_secs(5)).expect("approval event");
+    let AgentEvent::ApprovalRequest { kind, detail, respond, .. } = ev else {
+        panic!("expected ApprovalRequest, got {ev:?}");
+    };
+    assert_eq!(kind, super::ApprovalKind::Permission);
+    assert_eq!(detail.as_str(), "rm -rf build/");
+    respond.send(super::ApprovalDecision::Deny).unwrap();
+
+    assert_eq!(handle.join().unwrap(), PumpEnd::Done);
+    let reply = sent(&buf).into_iter().find(|r| r["id"] == json!(9)).unwrap();
+    assert_eq!(reply["result"]["outcome"], json!({"outcome": "selected", "optionId": "r"}));
+}
+
+#[test]
+fn pump_permission_dropped_responder_denies() {
+    let agent_out = [
+        json!({"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": 1}}),
+        json!({"jsonrpc": "2.0", "id": 2, "result": {"sessionId": "s1"}}),
+        json!({"jsonrpc": "2.0", "id": 9, "method": "session/request_permission", "params": {"sessionId": "s1", "toolCall": {"toolCallId": "t1"}, "options": [
+            {"optionId": "a", "name": "Allow", "kind": "allow_once"},
+            {"optionId": "r", "name": "Deny", "kind": "reject_once"},
+        ]}}),
+        json!({"jsonrpc": "2.0", "id": 3, "result": {"stopReason": "end_turn"}}),
+    ];
+    let turn = AcpTurn::for_test("m1", "Agent", AccessMode::Supervised);
+    let (rx, buf, handle) = drive_threaded(&agent_out, turn);
+
+    // Dropping the event (chat stopped/deleted) answers Deny.
+    let ev = rx.recv_timeout(std::time::Duration::from_secs(5)).expect("approval event");
+    drop(ev);
+
+    assert_eq!(handle.join().unwrap(), PumpEnd::Done);
+    let reply = sent(&buf).into_iter().find(|r| r["id"] == json!(9)).unwrap();
+    assert_eq!(reply["result"]["outcome"], json!({"outcome": "selected", "optionId": "r"}));
 }

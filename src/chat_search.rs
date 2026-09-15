@@ -10,6 +10,7 @@ pub(crate) fn msg_matches(m: &ChatMessage, query: &str) -> bool {
         MessageKind::Tool(t) => vec![t.name.as_str(), t.detail.as_str(), t.output.as_str()],
         MessageKind::Diff(d) => vec![d.path.as_str(), d.hunks.as_str()],
         MessageKind::Plan(p) => p.steps.iter().map(|s| s.label.as_str()).collect(),
+        MessageKind::Approval(a) => vec![a.kind.label(), a.detail.as_str()],
     };
     haystacks.iter().any(|h| h.to_lowercase().contains(query))
 }
