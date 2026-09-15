@@ -11,7 +11,7 @@ use crate::workspace::Workspace;
 
 /// Mount a `Workspace` in a headless window with `HOME` redirected to a temp
 /// dir so settings/chats reads+writes stay off the real profile.
-fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
+pub(crate) fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
     let dir = std::env::temp_dir().join(format!("rixlcode-changes-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -20,7 +20,7 @@ fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext)
     cx.add_window_view(Workspace::new)
 }
 
-fn change(path: &str, status: ChangeStatus, added: u32, deleted: u32) -> FileChange {
+pub(crate) fn change(path: &str, status: ChangeStatus, added: u32, deleted: u32) -> FileChange {
     FileChange {
         path: path.into(),
         source: None,
@@ -33,7 +33,7 @@ fn change(path: &str, status: ChangeStatus, added: u32, deleted: u32) -> FileCha
     }
 }
 
-fn sample_diff() -> FileDiff {
+pub(crate) fn sample_diff() -> FileDiff {
     FileDiff {
         lines: vec![
             DiffLine {
@@ -208,104 +208,5 @@ fn expanded_row_renders_parsed_diff_lines() {
         for line in 0..4usize {
             assert!(window.find(("diff-line", line)).visible(), "diff line {line} renders");
         }
-    });
-}
-
-/// A refresh result stamped with an older generation must not publish: a
-/// newer refresh was requested while it ran, so landing it would revert the
-/// panel to a stale snapshot.
-#[test]
-fn stale_refresh_result_is_discarded() {
-    let mut app = TestAppContext::single();
-    let (ws, cx) = mount(&mut app);
-    cx.update(|_window, cx| {
-        ws.update(cx, |this, cx| {
-            this.changes = vec![change("old.rs", ChangeStatus::Modified, 1, 0)];
-            let stale_gen = this.changes_generation;
-            this.changes_generation += 1; // a newer refresh was requested
-            this.land_changes(
-                stale_gen,
-                crate::changes::ChangesSnapshot {
-                    changes: vec![change("stale.rs", ChangeStatus::Added, 5, 0)],
-                    branch: None,
-                    commits: vec![],
-                },
-                cx,
-            );
-            assert_eq!(this.changes[0].path, "old.rs", "stale collection did not publish");
-            this.land_changes(
-                this.changes_generation,
-                crate::changes::ChangesSnapshot {
-                    changes: vec![change("fresh.rs", ChangeStatus::Added, 5, 0)],
-                    branch: None,
-                    commits: vec![],
-                },
-                cx,
-            );
-            assert_eq!(this.changes[0].path, "fresh.rs", "current collection publishes");
-        });
-    });
-}
-
-/// Clicking a row while its diff load is still running collapses it: the
-/// pending token clears and the late result is discarded instead of opening
-/// the row.
-#[test]
-fn second_click_during_load_collapses_and_discards() {
-    let mut app = TestAppContext::single();
-    let (ws, cx) = mount(&mut app);
-    cx.update(|window, cx| {
-        ws.update(cx, |this, cx| {
-            this.changes = vec![change("src/edited.rs", ChangeStatus::Modified, 1, 1)];
-            this.changes_panel_open = true;
-            cx.notify();
-        });
-        window.draw(cx).clear(cx);
-
-        window.click(("change-row", 0usize), cx);
-        assert_ne!(ws.read(cx).changes[0].diff_load, 0, "first click started a load");
-        window.click(("change-row", 0usize), cx);
-        assert_eq!(ws.read(cx).changes[0].diff_load, 0, "second click cancelled the load");
-    });
-    cx.run_until_parked();
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        assert!(window.try_find(("change-diff", 0usize)).is_none(), "late result did not reopen the row");
-        assert!(ws.read(cx).changes[0].diff.is_none());
-        assert_eq!(ws.read(cx).changes[0].diff_load, 0);
-    });
-}
-
-/// A diff load that outlives a refresh must not attach to the refreshed row:
-/// the generation it was issued under no longer matches. A collapse+re-expand
-/// under the same generation likewise discards the older load — its token is
-/// stale even though the row is pending again.
-#[test]
-fn stale_diff_results_are_discarded() {
-    let mut app = TestAppContext::single();
-    let (ws, cx) = mount(&mut app);
-    cx.update(|_window, cx| {
-        ws.update(cx, |this, cx| {
-            this.changes = vec![change("f.rs", ChangeStatus::Modified, 1, 1)];
-            let generation = this.changes_generation;
-            this.toggle_change_diff(0, cx);
-            let token = this.changes[0].diff_load;
-
-            // Refresh requested under the load → the diff's generation is stale.
-            this.changes_generation += 1;
-            this.land_change_diff((generation, token), Some(sample_diff()), cx);
-            assert!(this.changes[0].diff.is_none(), "pre-refresh diff did not attach");
-
-            // Collapse + re-expand → the older load's token no longer matches.
-            this.changes_generation = generation;
-            this.toggle_change_diff(0, cx);
-            this.toggle_change_diff(0, cx);
-            let newer = this.changes[0].diff_load;
-            assert_ne!(newer, token, "re-expand stamped a fresh token");
-            this.land_change_diff((generation, token), Some(sample_diff()), cx);
-            assert!(this.changes[0].diff.is_none(), "stale-token diff did not attach");
-            this.land_change_diff((generation, newer), Some(sample_diff()), cx);
-            assert!(this.changes[0].diff.is_some(), "current-token diff attaches");
-        });
     });
 }
