@@ -8,7 +8,11 @@ mod composer_helpers;
 mod diff;
 mod empty;
 mod markdown;
+#[cfg(test)]
+mod markdown_tests;
 mod message;
+#[cfg(test)]
+mod message_tests;
 mod model_picker;
 pub(crate) mod nav_row;
 pub mod settings;

@@ -1,11 +1,9 @@
-use std::time::SystemTime;
-
 use gpui_kit::assets::IconName;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::model::{ChatMessage, DiffCard, MessageKind, Role, ToolCall, ToolStatus};
+use crate::model::{ChatMessage, DiffCard, MessageKind, ToolCall, ToolStatus};
 use crate::workspace::Workspace;
 
 fn toggle_expanded(ws: Entity<Workspace>, ix: usize) -> impl Fn(&ClickEvent, &mut Window, &mut App) {
@@ -122,124 +120,4 @@ pub struct MsgCtx<'a> {
     /// once the turn is done; drives the "Worked for Ns" label.
     pub duration: Option<std::time::Duration>,
     pub msg: &'a ChatMessage,
-}
-
-pub fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, cx: &mut App) -> Div {
-    let MsgCtx { ix, is_last, msg, .. } = mc;
-    let role = msg.role;
-    let rating = msg.rating;
-    let ws_copy = ws.clone();
-    let ws_retry = ws.clone();
-    let ws_regen = ws.clone();
-    let ws_up = ws.clone();
-    let ws_down = ws.clone();
-    let ws_speak = ws.clone();
-    let muted = hsla(0.0, 0.0, 0.55, 1.0);
-    let group = SharedString::from(format!("msg-{ix}"));
-    div()
-        .flex()
-        .items_center()
-        .gap_1()
-        .child(
-            div()
-                .id(("copy", ix))
-                .test_support()
-                .cursor_pointer()
-                .invisible()
-                .group_hover(group.clone(), |style| style.visible())
-                .text_color(muted)
-                .child(IconName::Copy)
-                .on_click(move |_, _, cx| {
-                    ws_copy.update(cx, |this, cx| this.copy_message(ix, cx));
-                }),
-        )
-        .when(role == Role::Assistant, |d| {
-            // retry_last re-runs the final turn — only meaningful on the
-            // last message, so the icon is gated to it.
-            d.when(is_last, |d| {
-                d.child(
-                    div()
-                        .id(("retry", ix))
-                        .test_support()
-                        .cursor_pointer()
-                        .invisible()
-                        .group_hover(group.clone(), |style| style.visible())
-                        .text_color(muted)
-                        .child(IconName::RotateCcw)
-                        .on_click(move |_, _, cx| {
-                            ws_retry.update(cx, |this, cx| this.retry_last(cx));
-                        }),
-                )
-                .child(
-                    div()
-                        .id(("regen", ix))
-                        .test_support()
-                        .cursor_pointer()
-                        .invisible()
-                        .group_hover(group.clone(), |style| style.visible())
-                        .text_xs()
-                        .text_color(muted)
-                        .child("Regenerate")
-                        .on_click(move |_, _, cx| {
-                            ws_regen.update(cx, |this, cx| this.retry_last(cx));
-                        }),
-                )
-            })
-            .child(
-                div()
-                    .id(("up", ix))
-                    .test_support()
-                    .cursor_pointer()
-                    .invisible()
-                    .group_hover(group.clone(), |style| style.visible())
-                    .child(IconName::ThumbsUp)
-                    .text_color(if rating == Some(true) { cx.theme().accent } else { muted })
-                    .on_click(move |_, _, cx| {
-                        ws_up.update(cx, |this, cx| this.rate_message(ix, true, cx));
-                    }),
-            )
-            .child(
-                div()
-                    .id(("down", ix))
-                    .test_support()
-                    .cursor_pointer()
-                    .invisible()
-                    .group_hover(group.clone(), |style| style.visible())
-                    .child(IconName::ThumbsDown)
-                    .text_color(if rating == Some(false) { cx.theme().accent } else { muted })
-                    .on_click(move |_, _, cx| {
-                        ws_down.update(cx, |this, cx| this.rate_message(ix, false, cx));
-                    }),
-            )
-            .child(
-                div()
-                    .id(("speak", ix))
-                    .test_support()
-                    .cursor_pointer()
-                    .invisible()
-                    .group_hover(group.clone(), |style| style.visible())
-                    .text_color(muted)
-                    .child(IconName::Volume2)
-                    .on_click(move |_, _, cx| {
-                        ws_speak.update(cx, |this, _cx| this.speak_message(ix));
-                    }),
-            )
-            .when_some(mc.duration, |d, dur| {
-                d.child(
-                    div()
-                        .id(("worked", ix))
-                        .test_support()
-                        .text_xs()
-                        .text_color(muted)
-                        .child(format!("Worked for {}s", dur.as_secs())),
-                )
-            })
-        })
-        .child(div().flex_1())
-        .when_some(msg.usage, |d, u| d.child(div().text_xs().text_color(muted).child(format!("{} in · {} out", u.input, u.output))))
-        .child(div().text_xs().text_color(muted).child(format_time(msg.at)))
-}
-
-fn format_time(at: SystemTime) -> String {
-    chrono::DateTime::<chrono::Local>::from(at).format("%H:%M").to_string()
 }
