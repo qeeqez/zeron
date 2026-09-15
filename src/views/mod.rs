@@ -34,6 +34,7 @@ pub mod settings_provider_wizard;
 mod settings_provider_wizard_steps;
 pub mod settings_providers;
 pub mod settings_sections;
+pub mod shortcuts;
 
 pub(crate) mod sidebar;
 mod sidebar_row;

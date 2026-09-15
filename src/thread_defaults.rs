@@ -47,6 +47,16 @@ impl Workspace {
         chat.effort = self.effort.clone();
     }
 
+    /// Change the active thread's Agent-mode access level and persist it.
+    /// Called from the settings picker; the stamp lands on the active chat
+    /// so switching threads restores each thread's own mode.
+    pub fn set_access(&mut self, access: crate::backend::AccessMode, cx: &mut Context<Self>) {
+        self.access = access;
+        self.chats.get_mut(self.active).map(|chat| chat.access = Some(access)).unwrap_or_default();
+        self.save_settings();
+        cx.notify();
+    }
+
     /// Set the active thread's reasoning effort and stamp it on the chat —
     /// the composer picker's write path. `None` (or an empty/unsupported
     /// value) restores the model's `default_effort`.

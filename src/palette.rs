@@ -102,6 +102,12 @@ impl Workspace {
 
     /// Esc: stop a running reply, close chat search, close the side panels.
     pub fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // The modal cheat sheet dismisses first — it sits above everything.
+        if self.shortcuts_open {
+            self.shortcuts_open = false;
+            cx.notify();
+            return;
+        }
         if self.chats[self.active].running {
             self.stop_reply(cx);
             return;
@@ -125,20 +131,11 @@ impl Workspace {
         }
     }
 
-    /// Cmd-/: keyboard shortcut cheat sheet.
-    pub fn shortcuts_help(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        window.open_sheet(cx, |sheet, _window, _cx| {
-            sheet.title("Keyboard Shortcuts").child(div().flex().flex_col().gap_1().p_4().text_xs().children(
-                crate::views::settings_sections::SHORTCUTS.iter().map(|(key, desc)| {
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(div().w(px(160.)).font_weight(FontWeight::SEMIBOLD).child(*key))
-                        .child(div().text_color(hsla(0.0, 0.0, 0.55, 1.0)).child(*desc))
-                }),
-            ))
-        });
+    /// Cmd-/: toggle the keyboard-shortcuts cheat sheet — a centered overlay
+    /// rendered by `Workspace::render` while `shortcuts_open` is set.
+    pub fn shortcuts_help(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.shortcuts_open = !self.shortcuts_open;
+        cx.notify();
     }
 }
 

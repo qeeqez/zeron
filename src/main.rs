@@ -94,6 +94,9 @@ mod send_queue;
 mod send_tests;
 #[cfg(test)]
 mod settings_providers_tests;
+mod shortcuts;
+#[cfg(test)]
+mod shortcuts_tests;
 #[cfg(test)]
 mod sidebar_resize_tests;
 #[cfg(test)]
@@ -180,6 +183,7 @@ fn app_menus() -> Vec<Menu> {
             MenuItem::action("Toggle Explorer", ToggleExplorer),
             MenuItem::separator(),
             MenuItem::action("Command Palette", OpenPalette),
+            MenuItem::action("Keyboard Shortcuts", ShortcutsHelp),
             MenuItem::separator(),
             MenuItem::action("Enter Full Screen", EnterFullscreen),
         ]),
@@ -194,41 +198,11 @@ fn app_menus() -> Vec<Menu> {
 }
 
 /// Workspace-context key bindings. Menu items pick their key equivalents up
-/// from these, so a shortcut added here shows in the menu bar for free.
+/// from these, so a shortcut added here shows in the menu bar for free. The
+/// list comes from `shortcuts::SHORTCUT_SPECS` — the same table the Cmd-/
+/// overlay renders, so the cheat sheet can't drift from the real keymap.
 fn workspace_keys() -> Vec<KeyBinding> {
-    [
-        KeyBinding::new("escape", EscapeKey, Some("workspace")),
-        KeyBinding::new("cmd-/", ShortcutsHelp, Some("workspace")),
-        KeyBinding::new("cmd-n", NewChat, Some("workspace")),
-        KeyBinding::new("cmd-shift-n", NewWindow, Some("workspace")),
-        KeyBinding::new("cmd-,", OpenSettings, Some("workspace")),
-        KeyBinding::new("cmd-q", QuitApp, Some("workspace")),
-        KeyBinding::new("cmd-h", HideApp, Some("workspace")),
-        KeyBinding::new("cmd-alt-h", HideOthers, Some("workspace")),
-        KeyBinding::new("cmd-m", MinimizeWindow, Some("workspace")),
-        KeyBinding::new("ctrl-cmd-f", EnterFullscreen, Some("workspace")),
-        KeyBinding::new("cmd-up", RecallLast, Some("workspace")),
-        KeyBinding::new("cmd-shift-up", RecallPrev, Some("workspace")),
-        KeyBinding::new("cmd-shift-backspace", DeleteChat, Some("workspace")),
-        KeyBinding::new("cmd-shift-down", RecallNext, Some("workspace")),
-        KeyBinding::new("cmd-j", ToggleAgents, Some("workspace")),
-        KeyBinding::new("cmd-shift-e", ToggleExplorer, Some("workspace")),
-        KeyBinding::new("cmd-shift-j", ToggleChanges, Some("workspace")),
-        KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
-        KeyBinding::new("cmd-k", OpenPalette, Some("workspace")),
-        KeyBinding::new("cmd-w", CloseWindow, Some("workspace")),
-        KeyBinding::new("cmd-f", SearchChat, Some("workspace")),
-        KeyBinding::new("cmd-1", Chat1, Some("workspace")),
-        KeyBinding::new("cmd-2", Chat2, Some("workspace")),
-        KeyBinding::new("cmd-3", Chat3, Some("workspace")),
-        KeyBinding::new("cmd-4", Chat4, Some("workspace")),
-        KeyBinding::new("cmd-5", Chat5, Some("workspace")),
-        KeyBinding::new("cmd-6", Chat6, Some("workspace")),
-        KeyBinding::new("cmd-7", Chat7, Some("workspace")),
-        KeyBinding::new("cmd-8", Chat8, Some("workspace")),
-        KeyBinding::new("cmd-9", Chat9, Some("workspace")),
-    ]
-    .into()
+    shortcuts::SHORTCUT_SPECS.iter().filter_map(|spec| spec.bind.map(|bind| bind(spec.keys))).collect()
 }
 
 /// App-level action handlers. These are global listeners, so menu and dock

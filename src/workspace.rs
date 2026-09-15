@@ -99,6 +99,8 @@ pub struct Workspace {
     /// keep their state across opens.
     pub settings_open: bool,
     pub settings_panel: Entity<crate::views::settings::SettingsPanel>,
+    /// Cmd-/ cheat sheet — a centered overlay rendered over the workspace.
+    pub shortcuts_open: bool,
     pub search_match_ix: usize,
     /// One-shot bypass for the close prompt — `remove_window` re-fires
     /// `on_window_should_close`, so the confirmed path sets this to skip it.
@@ -278,6 +280,7 @@ impl Workspace {
             close_confirmed: std::cell::Cell::new(false),
             settings_open: false,
             settings_panel,
+            shortcuts_open: false,
             notify_on_done: settings.notify_on_done,
             notify_sound: settings.notify_sound,
             backend,
@@ -316,16 +319,6 @@ impl Workspace {
         this.refresh_model_catalogs(cx);
         this.refresh_auth(cx);
         this
-    }
-
-    /// Change the active thread's Agent-mode access level and persist it.
-    /// Called from the settings picker; the stamp lands on the active chat
-    /// so switching threads restores each thread's own mode.
-    pub fn set_access(&mut self, access: crate::backend::AccessMode, cx: &mut Context<Self>) {
-        self.access = access;
-        self.chats.get_mut(self.active).map(|chat| chat.access = Some(access)).unwrap_or_default();
-        self.save_settings();
-        cx.notify();
     }
 
     /// Toggle the Changes panel; opening refreshes the change list so the

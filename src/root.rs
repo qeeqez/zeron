@@ -208,6 +208,9 @@ impl Render for Workspace {
                     crate::window::sidebar_toggle(self.sidebar_collapsed, cx),
                 ),
             )
+            // Cmd-/ cheat sheet — a centered modal over a dimmed backdrop,
+            // above the sidebar toggle and settings overlay, below dialogs.
+            .when(self.shortcuts_open, |d| d.child(crate::views::shortcuts::shortcuts_overlay(cx)))
             // gpui-component's Root only stores sheet/dialog/notification
             // state — the app must mount the layers itself or open_sheet /
             // open_dialog / push_notification update state nothing renders.
