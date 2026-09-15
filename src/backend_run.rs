@@ -40,7 +40,20 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     // the pump thread's stream drop only fires once it wakes on an event.
     let cancel = stream.cancel_guard();
     let (tx, rx) = std::sync::mpsc::channel::<AgentEvent>();
-    std::thread::spawn(move || pump_stream(events, tx));
+    // Forward whatever the backend already queued before handing the
+    // receiver to the pump thread: a stub that sends its whole stream
+    // inside `send` must not depend on the OS scheduling the thread —
+    // under parallel test load that scheduling is what flakes.
+    let mut live = true;
+    while let Ok(e) = events.try_recv() {
+        if tx.send(e).is_err() {
+            live = false;
+            break;
+        }
+    }
+    if live {
+        std::thread::spawn(move || pump_stream(events, tx));
+    }
 
     let task = cx.spawn(async move |this, cx| {
         let _cancel = cancel;

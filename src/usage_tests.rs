@@ -66,10 +66,22 @@ fn send_with(ws: &Entity<Workspace>, backend: UsageBackend, window: &mut Window,
     });
 }
 
-fn pump(cx: &mut VisualTestContext) {
-    for _ in 0..8 {
+/// Drive the fake executor until `done` observes the applied state. The
+/// backend pump runs on a real `std::thread` while the reply task polls
+/// its channel on a fake-clock timer, so `advance_clock`/`run_until_parked`
+/// alone can't guarantee delivery — under parallel test load the OS may
+/// not schedule the pump within a fixed iteration count. Poll on a
+/// real-time deadline instead, sleeping so the pump gets a core.
+fn pump_until(cx: &mut VisualTestContext, ws: &Entity<Workspace>, done: impl Fn(&Workspace) -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
         cx.executor().advance_clock(std::time::Duration::from_millis(50));
         cx.run_until_parked();
+        if ws.read_with(cx, |ws, _| done(ws)) {
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "pump thread never delivered the usage events");
+        std::thread::sleep(std::time::Duration::from_millis(1));
     }
 }
 
@@ -91,7 +103,7 @@ fn usage_events_accumulate_and_update_the_meter() {
             cx,
         );
     });
-    pump(cx);
+    pump_until(cx, &ws, |ws| ws.chats[0].usage.total == 450);
     ws.read_with(cx, |ws, _| {
         let usage = &ws.chats[0].usage;
         assert_eq!(usage.turn, 450, "turn sums the report deltas");
@@ -122,7 +134,7 @@ fn acp_usage_reports_fill_the_context_meter() {
             cx,
         );
     });
-    pump(cx);
+    pump_until(cx, &ws, |ws| ws.chats[0].usage.context_used == Some(1_200));
     ws.read_with(cx, |ws, _| {
         let usage = &ws.chats[0].usage;
         assert_eq!(usage.turn, 0, "occupancy reports carry no turn tokens");
