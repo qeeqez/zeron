@@ -36,6 +36,10 @@ pub(crate) struct StoredChat {
     /// files written before resume existed.
     #[serde(default)]
     thread_id: String,
+    /// Per-turn workdir checkpoints — missing in files written before
+    /// checkpoints existed.
+    #[serde(default)]
+    checkpoints: Vec<crate::checkpoints::TurnCheckpoint>,
 }
 
 /// Chats dir for the current project — kept for `RevealChats` in root.rs.
@@ -66,6 +70,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             workdir: chat.workdir.clone(),
             worktree: chat.worktree,
             thread_id: chat.thread_id.clone(),
+            checkpoints: chat.checkpoints.clone(),
         };
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
@@ -169,6 +174,7 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
             };
             chat.workdir = stored.workdir;
             chat.worktree = stored.worktree;
+            chat.checkpoints = stored.checkpoints;
             chat.thread_id = stored.thread_id;
             Some(chat)
         })

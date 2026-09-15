@@ -16,6 +16,9 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     // The thread's workdir (project root or its worktree) and access mode
     // travel with the turn — a mid-turn settings change can't alter them.
     let ctx = this.turn_context();
+    // Snapshot the workdir before the backend can touch it — the turn's
+    // "Undo" restores this checkpoint.
+    this.record_turn_checkpoint(chat_id, &ctx.cwd);
     let stream = this.backend.send(prompt, &model, &mode, &ctx);
     this.spawn_run_agent(crate::agents::RunAgentSpec { chat_id, name: this.backend.name(), lane: &model }, cx);
     // Share the child slot with the chat so stop/delete can kill a hung
@@ -230,22 +233,6 @@ impl Workspace {
             let pos = crate::chat_search::last_scroller_pos(&chat.messages, &query);
             self.scroller.update(cx, |s, cx| s.remeasure_items(pos..pos + 1, cx));
         }
-    }
-    /// Mark the reply finished. `failed_flag` survives so the retry banner
-    /// stays visible until the next send/retry clears it.
-    pub(crate) fn finish_reply(&mut self, chat_id: u64, cx: &mut Context<Self>) {
-        let ok = !self.chats.iter().any(|c| c.id == chat_id && c.failed_flag);
-        self.finish_run_agent(chat_id, ok, cx);
-        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
-        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
-        chat.running = false;
-        chat.complete_turn();
-        chat.child = None;
-        if !is_active {
-            chat.unread = true;
-        }
-        cx.notify();
-        self.save();
     }
 }
 

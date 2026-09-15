@@ -122,6 +122,23 @@ impl Workspace {
         cx.notify();
         self.save();
     }
+
+    /// Mark the reply finished. `failed_flag` survives so the retry banner
+    /// stays visible until the next send/retry clears it.
+    pub(crate) fn finish_reply(&mut self, chat_id: u64, cx: &mut Context<Self>) {
+        let ok = !self.chats.iter().any(|c| c.id == chat_id && c.failed_flag);
+        self.finish_run_agent(chat_id, ok, cx);
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
+        chat.running = false;
+        chat.complete_turn();
+        chat.child = None;
+        if !is_active {
+            chat.unread = true;
+        }
+        cx.notify();
+        self.save();
+    }
 }
 
 impl Workspace {

@@ -25,8 +25,11 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
     let MsgCtx { ix, msg, .. } = mc;
     let MessageKind::Text(text) = &msg.kind else { unreachable!() };
     let role = msg.role;
-    let word_wrap = ws.read(cx).word_wrap;
-    let font_size = ws.read(cx).font_size;
+    let (word_wrap, font_size, checkpointed) = {
+        let ws = ws.read(cx);
+        let chat = &ws.chats[ws.active];
+        (ws.word_wrap, ws.font_size, !chat.running && crate::checkpoints::for_message(chat, ix).is_some())
+    };
     let alignment = match role {
         Role::User => MessageAlignment::End,
         Role::Assistant => MessageAlignment::Start,
@@ -77,15 +80,42 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
     }
     message = message.footer(MessageFooter::new().child(message_footer(mc, ws, md_state.clone(), cx)));
     let ws_menu = ws.clone();
+    let ws_revert = ws.clone();
+    let group = SharedString::from(format!("msg-{ix}"));
     div()
         .id(("msg", ix))
         .test_support()
-        .group(SharedString::from(format!("msg-{ix}")))
+        .group(group.clone())
         .child(message)
+        // "Undo turn" on the user message that opened a checkpointed turn —
+        // hover-revealed like the footer actions, hidden while a reply runs.
+        .when(checkpointed, |d| {
+            d.child(
+                div().flex().justify_end().child(
+                    div()
+                        .id(("revert", ix))
+                        .test_support()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .cursor_pointer()
+                        .invisible()
+                        .group_hover(group.clone(), |style| style.visible())
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(IconName::Undo2)
+                        .child("Undo turn")
+                        .on_click(move |_, _, cx| {
+                            ws_revert.update(cx, |this, cx| this.revert_to_checkpoint(ix, cx));
+                        }),
+                ),
+            )
+        })
         .context_menu(move |menu, _window, cx| {
             let ws_copy = ws_menu.clone();
             let ws_retry = ws_menu.clone();
             let ws_edit = ws_menu.clone();
+            let ws_undo = ws_menu.clone();
             let menu = menu.item(
                 gpui_kit::component::menu::PopupMenuItem::new("Copy")
                     .icon(IconName::Copy)
@@ -100,6 +130,12 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
                     ws_menu.clone(),
                     ix,
                 )))
+            } else if checkpointed {
+                menu.item(gpui_kit::component::menu::PopupMenuItem::new("Undo turn").icon(IconName::Undo2).on_click(
+                    move |_, _, cx| {
+                        ws_undo.update(cx, |this, cx| this.revert_to_checkpoint(ix, cx));
+                    },
+                ))
             } else {
                 menu
             };

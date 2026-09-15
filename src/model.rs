@@ -185,6 +185,10 @@ pub struct Chat {
     /// Token/context usage folded from the turn's `AgentEvent::Usage`
     /// stream — drives the composer meter. Runtime state, not persisted.
     pub usage: crate::usage::ChatUsage,
+    /// Workdir snapshots taken before each backend turn, pinned to the
+    /// turn's user message — the "Undo turn" affordance restores them.
+    /// Persisted so revert survives restarts.
+    pub checkpoints: Vec<crate::checkpoints::TurnCheckpoint>,
 }
 
 impl Chat {
@@ -213,11 +217,12 @@ impl Chat {
             worktree: false,
             thread_id: String::new(),
             usage: crate::usage::ChatUsage::default(),
+            checkpoints: Vec::new(),
         }
     }
 
     /// Record how long the just-finished turn took and clear `started_at`.
-    /// Callers: `finish_reply` (backend_run.rs), `finish_stream`
+    /// Callers: `finish_reply` (chat_ops.rs), `finish_stream`
     /// (simulate.rs), `stop_reply` (chat_ops.rs) — each replaces its
     /// `chat.started_at = None` with this.
     pub fn complete_turn(&mut self) {

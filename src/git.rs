@@ -79,6 +79,25 @@ pub(crate) fn git(dir: &std::path::Path, args: &[&str]) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// Run `git` in `dir` with extra environment variables; stdout on success,
+/// stderr text on failure. Checkpoint plumbing needs this over `git()`:
+/// `GIT_INDEX_FILE` redirects index reads/writes to a scratch file so the
+/// user's real index is never touched, and `commit-tree` needs a synthetic
+/// identity when the repo has none configured.
+pub(crate) fn git_env(dir: &std::path::Path, args: &[&str], envs: &[(&str, &str)]) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .envs(envs.iter().copied())
+        .output()
+        .map_err(|e| format!("git {}: {e}", args[0]))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
 /// `git diff` variant with bounded output: reads at most `max_bytes` of
 /// stdout, then kills the child rather than buffering an unbounded diff.
 /// Returns `(output, hit_cap)`. `None` on spawn failure or an exit code

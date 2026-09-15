@@ -26,6 +26,9 @@ mod chat_ops;
 mod chat_ops_tests;
 mod chat_search;
 mod chat_search_tests;
+mod checkpoints;
+#[cfg(test)]
+mod checkpoints_tests;
 #[cfg(test)]
 mod composer_queue_tests;
 #[cfg(test)]
