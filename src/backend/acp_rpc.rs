@@ -45,14 +45,52 @@ pub(super) fn session_new_req(id: i64, cwd: &str) -> Value {
     })
 }
 
-/// `session/prompt` — the user's prompt as a single text block.
-pub(super) fn prompt_req(id: i64, session_id: &str, prompt: &str) -> Value {
+/// `session/prompt` — the user's prompt as a text block plus one
+/// `resource_link` block per image attachment (a `file://` URI the agent
+/// can open; ACP's `image` block needs base64 we don't carry).
+pub(super) fn prompt_req(id: i64, session_id: &str, prompt: &str, images: &[std::path::PathBuf]) -> Value {
+    let mut blocks = vec![json!({"type": "text", "text": prompt})];
+    for path in images {
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "image".into());
+        blocks.push(json!({
+            "type": "resource_link",
+            "uri": file_uri(path),
+            "name": name,
+            "mimeType": image_mime(path),
+        }));
+    }
     json!({
         "jsonrpc": "2.0",
         "method": "session/prompt",
         "id": id,
-        "params": {"sessionId": session_id, "prompt": [{"type": "text", "text": prompt}]},
+        "params": {"sessionId": session_id, "prompt": blocks},
     })
+}
+
+/// `file://` URI for a local path — percent-encodes everything outside
+/// RFC 3986's unreserved + path-punctuation set (spaces in macOS
+/// screenshot names, non-ASCII).
+fn file_uri(path: &std::path::Path) -> String {
+    let mut uri = String::from("file://");
+    for byte in path.to_string_lossy().as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' => uri.push(*byte as char),
+            b => uri.push_str(&format!("%{b:02X}")),
+        }
+    }
+    uri
+}
+
+/// MIME type for an image path's extension — `resource_link` blocks carry
+/// it so the agent knows the payload's format.
+fn image_mime(path: &std::path::Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref() {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        _ => "application/octet-stream",
+    }
 }
 
 /// `session/set_mode` — pick one of the modes `session/new` advertised.

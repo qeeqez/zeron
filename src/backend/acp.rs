@@ -63,6 +63,7 @@ impl AgentBackend for AcpBackend {
             mode: mode.to_string(),
             access: ctx.access,
             cwd: ctx.cwd.clone(),
+            images: ctx.images.clone(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             models: self.models.clone(),
@@ -89,6 +90,8 @@ pub(super) struct AcpTurn {
     /// Session working directory — `session/new`'s `cwd` and the
     /// workspace-write confinement root for `fs/write_text_file`.
     cwd: std::path::PathBuf,
+    /// Image attachments — sent as `resource_link` blocks on `session/prompt`.
+    images: Vec<std::path::PathBuf>,
     slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
     cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// Shared model catalog — `session/new` refreshes it for `models()`.
@@ -106,6 +109,7 @@ impl AcpTurn {
             mode: mode.into(),
             access,
             cwd: std::path::PathBuf::from("/tmp"),
+            images: Vec::new(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             models: std::sync::Arc::new(parking_lot::Mutex::new(vec![])),
@@ -383,7 +387,7 @@ impl Handshake {
 
     fn send_prompt(&mut self, turn: &AcpTurn, sid: &str) -> Result<Step, String> {
         self.seq += 1;
-        self.send(&wire::prompt_req(self.seq, sid, &turn.prompt))?;
+        self.send(&wire::prompt_req(self.seq, sid, &turn.prompt, &turn.images))?;
         self.phase = Phase::Prompt;
         Ok(Step::Next)
     }

@@ -10,6 +10,7 @@ mod appearance_tests;
 mod approval_ops;
 #[cfg(test)]
 mod approval_tests;
+mod attachment;
 mod backend;
 mod backend_parse;
 #[cfg(test)]

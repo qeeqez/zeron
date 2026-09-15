@@ -95,6 +95,23 @@ pub fn attachment_chips(chat: &Chat, ws: &Entity<Workspace>, cx: &mut App) -> Ve
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or(full.clone());
+            // Image attachments preview as a thumbnail; other files keep
+            // the text icon. The marker id lets headless tests see the kind.
+            let preview: AnyElement = if crate::attachment::is_image_path(&full) {
+                div()
+                    .id(SharedString::from(format!("attach-thumb-{ix}")))
+                    .test_support()
+                    .child(
+                        img(std::path::PathBuf::from(&full))
+                            .size(px(20.))
+                            .rounded_sm()
+                            .object_fit(ObjectFit::Cover)
+                            .with_fallback(|| IconName::Image.into_any_element()),
+                    )
+                    .into_any_element()
+            } else {
+                IconName::FileText.into_any_element()
+            };
             div()
                 .id(ix)
                 .flex()
@@ -105,7 +122,7 @@ pub fn attachment_chips(chat: &Chat, ws: &Entity<Workspace>, cx: &mut App) -> Ve
                 .rounded_md()
                 .bg(cx.theme().secondary)
                 .text_xs()
-                .child(IconName::FileText)
+                .child(preview)
                 .child(
                     div()
                         .id(("reveal-attach", ix))

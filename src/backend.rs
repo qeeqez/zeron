@@ -156,12 +156,16 @@ pub struct TurnContext {
     /// Reasoning effort for the turn — `None` lets the backend apply the
     /// model's own default (codex's `defaultReasoningEffort`).
     pub effort: Option<String>,
+    /// Image attachment paths for this turn — sent as image inputs where
+    /// the backend supports them (codex `localImage`, ACP `resource_link`),
+    /// else carried by the prompt's `[Attached files:]` list.
+    pub images: Vec<std::path::PathBuf>,
 }
 
 impl TurnContext {
     /// A turn rooted at `cwd` with `access`, starting a fresh thread.
     pub fn at(cwd: std::path::PathBuf, access: AccessMode) -> Self {
-        Self { cwd, access, thread_id: None, effort: None }
+        Self { cwd, access, thread_id: None, effort: None, images: Vec::new() }
     }
 }
 

@@ -112,6 +112,17 @@ mod tests {
         assert!(!sent.contains("effort"), "stdin was: {sent}");
     }
 
+    #[test]
+    fn turn_start_carries_image_attachments() {
+        let mut t = turn("Agent", AccessMode::Auto);
+        t.images = vec![std::path::PathBuf::from("/tmp/shot.png")];
+        let sent = turn_start_wire(&t);
+        let start = sent.lines().find(|l| l.contains("turn/start")).expect("stdin was: {sent}");
+        let req: serde_json::Value = serde_json::from_str(start).unwrap();
+        assert_eq!(req["params"]["input"][0]["type"], serde_json::json!("text"));
+        assert_eq!(req["params"]["input"][1], serde_json::json!({"type": "localImage", "path": "/tmp/shot.png"}));
+    }
+
     /// Drive the handshake to `Phase::Run` over a captured stdin, then
     /// return the buffer the turn's steer writes into.
     fn running_turn(mode: &str) -> (CodexTurn, std::sync::Arc<parking_lot::Mutex<Vec<u8>>>) {

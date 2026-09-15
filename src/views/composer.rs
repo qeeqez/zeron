@@ -1,6 +1,6 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::input::Textarea;
+use gpui_kit::component::input::{Paste, Textarea};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::{Disableable, Sizable};
 use gpui_kit::prelude::*;
@@ -155,6 +155,9 @@ impl Workspace {
             .on_drop::<ExternalPaths>(cx.listener(|this, paths: &ExternalPaths, _, cx| {
                 this.add_attachments(paths.0.to_vec(), cx);
             }))
+            // Capture-phase so clipboard images/files attach as chips before
+            // the input's own paste handler can insert their paths as text.
+            .capture_action::<Paste>(cx.listener(|this, _, _, cx| this.paste_attachments(cx)))
             .child(
                 div()
                     .flex()

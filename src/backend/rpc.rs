@@ -33,13 +33,19 @@ pub(crate) fn thread_start_req(id: i64, model: &str, sandbox: &str, approval: &s
     json!({"method": "thread/start", "id": id, "params": params})
 }
 
-/// `turn/start`: the user's prompt as a single text input. `effort` is
-/// the app-server's `ReasoningEffort` override — `None` lets the thread
-/// keep the model's `defaultReasoningEffort`.
-pub(crate) fn turn_start_req(id: i64, thread_id: &str, prompt: &str, effort: Option<&str>) -> Value {
+/// `turn/start`: the user's prompt as a text input plus one `localImage`
+/// input per image attachment (the `UserInput` variant that takes a local
+/// path — the server reads the file itself). `effort` is the app-server's
+/// `ReasoningEffort` override — `None` lets the thread keep the model's
+/// `defaultReasoningEffort`.
+pub(crate) fn turn_start_req(id: i64, thread_id: &str, prompt: &str, effort: Option<&str>, images: &[std::path::PathBuf]) -> Value {
+    let mut input = vec![json!({"type": "text", "text": prompt, "text_elements": []})];
+    for path in images {
+        input.push(json!({"type": "localImage", "path": path.to_string_lossy()}));
+    }
     let mut params = json!({
         "threadId": thread_id,
-        "input": [{"type": "text", "text": prompt, "text_elements": []}],
+        "input": input,
     });
     if let Some(e) = effort {
         params["effort"] = json!(e);
@@ -306,7 +312,7 @@ mod tests {
 
     #[test]
     fn turn_start_wraps_prompt_as_text_input() {
-        let req = turn_start_req(3, "tid", "hello", None);
+        let req = turn_start_req(3, "tid", "hello", None, &[]);
         assert_eq!(req["params"]["threadId"], json!("tid"));
         assert_eq!(req["params"]["input"][0]["type"], json!("text"));
         assert_eq!(req["params"]["input"][0]["text"], json!("hello"));
@@ -317,10 +323,21 @@ mod tests {
         // The app-server's `effort` override rides turn/start — set it and
         // the param lands; unset it and the param is absent entirely so the
         // thread keeps the model's defaultReasoningEffort.
-        let req = turn_start_req(3, "tid", "hello", Some("high"));
+        let req = turn_start_req(3, "tid", "hello", Some("high"), &[]);
         assert_eq!(req["params"]["effort"], json!("high"));
-        let unset = turn_start_req(3, "tid", "hello", None);
+        let unset = turn_start_req(3, "tid", "hello", None, &[]);
         assert!(unset["params"].get("effort").is_none(), "unset effort must not reach the wire");
+    }
+
+    #[test]
+    fn turn_start_appends_local_image_inputs() {
+        let images = vec![std::path::PathBuf::from("/tmp/shot.png"), std::path::PathBuf::from("/tmp/diagram.webp")];
+        let req = turn_start_req(3, "tid", "look", None, &images);
+        let input = &req["params"]["input"];
+        assert_eq!(input[0], json!({"type": "text", "text": "look", "text_elements": []}));
+        assert_eq!(input[1], json!({"type": "localImage", "path": "/tmp/shot.png"}));
+        assert_eq!(input[2], json!({"type": "localImage", "path": "/tmp/diagram.webp"}));
+        assert_eq!(input.as_array().unwrap().len(), 3);
     }
 
     #[test]

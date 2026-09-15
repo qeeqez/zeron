@@ -37,6 +37,7 @@ impl AgentBackend for CodexCliBackend {
             mode: mode.to_string(),
             access: ctx.access,
             cwd: ctx.cwd.clone(),
+            images: ctx.images.clone(),
             resume: ctx.thread_id.clone(),
             effort: ctx.effort.clone(),
             slot: std::sync::Arc::new(CodexSlot::new()),
@@ -84,6 +85,8 @@ pub(super) struct CodexTurn {
     /// The thread's working directory — the project root, or its git
     /// worktree when the thread runs in one.
     pub(super) cwd: std::path::PathBuf,
+    /// Image attachments — sent as `localImage` inputs on `turn/start`.
+    pub(super) images: Vec<std::path::PathBuf>,
     /// Resume this codex thread instead of starting an ephemeral one — set
     /// on chats bound to a past session.
     pub(super) resume: Option<String>,
@@ -109,6 +112,7 @@ impl CodexTurn {
             access,
             cwd: std::path::PathBuf::from("/tmp/thread-wt"),
             effort: None,
+            images: Vec::new(),
             resume: None,
             slot: std::sync::Arc::new(CodexSlot::new()),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),

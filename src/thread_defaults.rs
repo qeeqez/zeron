@@ -139,6 +139,15 @@ impl Workspace {
             crate::backend::TurnContext::at(crate::worktree::workdir_for(chat, self.project.root()), chat.access.unwrap_or(self.access));
         ctx.thread_id = if chat.thread_id.is_empty() { None } else { Some(chat.thread_id.clone()) };
         ctx.effort = chat.effort.clone().or_else(|| self.effort.clone());
+        // The turn's image attachments ride along — the user message was
+        // already pushed by the caller, so its attachments are the snapshot.
+        ctx.images = chat
+            .messages
+            .iter()
+            .rev()
+            .find(|m| m.role == crate::model::Role::User)
+            .map(|m| crate::attachment::image_paths(&m.attachments))
+            .unwrap_or_default();
         ctx
     }
 }

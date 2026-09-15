@@ -24,10 +24,23 @@ fn session_new_and_prompt_shapes() {
     assert_eq!(new["params"]["cwd"], json!("/work"));
     assert_eq!(new["params"]["mcpServers"], json!([]));
 
-    let prompt = wire::prompt_req(3, "s1", "hello");
+    let prompt = wire::prompt_req(3, "s1", "hello", &[]);
     assert_eq!(prompt["method"], json!("session/prompt"));
     assert_eq!(prompt["params"]["sessionId"], json!("s1"));
     assert_eq!(prompt["params"]["prompt"][0], json!({"type": "text", "text": "hello"}));
+}
+
+#[test]
+fn prompt_carries_images_as_resource_links() {
+    let images = vec![std::path::PathBuf::from("/tmp/Screen Shot.png")];
+    let prompt = wire::prompt_req(3, "s1", "look", &images);
+    let blocks = &prompt["params"]["prompt"];
+    assert_eq!(blocks[0], json!({"type": "text", "text": "look"}));
+    assert_eq!(blocks[1]["type"], json!("resource_link"));
+    // Spaces percent-encode so the URI stays valid.
+    assert_eq!(blocks[1]["uri"], json!("file:///tmp/Screen%20Shot.png"));
+    assert_eq!(blocks[1]["name"], json!("Screen Shot.png"));
+    assert_eq!(blocks[1]["mimeType"], json!("image/png"));
 }
 
 #[test]

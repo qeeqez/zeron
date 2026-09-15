@@ -43,6 +43,9 @@ impl AgentBackend for ClaudeCliBackend {
             .collect()
     }
 
+    /// `claude -p` takes the prompt on stdin — no image input on the wire,
+    /// so `ctx.images` stay path references in the prompt's `[Attached
+    /// files:]` list (the model reads them with its file tools).
     fn send(&self, prompt: &str, model: &str, mode: &str, ctx: &super::TurnContext) -> ReplyStream {
         let (tx, rx) = std::sync::mpsc::channel();
         // Each turn owns its child slot — concurrent chats can't clobber it.

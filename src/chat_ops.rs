@@ -178,40 +178,6 @@ impl Workspace {
         self.save();
     }
 
-    /// Open the native file picker and attach the chosen files.
-    pub fn attach_file(&mut self, cx: &mut Context<Self>) {
-        let rx = cx.prompt_for_paths(gpui_kit::PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: true,
-            prompt: Some("Attach files".into()),
-        });
-        cx.spawn(async move |this, cx| {
-            let Ok(Ok(Some(paths))) = rx.await else { return };
-            let _ = this.update(cx, |this, cx| this.add_attachments(paths, cx));
-        })
-        .detach();
-    }
-
-    /// Append unique file paths to the active chat's attachments.
-    pub(crate) fn add_attachments(&mut self, paths: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[self.active];
-        for name in paths.iter().map(|p| p.to_string_lossy().into_owned()) {
-            if !chat.attachments.iter().any(|a| a.as_str() == name) {
-                chat.attachments.push(name.into());
-            }
-        }
-        cx.notify();
-    }
-
-    pub fn remove_attachment(&mut self, ix: usize, cx: &mut Context<Self>) {
-        let attachments = &mut self.chats[self.active].attachments;
-        if ix < attachments.len() {
-            attachments.remove(ix);
-        }
-        cx.notify();
-    }
-
     /// Run a slash command picked from the composer menu. Routes through
     /// `send` so selection behaves exactly like typing `/cmd` + Enter.
     pub(crate) fn run_command(&mut self, cmd: &str, window: &mut Window, cx: &mut Context<Self>) {
