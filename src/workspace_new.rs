@@ -55,6 +55,7 @@ impl Workspace {
         })
         .detach();
         let global_search = cx.new(|cx| CommandState::new(window, cx));
+        let file_palette = cx.new(|cx| CommandState::new(window, cx));
         let task_input = cx.new(|cx| InputState::new(window, cx).placeholder("New task…"));
         cx.subscribe_in(&task_input, window, |this, s, event: &InputEvent, window, cx| {
             if matches!(event, InputEvent::PressEnter { .. }) {
@@ -149,6 +150,8 @@ impl Workspace {
             recall_ix: None,
             palette,
             global_search,
+            file_palette,
+            recent_files: Vec::new(),
             chat_search,
             find: crate::chat_find::FindBar::new(crate::chat_find::new_find_input(window, cx)),
             chat_search_open: false,

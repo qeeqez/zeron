@@ -22,6 +22,15 @@ pub(crate) fn command_specs() -> Vec<CommandSpec> {
             effect: Effect::Dispatch(Box::new(crate::OpenProject)),
         },
         CommandSpec {
+            label: "Go to File…",
+            icon: IconName::File,
+            keywords: &["open", "jump", "path"],
+            // Run (not Dispatch): the picker is itself a dialog, so it must
+            // open after the palette closes — a deferred dispatch would
+            // land while it's still up and just close it.
+            effect: Effect::Run(Workspace::open_file_palette),
+        },
+        CommandSpec {
             label: "Rename Chat",
             icon: IconName::Pencil,
             keywords: &["title"],

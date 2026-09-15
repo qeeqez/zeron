@@ -88,6 +88,10 @@ pub struct Workspace {
     pub palette: Entity<CommandState>,
     /// Cmd-Shift-F cross-chat search dialog's state (see `crate::global_search`).
     pub global_search: Entity<CommandState>,
+    /// Cmd-P go-to-file picker's state (see `crate::file_palette`).
+    pub file_palette: Entity<CommandState>,
+    /// Files picked via Cmd-P, most recent first — ranks the picker.
+    pub recent_files: Vec<SharedString>,
     pub rename: Entity<InputState>,
     /// Chat id being renamed — stable across deletions, unlike a vec index.
     pub renaming: Option<u64>,

@@ -69,6 +69,9 @@ mod export;
 mod feedback;
 #[cfg(test)]
 mod feedback_tests;
+mod file_palette;
+#[cfg(test)]
+mod file_palette_tests;
 mod files;
 mod git;
 mod git_parse;
@@ -180,10 +183,10 @@ mod worktree_tests;
 use gpui_kit::*;
 
 actions!([
-    NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleSnapshots, ToggleExplorer, OpenPalette, ThemeLight, ThemeDark,
-    Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, SearchAllChats,
-    FindInChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow,
-    OpenProject, AboutApp, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront, ToggleDictation,
+    NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleSnapshots, ToggleExplorer, OpenPalette, GoToFile, ThemeLight,
+    ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat,
+    SearchAllChats, FindInChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext,
+    NewWindow, OpenProject, AboutApp, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront, ToggleDictation,
     ToggleTerminal,
 ]);
 

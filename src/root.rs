@@ -3,7 +3,7 @@
 use crate::workspace::Workspace;
 use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EnterFullscreen,
-    EscapeKey, FindInChat, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats,
+    EscapeKey, FindInChat, GoToFile, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats,
     SearchAllChats, SearchChat, ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleDictation, ToggleExplorer,
     ToggleSidebar, ToggleSnapshots, ToggleTerminal, ZoomWindow,
 };
@@ -80,6 +80,12 @@ impl Render for Workspace {
             })
             .on_action(move |_: &OpenPalette, window, cx| {
                 ws_palette.update(cx, |this, cx| this.open_palette(window, cx));
+            })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &GoToFile, window, cx| {
+                    ws.update(cx, |this, cx| this.open_file_palette(window, cx));
+                }
             })
             .on_action({
                 let ws = cx.entity();
