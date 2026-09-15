@@ -150,6 +150,35 @@ pub(crate) fn parse_branch(raw: &str) -> BranchStatus {
     status
 }
 
+/// One local branch as the picker's list sees it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Branch {
+    pub name: String,
+    /// Whether this branch is checked out — the picker's check mark.
+    pub current: bool,
+}
+
+/// Local branches under `dir` via `branch --format` — `%(HEAD)` marks the
+/// checked-out one. Empty on non-repo dirs and unborn HEADs; a detached HEAD
+/// contributes no entry, so nothing is marked current.
+pub(crate) fn list_branches(dir: &std::path::Path) -> Vec<Branch> {
+    let Some(out) = git(dir, &["branch", "--format=%(HEAD)%00%(refname:short)"]) else {
+        return Vec::new();
+    };
+    crate::git_parse::parse_branches(&out)
+}
+
+/// `git checkout <name>` — switch branches. Git refuses when local edits
+/// would be overwritten; that stderr is the error the panel surfaces.
+pub(crate) fn checkout(dir: &std::path::Path, name: &str) -> Result<String, String> {
+    git_env(dir, &["checkout", name], &[]).map(|_| format!("Switched to {name}"))
+}
+
+/// `git checkout -b <name>` — create a branch at HEAD and switch to it.
+pub(crate) fn create_branch(dir: &std::path::Path, name: &str) -> Result<String, String> {
+    git_env(dir, &["checkout", "-b", name], &[]).map(|_| format!("Created {name}"))
+}
+
 /// `git add -- <path>` — stage the file's worktree changes. For a conflicted
 /// path this marks the conflict resolved, matching the panel's toggle.
 pub(crate) fn stage(dir: &std::path::Path, path: &str) -> Result<String, String> {

@@ -2,7 +2,7 @@
 //! the SLOC cap. Everything here is pure: tests feed fixture output without a
 //! real repository.
 
-use crate::git::{ChangeStatus, FileChange};
+use crate::git::{Branch, ChangeStatus, FileChange};
 
 /// Parse `git status --porcelain=v1 -z` output. Entries are NUL-separated
 /// `XY path`; renames/copies append a second field holding the source path.
@@ -100,6 +100,19 @@ pub(crate) fn parse_numstat(raw: &str) -> std::collections::HashMap<String, (u32
 
 fn parse_num(s: &str) -> u32 {
     s.parse().unwrap_or(0)
+}
+
+/// Parse `git branch --format=%(HEAD)%00%(refname:short)` output: one
+/// `*`-or-space flag, a NUL, then the short name per line. A detached HEAD
+/// emits a `(HEAD detached …)` pseudo-entry — not a local branch, so it's
+/// dropped and nothing is marked current.
+pub(crate) fn parse_branches(raw: &str) -> Vec<Branch> {
+    raw.lines()
+        .filter_map(|line| {
+            let (flag, name) = line.split_once('\0')?;
+            (!name.is_empty() && !name.starts_with("(HEAD detached")).then(|| Branch { name: name.to_string(), current: flag == "*" })
+        })
+        .collect()
 }
 
 /// Line count for an untracked file — newlines plus a trailing partial line.

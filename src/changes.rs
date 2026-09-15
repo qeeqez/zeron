@@ -7,7 +7,7 @@
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
 
-use crate::git::{BranchStatus, FileChange};
+use crate::git::{Branch, BranchStatus, FileChange};
 use crate::workspace::Workspace;
 
 /// Token source for in-flight row-diff loads — each expand stamps the row
@@ -27,8 +27,16 @@ pub struct ChangesGit {
     /// Current branch + ahead/behind — `None` when the project isn't a git
     /// repo, which hides the whole action block.
     pub branch: Option<BranchStatus>,
+    /// Local branches for the picker's list — filled when the picker opens,
+    /// empty until then.
+    pub branches: Vec<Branch>,
+    /// Bumped per `refresh_branches` request; a stale list can't overwrite a
+    /// newer one when two fetches land out of order.
+    branches_generation: u64,
     /// Commit message input — Enter commits, same as the button.
     pub commit_input: Entity<InputState>,
+    /// New-branch name input in the picker — Enter creates and switches.
+    pub new_branch_input: Entity<InputState>,
     /// A git op is running on the background executor — buttons stay up but
     /// re-entry is refused so ops can't interleave.
     pub busy: bool,
@@ -37,7 +45,8 @@ pub struct ChangesGit {
 }
 
 impl ChangesGit {
-    /// Build the state and wire Enter in the commit input to `commit_staged`.
+    /// Build the state and wire Enter in the commit input to `commit_staged`
+    /// and Enter in the new-branch input to `create_branch`.
     pub fn new(window: &mut Window, cx: &mut Context<Workspace>) -> Self {
         let commit_input = cx.new(|cx| InputState::new(window, cx).placeholder("Commit message…"));
         cx.subscribe(&commit_input, |this: &mut Workspace, _input, event: &InputEvent, cx| {
@@ -46,7 +55,22 @@ impl ChangesGit {
             }
         })
         .detach();
-        Self { branch: None, commit_input, busy: false, note: None }
+        let new_branch_input = cx.new(|cx| InputState::new(window, cx).placeholder("New branch name…"));
+        cx.subscribe(&new_branch_input, |this: &mut Workspace, _input, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::PressEnter { .. }) {
+                this.create_branch(cx);
+            }
+        })
+        .detach();
+        Self {
+            branch: None,
+            branches: Vec::new(),
+            branches_generation: 0,
+            commit_input,
+            new_branch_input,
+            busy: false,
+            note: None,
+        }
     }
 }
 
@@ -57,6 +81,8 @@ enum GitOp {
     Commit(String),
     Push,
     CreatePr,
+    Checkout(String),
+    CreateBranch(String),
 }
 
 impl GitOp {
@@ -69,6 +95,8 @@ impl GitOp {
             Self::Commit(message) => crate::git::commit(dir, message),
             Self::Push => crate::git::push(dir),
             Self::CreatePr => crate::git::create_pr(dir, &[]),
+            Self::Checkout(name) => crate::git::checkout(dir, name),
+            Self::CreateBranch(name) => crate::git::create_branch(dir, name),
         };
         (self, result)
     }
@@ -177,6 +205,51 @@ impl Workspace {
         self.run_git_op(GitOp::CreatePr, cx);
     }
 
+    /// `git checkout <name>` in the project root — the picker's branch rows.
+    /// Picking the current branch is a no-op; a dirty tree that would lose
+    /// edits makes git refuse and its stderr lands as the note.
+    pub fn checkout_branch(&mut self, name: &str, cx: &mut Context<Self>) {
+        if self.git.branch.as_ref().is_some_and(|b| b.name == name) {
+            return;
+        }
+        self.run_git_op(GitOp::Checkout(name.to_string()), cx);
+    }
+
+    /// `git checkout -b <name>` from the picker's new-branch input — Enter
+    /// and the button share this path. An empty name is refused before
+    /// spawning, same as the commit box.
+    pub fn create_branch(&mut self, cx: &mut Context<Self>) {
+        let name = self.git.new_branch_input.read(cx).value().trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+        self.run_git_op(GitOp::CreateBranch(name), cx);
+    }
+
+    /// Re-list local branches for the picker — runs when the picker opens so
+    /// branches created outside the app show up. Off the UI thread like the
+    /// rest of the panel's git calls.
+    pub fn refresh_branches(&mut self, cx: &mut Context<Self>) {
+        self.git.branches_generation += 1;
+        let generation = self.git.branches_generation;
+        let dir = self.project.root().to_path_buf();
+        cx.spawn(async move |this, cx| {
+            let branches = cx.background_executor().spawn(async move { crate::git::list_branches(&dir) }).await;
+            let _ = this.update(cx, |this, cx| this.land_branches(generation, branches, cx));
+        })
+        .detach();
+    }
+
+    /// Publish a fetched branch list — skipped when a newer fetch was
+    /// requested while this one ran, same guard as `land_changes`.
+    fn land_branches(&mut self, generation: u64, branches: Vec<Branch>, cx: &mut Context<Self>) {
+        if generation != self.git.branches_generation {
+            return;
+        }
+        self.git.branches = branches;
+        cx.notify();
+    }
+
     /// Run `op` on the background executor, then land its note and refresh
     /// the panel. Refused while another op is in flight — staging then
     /// committing mid-stage would race the index.
@@ -198,15 +271,23 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Publish an op's outcome: the note under the buttons, and a cleared
-    /// commit box when a commit succeeded (a failed commit keeps the typed
-    /// message so it isn't lost).
+    /// Publish an op's outcome: the note under the buttons, a cleared commit
+    /// box when a commit succeeded (a failed commit keeps the typed message
+    /// so it isn't lost), and a cleared new-branch box when a branch was
+    /// created. Branch ops also re-list branches so an open picker shows the
+    /// switch.
     fn land_git_op(&mut self, op: GitOp, result: Result<String, String>, window: &mut Window, cx: &mut Context<Self>) {
         self.git.busy = false;
         match result {
             Ok(text) => {
                 if matches!(op, GitOp::Commit(_)) {
                     self.git.commit_input.update(cx, |s, cx| s.set_value("", window, cx));
+                }
+                if matches!(op, GitOp::CreateBranch(_)) {
+                    self.git.new_branch_input.update(cx, |s, cx| s.set_value("", window, cx));
+                }
+                if matches!(op, GitOp::Checkout(_) | GitOp::CreateBranch(_)) {
+                    self.refresh_branches(cx);
                 }
                 self.git.note = Some((text, false));
             },

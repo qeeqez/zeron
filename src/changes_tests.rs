@@ -205,4 +205,68 @@ mod tests {
         assert!(git::branch_status(&dir).is_none(), "non-repo dir has no branch");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn parse_branches_marks_current_and_drops_detached() {
+        let raw = "*\u{0}main\n \u{0}feature\n*\u{0}(HEAD detached at abc1234)\n";
+        assert_eq!(
+            crate::git_parse::parse_branches(raw),
+            vec![
+                git::Branch { name: "main".into(), current: true },
+                git::Branch { name: "feature".into(), current: false },
+            ]
+        );
+    }
+
+    #[test]
+    fn list_branches_returns_locals_with_current_marked() {
+        let Some(dir) = temp_repo("list") else { return };
+        assert!(run(&dir, &["branch", "feature"]));
+        let branches = git::list_branches(&dir);
+        assert_eq!(branches.iter().filter(|b| b.current).count(), 1, "exactly one current");
+        let current = branches.iter().find(|b| b.current).unwrap();
+        assert_eq!(current.name, git::branch_status(&dir).unwrap().name);
+        assert!(branches.iter().any(|b| b.name == "feature" && !b.current));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn checkout_switches_branches() {
+        let Some(dir) = temp_repo("checkout") else { return };
+        let initial = git::branch_status(&dir).unwrap().name;
+        assert!(run(&dir, &["branch", "other"]));
+        assert_eq!(git::checkout(&dir, "other").as_deref(), Ok("Switched to other"));
+        assert_eq!(git::branch_status(&dir).unwrap().name, "other");
+        git::checkout(&dir, &initial).unwrap();
+        assert_eq!(git::branch_status(&dir).unwrap().name, initial);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A checkout that would overwrite local edits fails, and the error
+    /// names the file so the panel's note tells the user what blocked it.
+    #[test]
+    fn checkout_refuses_when_edits_would_be_lost() {
+        let Some(dir) = temp_repo("dirty") else { return };
+        let initial = git::branch_status(&dir).unwrap().name;
+        assert!(run(&dir, &["checkout", "-qb", "other"]));
+        std::fs::write(dir.join("f.txt"), "other\n").unwrap();
+        assert!(run(&dir, &["commit", "-qam", "other"]));
+        assert!(run(&dir, &["checkout", "-q", &initial]));
+        std::fs::write(dir.join("f.txt"), "dirty\n").unwrap();
+        let err = git::checkout(&dir, "other").unwrap_err();
+        assert!(err.contains("f.txt"), "error names the blocking file: {err}");
+        assert_eq!(git::branch_status(&dir).unwrap().name, initial, "HEAD stayed put");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn create_branch_makes_and_switches() {
+        let Some(dir) = temp_repo("create") else { return };
+        assert_eq!(git::create_branch(&dir, "feature-x").as_deref(), Ok("Created feature-x"));
+        assert_eq!(git::branch_status(&dir).unwrap().name, "feature-x");
+        let branches = git::list_branches(&dir);
+        assert!(branches.iter().any(|b| b.name == "feature-x" && b.current));
+        assert!(git::create_branch(&dir, "feature-x").is_err(), "duplicate name fails");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
