@@ -8,6 +8,7 @@
 //! `claude` session history — we never resume.
 
 use std::io::Write;
+use std::sync::mpsc::Sender;
 
 use super::claude_parse::ClaudeDecoder;
 use super::{AgentBackend, AgentEvent, ReplyStream, kill_slot};
@@ -70,20 +71,20 @@ impl AgentBackend for ClaudeCliBackend {
 
 /// Everything one claude turn needs — bundled so the spawn helpers stay
 /// under the argument-count lint.
-struct ClaudeTurn {
-    prompt: String,
-    model: String,
-    mode: String,
+pub(super) struct ClaudeTurn {
+    pub(super) prompt: String,
+    pub(super) model: String,
+    pub(super) mode: String,
     /// Filesystem access for Agent turns — snapshotted at send time so a
     /// mid-turn settings change can't alter a running turn's permissions.
-    access: super::AccessMode,
+    pub(super) access: super::AccessMode,
     /// The thread's working directory — the project root, or its git
     /// worktree when the thread runs in one.
-    cwd: std::path::PathBuf,
-    slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
+    pub(super) cwd: std::path::PathBuf,
+    pub(super) slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
     /// Set when the UI drops the stream — checked before spawn so a
     /// cancelled turn can't start a fresh child.
-    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub(super) cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// One attempt, no retry loop: a failed `claude -p` turn may already have
@@ -108,7 +109,7 @@ enum ClaudeOutcome {
 /// lines through the decoder until `result` or EOF, reap, classify.
 /// The `claude -p` command for one turn — extracted so tests can assert
 /// args and the spawn cwd without launching a real process.
-fn build_command(turn: &ClaudeTurn) -> std::process::Command {
+pub(super) fn build_command(turn: &ClaudeTurn) -> std::process::Command {
     let mut cmd = std::process::Command::new("claude");
     cmd.arg("-p")
         .arg("--output-format")
@@ -211,7 +212,7 @@ fn spawn_claude(turn: &ClaudeTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> 
 ///   shell commands to the workspace, so workspace-write is the closest
 ///   "auto" it offers.
 /// - Agent + full-access → `--dangerously-skip-permissions` (no prompts).
-fn permission_args(turn: &ClaudeTurn) -> Vec<&'static str> {
+pub(super) fn permission_args(turn: &ClaudeTurn) -> Vec<&'static str> {
     match (turn.mode == "Agent", turn.access) {
         (false, _) => vec!["--permission-mode", "plan"],
         (true, super::AccessMode::Supervised) => vec!["--permission-mode", "default"],
@@ -222,49 +223,104 @@ fn permission_args(turn: &ClaudeTurn) -> Vec<&'static str> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// ── Auth: `claude auth status/login/logout` ──
 
-    fn turn(mode: &str, access: super::super::AccessMode) -> ClaudeTurn {
-        ClaudeTurn {
-            prompt: "hi".into(),
-            model: "sonnet".into(),
-            mode: mode.into(),
-            access,
-            cwd: std::path::PathBuf::from("/tmp/thread-wt"),
-            slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
-            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+/// `claude auth status --json` → the instance's sign-in state. Blocking —
+/// call off the UI thread.
+pub(crate) fn auth_status() -> crate::auth::AuthState {
+    match std::process::Command::new("claude").args(["auth", "status", "--json"]).output() {
+        Ok(o) => parse_auth_status(&String::from_utf8_lossy(&o.stdout)),
+        Err(_) => crate::auth::AuthState::Unknown,
+    }
+}
+
+/// Map `claude auth status --json` output to a state. `loggedIn` decides;
+/// the detail prefers the account email/org, then the auth method.
+pub(super) fn parse_auth_status(out: &str) -> crate::auth::AuthState {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(out) else {
+        return crate::auth::AuthState::Unknown;
+    };
+    match v["loggedIn"].as_bool() {
+        Some(true) => {
+            let detail = ["email", "orgName", "subscriptionType", "authMethod"]
+                .iter()
+                .filter_map(|k| v[k].as_str())
+                .find(|s| !s.is_empty())
+                .unwrap_or("")
+                .to_string();
+            crate::auth::AuthState::SignedIn(detail)
+        },
+        Some(false) => crate::auth::AuthState::SignedOut,
+        None => crate::auth::AuthState::Unknown,
+    }
+}
+
+/// `claude auth logout` — clears the CLI's stored credentials.
+pub(crate) fn logout() -> Result<(), String> {
+    let out = std::process::Command::new("claude")
+        .args(["auth", "logout"])
+        .output()
+        .map_err(|e| format!("claude spawn: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// Start `claude auth login`: the CLI prints the OAuth URL, opens the
+/// browser, then waits for the pasted code on stdin — the session's
+/// `stdin` slot is how `submit_auth_code` answers it. The worker reports
+/// `AuthEvent`s and re-probes status when the child exits.
+pub(crate) fn login(tx: Sender<crate::auth::AuthEvent>) -> Result<crate::auth::LoginHandle, String> {
+    let mut child = std::process::Command::new("claude")
+        .args(["auth", "login"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("claude spawn: {e}"))?;
+    let stdout = child.stdout.take().expect("piped");
+    let stdin = std::sync::Arc::new(parking_lot::Mutex::new(child.stdin.take()));
+    let slot = std::sync::Arc::new(parking_lot::Mutex::new(Some(child)));
+    let worker_slot = slot.clone();
+    std::thread::spawn(move || {
+        pump_login(stdout, &tx);
+        let _ = tx.send(crate::auth::AuthEvent::Done(auth_status()));
+        if let Some(mut child) = worker_slot.lock().take() {
+            let _ = child.wait();
         }
-    }
+    });
+    Ok(crate::auth::LoginHandle { child: slot, stdin: Some(stdin) })
+}
 
-    #[test]
-    fn agent_maps_access_to_permission_flags() {
-        use super::super::AccessMode;
-        let cases = [
-            (AccessMode::Supervised, vec!["--permission-mode", "default"]),
-            (AccessMode::AutoAcceptEdits, vec!["--permission-mode", "acceptEdits"]),
-            (AccessMode::Auto, vec!["--permission-mode", "acceptEdits"]),
-            (AccessMode::FullAccess, vec!["--dangerously-skip-permissions"]),
-        ];
-        for (access, want) in cases {
-            assert_eq!(permission_args(&turn("Agent", access)), want);
+/// Read the login child's stdout until EOF, emitting `NeedsCode` once the
+/// paste-back prompt appears (the URL rides along when it printed first).
+/// Byte-wise because the "Paste code here" prompt has no trailing newline.
+/// Testable with in-memory readers.
+pub(super) fn pump_login(stdout: impl std::io::Read, tx: &Sender<crate::auth::AuthEvent>) {
+    use std::io::Read;
+    let mut buf = Vec::new();
+    let mut byte = [0u8; 1];
+    let mut reader = std::io::BufReader::new(stdout);
+    let mut asked = false;
+    while reader.read(&mut byte).is_ok_and(|n| n == 1) {
+        buf.push(byte[0]);
+        // Scan on prompt-looking tails and periodically — the paste
+        // prompt ends with "> " and no newline.
+        if asked || (!buf.ends_with(b"> ") && buf.len() % 64 != 0) {
+            continue;
         }
-    }
-
-    #[test]
-    fn command_spawns_in_the_thread_workdir() {
-        use super::super::AccessMode;
-        let cmd = build_command(&turn("Agent", AccessMode::Auto));
-        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/tmp/thread-wt")));
-    }
-
-    #[test]
-    fn plan_and_ask_stay_read_only() {
-        for mode in ["Plan", "Ask"] {
-            for access in super::super::AccessMode::ALL {
-                assert_eq!(permission_args(&turn(mode, access)), vec!["--permission-mode", "plan"]);
-            }
+        let text = String::from_utf8_lossy(&buf);
+        if text.contains("Paste code") || text.contains("paste the code") {
+            asked = true;
+            let url = text.split_whitespace().find(|w| w.starts_with("https://")).unwrap_or("");
+            let prompt = if url.is_empty() {
+                "Paste the sign-in code below.".to_string()
+            } else {
+                format!("Open {url} to sign in, then paste the code below.")
+            };
+            let _ = tx.send(crate::auth::AuthEvent::NeedsCode(prompt));
         }
     }
 }

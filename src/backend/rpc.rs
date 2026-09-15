@@ -63,6 +63,24 @@ pub(crate) fn model_list_req(id: i64, cursor: Option<&Value>) -> Value {
     json!({"method": "model/list", "id": id, "params": params})
 }
 
+/// `account/read` — the signed-in account (or null) plus whether the
+/// server requires OpenAI auth at all.
+pub(crate) fn account_read_req(id: i64) -> Value {
+    json!({"method": "account/read", "id": id, "params": {}})
+}
+
+/// `account/login/start` with the device-code flow — the response carries
+/// `verificationUrl` + `userCode` to show the user; completion arrives as
+/// the `account/login/completed` notification.
+pub(crate) fn login_start_req(id: i64) -> Value {
+    json!({"method": "account/login/start", "id": id, "params": {"type": "chatgptDeviceCode"}})
+}
+
+/// `account/logout` — clears the stored credentials.
+pub(crate) fn logout_req(id: i64) -> Value {
+    json!({"method": "account/logout", "id": id})
+}
+
 /// `thread/list` — one page of past threads, newest first. `cursor` is the
 /// previous page's `nextCursor`; `None` requests the first page.
 pub(crate) fn thread_list_req(id: i64, cursor: Option<&Value>) -> Value {

@@ -5,14 +5,16 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::Sizable;
+use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::auth::{self, AuthState};
 use crate::providers::{ProviderInstance, ProviderKind};
-use crate::views::settings_providers::ProviderInputs;
+use crate::views::settings_providers::{ProviderInputs, code_row};
 use crate::views::settings_sections::{SettingsView, group_label};
 
 /// The right pane for the selected instance: header (icon, name, id, remove),
@@ -55,7 +57,7 @@ pub(crate) fn detail_panel(p: Option<&ProviderInstance>, s: &SettingsView, cx: &
                     ws_rm.update(cx, |this, cx| this.remove_provider(&id_rm, cx));
                 })),
         )
-        .when_some(inputs, |d, inputs| {
+        .when_some(inputs.clone(), |d, inputs| {
             d.child(field(
                 "Display name",
                 Input::new(&inputs.name)
@@ -65,6 +67,7 @@ pub(crate) fn detail_panel(p: Option<&ProviderInstance>, s: &SettingsView, cx: &
             ))
             .children(connection_fields(p, &inputs))
         })
+        .child(account_section(p, inputs.as_ref(), s, cx))
         .child(models_section(p, s, cx))
 }
 
@@ -97,6 +100,80 @@ fn connection_fields(p: &ProviderInstance, inputs: &ProviderInputs) -> Vec<AnyEl
         ],
         ProviderKind::CodexCli | ProviderKind::Sim => Vec::new(),
     }
+}
+
+/// The Account block: auth status line, sign-in/out controls, the device
+/// URL/code while a flow runs, and the paste-back input for flows that
+/// need a code. Hidden for kinds with no credentials at all (sim).
+fn account_section(p: &ProviderInstance, inputs: Option<&ProviderInputs>, s: &SettingsView, cx: &App) -> AnyElement {
+    let state = s.ws.read(cx).auth_state(&p.id);
+    if matches!(state, AuthState::NotRequired) && !auth::can_sign_in(p.kind) {
+        return div().into_any_element();
+    }
+    let (id_in, id_out, id_cancel, id_code) = (p.id.clone(), p.id.clone(), p.id.clone(), p.id.clone());
+    let (ws_in, ws_out, ws_cancel, ws_code) = (s.ws.clone(), s.ws.clone(), s.ws.clone(), s.ws.clone());
+    let status_color = match &state {
+        AuthState::SignedIn(_) => cx.theme().success,
+        AuthState::SignedOut => cx.theme().danger,
+        _ => cx.theme().muted_foreground,
+    };
+    let mut section = div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(group_label("Account", cx))
+        .child(div().text_xs().text_color(status_color).child(state.detail_status()));
+    if let Some(err) = s.ws.read(cx).auth_error(&p.id) {
+        section = section.child(div().text_xs().text_color(cx.theme().danger).child(err.to_string()));
+    }
+    match &state {
+        AuthState::SigningIn(prompt) | AuthState::AwaitingCode(prompt) => {
+            if !prompt.is_empty() {
+                section = section.child(div().text_xs().text_color(cx.theme().muted_foreground).child(prompt.clone()));
+            }
+            if let (AuthState::AwaitingCode(_), Some(inputs)) = (&state, inputs) {
+                section = section.child(code_row(&id_code, inputs, &ws_code));
+            }
+            section = section.child(
+                Button::new(SharedString::from(format!("auth-cancel-{id_cancel}")))
+                    .label("Cancel")
+                    .small()
+                    .ghost()
+                    .on_click(move |_, _, cx| ws_cancel.update(cx, |this, cx| this.cancel_sign_in(&id_cancel, cx))),
+            );
+        },
+        AuthState::SignedIn(_) if auth::can_sign_in(p.kind) => {
+            section = section.child(
+                Button::new(SharedString::from(format!("auth-sign-out-{id_out}")))
+                    .label("Sign out")
+                    .icon(IconName::LogOut)
+                    .small()
+                    .outline()
+                    .on_click(move |_, _, cx| ws_out.update(cx, |this, cx| this.sign_out(&id_out, cx))),
+            );
+        },
+        AuthState::SignedOut | AuthState::Unknown if auth::can_sign_in(p.kind) => {
+            section = section.child(
+                Button::new(SharedString::from(format!("auth-sign-in-{id_in}")))
+                    .label("Sign in")
+                    .icon(IconName::LogIn)
+                    .small()
+                    .outline()
+                    .on_click(move |_, _, cx| ws_in.update(cx, |this, cx| this.sign_in(&id_in, cx))),
+            );
+        },
+        // Env-keyed kinds: no flow — hint at the var instead.
+        AuthState::SignedOut => {
+            section = section.child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!("Set {} in your environment.", p.key_env)),
+            );
+        },
+        _ => {},
+    }
+    section.into_any_element()
 }
 
 /// A labeled input row for the detail panel and the wizard.

@@ -40,7 +40,7 @@ pub fn resume_codex_session(thread_id: &str) -> Result<ResumedSession, String> {
 /// Spawn `codex app-server`, run `drive` against its pipes on a helper
 /// thread, and bound the exchange by `FETCH_TIMEOUT`. The child is killed
 /// either way — these are one-shot queries, not a session.
-fn exchange<T: Send + 'static>(
+pub(super) fn exchange<T: Send + 'static>(
     drive: impl FnOnce(&mut dyn Write, std::process::ChildStdout) -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
     let mut cmd = std::process::Command::new("codex");

@@ -137,6 +137,9 @@ pub struct Workspace {
     pub sessions_loading: bool,
     /// The Resume section is expanded in the sidebar.
     pub resume_open: bool,
+    /// Per-instance sign-in state + in-flight login flows — see
+    /// `crate::auth`. Seeded from the auth cache, probed by `refresh_auth`.
+    pub(crate) auth: crate::auth::AuthBook,
 
     pub backend: std::sync::Arc<dyn crate::backend::AgentBackend>,
 }
@@ -260,11 +263,8 @@ impl Workspace {
             access: crate::backend::AccessMode::from_name(&settings.access),
             effort: None,
             default_model: settings.default_model.clone(),
-            default_permissions: if settings.default_permissions.is_empty() {
-                None
-            } else {
-                Some(crate::backend::AccessMode::from_name(&settings.default_permissions))
-            },
+            default_permissions: (!settings.default_permissions.is_empty())
+                .then(|| crate::backend::AccessMode::from_name(&settings.default_permissions)),
             default_workspace: crate::worktree::WorkspaceMode::from_name(&settings.default_workspace),
             rename,
             palette,
@@ -295,6 +295,7 @@ impl Workspace {
             sessions: Vec::new(),
             sessions_loading: false,
             resume_open: false,
+            auth: crate::auth::AuthBook::seeded(),
         };
         let loaded = crate::persist::load_chats(&this.project.chats_dir(), &mut this.next_chat_id, !crate::lifecycle::any_turn_running(cx));
         if loaded.is_empty() {
@@ -313,6 +314,7 @@ impl Workspace {
             .detach();
         this.start_background(cx);
         this.refresh_model_catalogs(cx);
+        this.refresh_auth(cx);
         this
     }
 

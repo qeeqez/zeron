@@ -11,6 +11,7 @@ mod approval_ops;
 #[cfg(test)]
 mod approval_tests;
 mod attachment;
+mod auth;
 mod backend;
 mod backend_parse;
 #[cfg(test)]

@@ -9,12 +9,13 @@ use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::auth::AuthState;
 use crate::providers::ProviderInstance;
 use crate::views::settings::SettingsPanel;
 use crate::views::settings_provider_detail::detail_panel;
@@ -29,6 +30,8 @@ pub(crate) struct ProviderInputs {
     pub name: Entity<InputState>,
     pub command: Entity<InputState>,
     pub key_env: Entity<InputState>,
+    /// Paste-back field for login flows that need a code (claude).
+    pub login_code: Entity<InputState>,
 }
 
 /// Which connection field an input writes — bundled with the instance id so
@@ -107,6 +110,7 @@ impl SettingsPanel {
             s.set_value(p.key_env.clone(), window, cx);
             s
         });
+        let login_code = cx.new(|cx| InputState::new(window, cx).placeholder("Paste code…"));
         // Persist on every edit — the backend reads these at send time.
         for (input, field) in [
             (name.clone(), ProviderField::Name),
@@ -119,7 +123,7 @@ impl SettingsPanel {
             })
             .detach();
         }
-        ProviderInputs { name, command, key_env }
+        ProviderInputs { name, command, key_env, login_code }
     }
 }
 
@@ -191,8 +195,19 @@ fn instance_list(instances: &[ProviderInstance], s: &SettingsView, cx: &App) -> 
 /// toggles `enabled` without disturbing the selection.
 fn instance_row(p: &ProviderInstance, s: &SettingsView, cx: &App) -> impl IntoElement {
     let selected = s.provider_selection.as_deref() == Some(p.id.as_str());
-    let (id_sel, id_t) = (p.id.clone(), p.id.clone());
-    let (panel, ws_t) = (s.panel.clone(), s.ws.clone());
+    let (id_sel, id_t, id_in) = (p.id.clone(), p.id.clone(), p.id.clone());
+    let (panel, ws_t, ws_in) = (s.panel.clone(), s.ws.clone(), s.ws.clone());
+    let auth = s.ws.read(cx).auth_state(&p.id);
+    let status = if !p.enabled {
+        "Disabled".to_string()
+    } else {
+        auth.row_status().unwrap_or_else(|| p.kind.info().tagline.to_string())
+    };
+    let status_color = match auth {
+        AuthState::SignedIn(_) => cx.theme().success,
+        AuthState::SignedOut if p.enabled => cx.theme().danger,
+        _ => cx.theme().muted_foreground,
+    };
     div()
         .id(SharedString::from(format!("provider-row-{}", p.id)))
         .test_support()
@@ -210,13 +225,19 @@ fn instance_row(p: &ProviderInstance, s: &SettingsView, cx: &App) -> impl IntoEl
                 .flex_col()
                 .min_w_0()
                 .child(div().text_xs().font_semibold().overflow_hidden().child(p.name.clone()))
-                .child(div().text_xs().text_color(cx.theme().muted_foreground).child(if p.enabled {
-                    p.kind.info().tagline
-                } else {
-                    "Disabled"
-                })),
+                .child(div().text_xs().text_color(status_color).child(status)),
         )
         .child(div().flex_1())
+        .when(matches!(auth, AuthState::SignedOut) && p.enabled && crate::auth::can_sign_in(p.kind), |d| {
+            d.child(
+                Button::new(SharedString::from(format!("provider-sign-in-{id_in}")))
+                    .label("Sign in")
+                    .icon(IconName::LogIn)
+                    .small()
+                    .outline()
+                    .on_click(move |_, _, cx| ws_in.update(cx, |this, cx| this.sign_in(&id_in, cx))),
+            )
+        })
         .child(
             Switch::new(SharedString::from(format!("provider-enable-{}", p.id)))
                 .checked(p.enabled)
@@ -232,4 +253,28 @@ fn instance_row(p: &ProviderInstance, s: &SettingsView, cx: &App) -> impl IntoEl
                 cx.notify();
             });
         })
+}
+
+/// The paste-back row for flows that need a code (claude): the input plus
+/// a Submit button that writes it to the login child's stdin.
+pub(crate) fn code_row(id: &str, inputs: &ProviderInputs, ws: &Entity<Workspace>) -> impl IntoElement {
+    let code_input = inputs.login_code.clone();
+    let (id, ws) = (id.to_string(), ws.clone());
+    div()
+        .flex()
+        .gap_2()
+        .items_center()
+        .child(Input::new(&inputs.login_code).id(SharedString::from(format!("auth-code-{id}"))).appearance(true))
+        .child(
+            Button::new(SharedString::from(format!("auth-submit-{id}")))
+                .label("Submit")
+                .small()
+                .outline()
+                .on_click(move |_, _, cx| {
+                    ws.update(cx, |this, cx| {
+                        let code = code_input.read(cx).value().to_string();
+                        this.submit_auth_code(&id, &code, cx);
+                    });
+                }),
+        )
 }

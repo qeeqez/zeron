@@ -192,3 +192,93 @@ fn claude_models_have_no_default_entry() {
     assert!(models.iter().all(|m| m.id != "default"));
     assert!(models.iter().any(|m| m.id == "sonnet"));
 }
+
+// ── Permission mapping + spawn command (moved out of claude.rs for SLOC) ──
+
+mod command_tests {
+    use crate::backend::AccessMode;
+    use crate::backend::claude::{ClaudeTurn, build_command, permission_args};
+
+    fn turn(mode: &str, access: AccessMode) -> ClaudeTurn {
+        ClaudeTurn {
+            prompt: "hi".into(),
+            model: "sonnet".into(),
+            mode: mode.into(),
+            access,
+            cwd: std::path::PathBuf::from("/tmp/thread-wt"),
+            slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+
+    #[test]
+    fn agent_maps_access_to_permission_flags() {
+        let cases = [
+            (AccessMode::Supervised, vec!["--permission-mode", "default"]),
+            (AccessMode::AutoAcceptEdits, vec!["--permission-mode", "acceptEdits"]),
+            (AccessMode::Auto, vec!["--permission-mode", "acceptEdits"]),
+            (AccessMode::FullAccess, vec!["--dangerously-skip-permissions"]),
+        ];
+        for (access, want) in cases {
+            assert_eq!(permission_args(&turn("Agent", access)), want);
+        }
+    }
+
+    #[test]
+    fn command_spawns_in_the_thread_workdir() {
+        let cmd = build_command(&turn("Agent", AccessMode::Auto));
+        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/tmp/thread-wt")));
+    }
+
+    #[test]
+    fn plan_and_ask_stay_read_only() {
+        for mode in ["Plan", "Ask"] {
+            for access in AccessMode::ALL {
+                assert_eq!(permission_args(&turn(mode, access)), vec!["--permission-mode", "plan"]);
+            }
+        }
+    }
+}
+
+// ── Auth: `claude auth status` parsing and the login pump ──
+
+mod auth_tests {
+    use crate::auth::AuthEvent;
+    use crate::backend::claude::{parse_auth_status, pump_login};
+
+    #[test]
+    fn auth_status_parses_json() {
+        use crate::auth::AuthState;
+        assert_eq!(
+            parse_auth_status(r#"{"loggedIn":true,"authMethod":"oauth_token","email":"u@x.com"}"#),
+            AuthState::SignedIn("u@x.com".into())
+        );
+        assert_eq!(parse_auth_status(r#"{"loggedIn":true,"authMethod":"oauth_token"}"#), AuthState::SignedIn("oauth_token".into()));
+        assert_eq!(parse_auth_status(r#"{"loggedIn":false}"#), AuthState::SignedOut);
+        assert_eq!(parse_auth_status("not json"), AuthState::Unknown);
+        assert_eq!(parse_auth_status(r#"{"other":1}"#), AuthState::Unknown);
+    }
+
+    #[test]
+    fn login_pump_surfaces_url_and_code_prompt() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let out = b"Opening browser to sign in\xe2\x80\xa6\nIf the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true\nPaste code here if prompted > ".to_vec();
+        pump_login(std::io::Cursor::new(out), &tx);
+        drop(tx);
+        let events: Vec<AuthEvent> = rx.into_iter().collect();
+        let prompt = events.iter().find_map(|e| match e {
+            AuthEvent::NeedsCode(t) => Some(t.clone()),
+            _ => None,
+        });
+        let prompt = prompt.expect("the paste-back prompt is surfaced");
+        assert!(prompt.contains("https://claude.com/cai/oauth/authorize"), "{prompt}");
+    }
+
+    #[test]
+    fn login_pump_stays_quiet_without_a_prompt() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        pump_login(std::io::Cursor::new(b"some other output\n".to_vec()), &tx);
+        drop(tx);
+        assert!(rx.into_iter().next().is_none());
+    }
+}

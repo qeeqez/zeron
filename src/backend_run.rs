@@ -11,6 +11,13 @@ use crate::workspace::Workspace;
 /// stream on a thread, and apply events on the UI thread via a channel.
 pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspace>) {
     let chat_id = this.chats[this.active].id;
+    // A signed-out provider can't take a turn — surface the sign-in
+    // prompt instead of the backend's opaque auth error.
+    if let Some(reason) = this.auth_block_note() {
+        this.push_note(format!("**Error:** {reason}"), cx);
+        this.finish_reply(chat_id, cx);
+        return;
+    }
     let model = this.model.to_string();
     let mode = this.mode.to_string();
     // The thread's workdir (project root or its worktree) and access mode

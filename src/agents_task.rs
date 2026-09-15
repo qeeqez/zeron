@@ -36,6 +36,13 @@ impl Workspace {
             cx.notify();
             return;
         }
+        if let Some(reason) = self.auth_block_note() {
+            agent.log.push(format!("error: {reason}").into());
+            agent.status = AgentStatus::Failed;
+            self.agents.push(agent);
+            cx.notify();
+            return;
+        }
         // Task agents aren't tied to a chat — they run in the project root
         // with the workspace's current access mode.
         let ctx = crate::backend::TurnContext::at(self.project.root().to_path_buf(), self.access);
@@ -157,7 +164,9 @@ fn apply_task_event(agent: &mut Agent, ev: &AgentEvent) -> Option<AgentStatus> {
         // Task agents have no approval card — dropping `respond` answers
         // Deny on the backend's blocked channel.
         AgentEvent::ApprovalRequest { kind, detail, .. } => {
-            agent.log.push(format!("[{}s] approval denied (no UI): {} {detail}", agent.elapsed_secs, kind.label()).into());
+            agent
+                .log
+                .push(format!("[{}s] approval denied (no UI): {} {detail}", agent.elapsed_secs, kind.label()).into());
             None
         },
         AgentEvent::TextStart | AgentEvent::TextDelta(_) => None,

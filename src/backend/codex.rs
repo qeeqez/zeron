@@ -4,6 +4,11 @@
 //! JSON-RPC — unlike `codex exec --json`, it streams `agentMessage` and
 //! command-output deltas, so replies render token-by-token.
 
+use std::io::{BufRead, Write};
+use std::sync::mpsc::Sender;
+
+use serde_json::Value;
+
 use super::codex_turn::{CodexOutcome, spawn_codex};
 use super::steer::CodexSlot;
 use super::{AgentBackend, AgentEvent, ReplyStream};
@@ -244,4 +249,206 @@ pub(crate) fn read_mcp_status(stdin: &mut dyn std::io::Write, stdout: impl std::
         }
     }
     Err("codex closed stdout before mcpServerStatus/list completed".into())
+}
+
+// ── Auth: `account/*` over app-server, `codex login status` fallback ──
+
+/// The instance's sign-in state: `account/read` over `codex app-server`
+/// (which carries the plan/email), falling back to `codex login status`
+/// when the server can't answer. Blocking — call off the UI thread.
+pub(crate) fn auth_status() -> crate::auth::AuthState {
+    super::sessions::exchange(read_account).unwrap_or_else(|_| cli_login_status())
+}
+
+/// `codex login status` — the CLI's own answer when app-server is down.
+fn cli_login_status() -> crate::auth::AuthState {
+    let out = std::process::Command::new("codex").args(["login", "status"]).output();
+    match out {
+        Ok(o) => parse_login_status(&String::from_utf8_lossy(&o.stdout)),
+        Err(_) => crate::auth::AuthState::Unknown,
+    }
+}
+
+/// Map `codex login status` stdout to a state: "Logged in using ChatGPT"
+/// / "Logged in with API key" vs "Not logged in". The detail keeps the
+/// CLI's own casing ("ChatGPT").
+pub(super) fn parse_login_status(out: &str) -> crate::auth::AuthState {
+    let line = out.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    let lower = line.to_lowercase();
+    if lower.starts_with("logged in") {
+        let detail = line["logged in".len()..]
+            .trim()
+            .trim_start_matches("using")
+            .trim_start_matches("with")
+            .trim()
+            .to_string();
+        crate::auth::AuthState::SignedIn(detail)
+    } else if lower.contains("not logged in") {
+        crate::auth::AuthState::SignedOut
+    } else {
+        crate::auth::AuthState::Unknown
+    }
+}
+
+/// Map an `account/read` result to a state: a null account is `SignedOut`
+/// when the server requires OpenAI auth, `NotRequired` otherwise.
+pub(super) fn parse_account(result: &Value) -> crate::auth::AuthState {
+    let account = &result["account"];
+    if account.is_null() {
+        return if result["requiresOpenaiAuth"].as_bool().unwrap_or(true) {
+            crate::auth::AuthState::SignedOut
+        } else {
+            crate::auth::AuthState::NotRequired
+        };
+    }
+    let detail = match account["type"].as_str() {
+        Some("chatgpt") => {
+            let email = account["email"].as_str().unwrap_or("");
+            let plan = plan_label(account["planType"].as_str().unwrap_or(""));
+            match (email.is_empty(), plan.is_empty()) {
+                (false, false) => format!("{email} · {plan}"),
+                (false, true) => email.to_string(),
+                (true, false) => plan,
+                (true, true) => "ChatGPT".into(),
+            }
+        },
+        Some("apiKey") => "API key".into(),
+        Some("amazonBedrock") => "Amazon Bedrock".into(),
+        _ => String::new(),
+    };
+    crate::auth::AuthState::SignedIn(detail)
+}
+
+/// Wire `planType` → display label ("ChatGPT Plus"-style suffix).
+fn plan_label(plan: &str) -> String {
+    match plan {
+        "free" => "ChatGPT Free",
+        "go" => "ChatGPT Go",
+        "plus" => "ChatGPT Plus",
+        "pro" | "prolite" => "ChatGPT Pro",
+        "team" => "ChatGPT Team",
+        "business" | "self_serve_business_prolite" | "self_serve_business_usage_based" => "ChatGPT Business",
+        "enterprise" | "ent26" | "enterprise_cbp_automation" | "enterprise_cbp_usage_based" => "ChatGPT Enterprise",
+        "edu" | "edu_plus" | "edu_pro" => "ChatGPT Edu",
+        _ => "",
+    }
+    .to_string()
+}
+
+/// Handshake then `account/read` — the `exchange` drive for `auth_status`.
+fn read_account(stdin: &mut dyn Write, stdout: impl std::io::Read) -> Result<crate::auth::AuthState, String> {
+    let result = one_request(stdin, stdout, super::rpc::account_read_req)?;
+    Ok(parse_account(&result))
+}
+
+/// `account/logout` — clears the CLI's stored credentials.
+pub(crate) fn logout() -> Result<(), String> {
+    super::sessions::exchange(|stdin, stdout| one_request(stdin, stdout, |_| super::rpc::logout_req(2)).map(|_| ()))
+}
+
+/// Handshake, send `req(2)`, return its `result`. Shared by the one-shot
+/// account calls; `stdin`/`stdout` are the app-server's pipes.
+fn one_request(stdin: &mut dyn Write, stdout: impl std::io::Read, req: impl FnOnce(i64) -> Value) -> Result<Value, String> {
+    let send = |stdin: &mut dyn Write, v: &Value| -> Result<(), String> { writeln!(stdin, "{v}").map_err(|e| format!("codex stdin: {e}")) };
+    send(stdin, &super::rpc::initialize_req(1))?;
+    let mut req = Some(req);
+    for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
+        let Ok(msg) = serde_json::from_str::<Value>(&line) else { continue };
+        if msg.get("method").is_some() || msg.get("id").is_none() {
+            continue;
+        }
+        if let Some(err) = msg.get("error") {
+            return Err(format!("codex: {}", err["message"].as_str().unwrap_or("request failed")));
+        }
+        match msg["id"].as_i64() {
+            Some(1) => {
+                send(stdin, &serde_json::json!({"method": "initialized", "params": {}}))?;
+                send(stdin, &req.take().expect("one request")(2))?;
+            },
+            Some(2) => return Ok(msg["result"].clone()),
+            _ => {},
+        }
+    }
+    Err("codex closed stdout before the account request completed".into())
+}
+
+/// Start the device-code login: spawn `codex app-server`, drive
+/// `account/login/start` (chatgptDeviceCode) → `account/login/completed`
+/// → `account/read` on a worker thread, and report `AuthEvent`s. The
+/// session holds the child so Cancel kills it.
+pub(crate) fn login(tx: Sender<crate::auth::AuthEvent>) -> Result<crate::auth::LoginHandle, String> {
+    let mut cmd = std::process::Command::new("codex");
+    cmd.arg("app-server")
+        .current_dir(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    let mut child = cmd.spawn().map_err(|e| format!("codex spawn: {e}"))?;
+    let stdout = child.stdout.take().expect("piped");
+    let mut stdin = child.stdin.take().expect("piped");
+    let slot = std::sync::Arc::new(parking_lot::Mutex::new(Some(child)));
+    let worker_slot = slot.clone();
+    std::thread::spawn(move || {
+        let state = match login_drive(&mut stdin, stdout, &tx) {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = tx.send(crate::auth::AuthEvent::Failed(e));
+                cli_login_status()
+            },
+        };
+        let _ = tx.send(crate::auth::AuthEvent::Done(state));
+        if let Some(mut child) = worker_slot.lock().take() {
+            let _ = child.wait();
+        }
+    });
+    Ok(crate::auth::LoginHandle { child: slot, stdin: None })
+}
+
+/// The login exchange on the app-server's pipes: initialize →
+/// `account/login/start` → `account/login/completed` → `account/read`.
+/// Emits `Prompt` with the device URL + code once the server answers.
+/// Testable with in-memory cursors.
+pub(super) fn login_drive(
+    stdin: &mut dyn Write, stdout: impl std::io::Read, tx: &Sender<crate::auth::AuthEvent>,
+) -> Result<crate::auth::AuthState, String> {
+    let send = |stdin: &mut dyn Write, v: &Value| -> Result<(), String> { writeln!(stdin, "{v}").map_err(|e| format!("codex stdin: {e}")) };
+    send(stdin, &super::rpc::initialize_req(1))?;
+    for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
+        let Ok(msg) = serde_json::from_str::<Value>(&line) else { continue };
+        if let Some(err) = msg.get("error") {
+            return Err(format!("codex: {}", err["message"].as_str().unwrap_or("request failed")));
+        }
+        if msg["method"].as_str() == Some("account/login/completed") {
+            if msg["params"]["success"].as_bool() == Some(true) {
+                send(stdin, &super::rpc::account_read_req(3))?;
+            } else {
+                let e = msg["params"]["error"].as_str().unwrap_or("login failed").to_string();
+                return Err(e);
+            }
+            continue;
+        }
+        match msg["id"].as_i64() {
+            Some(1) => {
+                send(stdin, &serde_json::json!({"method": "initialized", "params": {}}))?;
+                send(stdin, &super::rpc::login_start_req(2))?;
+            },
+            Some(2) => {
+                let r = &msg["result"];
+                match r["type"].as_str() {
+                    Some("chatgptDeviceCode") => {
+                        let url = r["verificationUrl"].as_str().unwrap_or("");
+                        let code = r["userCode"].as_str().unwrap_or("");
+                        let _ = tx.send(crate::auth::AuthEvent::Prompt(format!(
+                            "Open {url} and enter code {code} — the sign-in completes on its own."
+                        )));
+                    },
+                    // apiKey-style responses complete immediately.
+                    _ => send(stdin, &super::rpc::account_read_req(3))?,
+                }
+            },
+            Some(3) => return Ok(parse_account(&msg["result"])),
+            _ => {},
+        }
+    }
+    Err("codex closed stdout before login completed".into())
 }

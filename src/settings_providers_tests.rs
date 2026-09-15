@@ -1,4 +1,3 @@
-//! Headless tests for the Providers settings section: the master-detail
 //! layout (scrollable instance list + detail panel), the three-step
 //! add-provider wizard, enable/remove switches, per-model toggles and
 //! ordering, and the connection-field → `configure_provider` wiring.
@@ -231,4 +230,39 @@ fn mi(id: &str) -> ModelInfo {
         description: Default::default(),
         ..Default::default()
     }
+}
+
+#[test]
+fn provider_row_shows_auth_status_and_sign_in() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    // Land a signed-out state on the seeded codex instance.
+    cx.update(|_, cx| {
+        ws.update(cx, |w, cx| {
+            w.land_auth("codex-cli", crate::auth::AuthState::SignedOut, cx);
+        });
+    });
+    open_providers(cx);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.find("provider-sign-in-codex-cli").visible(), "signed-out row shows a sign-in button");
+        // The detail panel shows the status line and the same button.
+        assert!(window.find("provider-detail").visible());
+    });
+    // Click it — the flow starts, the button is replaced by Cancel.
+    cx.update(|window, cx| {
+        window.click("provider-sign-in-codex-cli", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.try_find("provider-sign-in-codex-cli").is_none(), "sign-in hides while the flow runs");
+        assert!(window.find("auth-cancel-codex-cli").visible(), "cancel shows while signing in");
+    });
+    let state = ws.read_with(cx, |w, _| w.auth_state("codex-cli"));
+    assert!(matches!(state, crate::auth::AuthState::SigningIn(_)));
+    // Cancel restores the signed-out row.
+    cx.update(|window, cx| {
+        window.click("auth-cancel-codex-cli", cx);
+        window.draw(cx).clear(cx);
+    });
+    let state = ws.read_with(cx, |w, _| w.auth_state("codex-cli"));
+    assert_eq!(state, crate::auth::AuthState::Unknown);
 }

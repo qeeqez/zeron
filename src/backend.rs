@@ -37,10 +37,12 @@ mod sessions_tests;
 pub use acp::AcpBackend;
 pub use approval::{ApprovalCard, ApprovalDecision, ApprovalKind, ApprovalResponder, ApprovalRoute};
 pub use claude::ClaudeCliBackend;
+pub(crate) use claude::{auth_status as claude_auth_status, login as claude_login, logout as claude_logout};
 pub use codex::CodexCliBackend;
 pub use codex::fetch_mcp_status;
 #[cfg(test)]
 pub(crate) use codex::read_mcp_status;
+pub(crate) use codex::{auth_status as codex_auth_status, login as codex_login, logout as codex_logout};
 pub use http::HttpBackend;
 pub use models::fetch_codex_models;
 pub use steer::TurnHandle;
