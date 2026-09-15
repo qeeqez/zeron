@@ -37,6 +37,9 @@ pub struct Workspace {
     /// stamped with an older generation is discarded, so a slow earlier
     /// refresh can't overwrite a newer snapshot.
     pub(crate) changes_generation: u64,
+    /// Pending diff review — comments collected from the Changes panel's
+    /// diff lines plus the inline editor's state (see `crate::review`).
+    pub review: crate::review::Review,
     pub sidebar_width: f32,
     pub resizing_sidebar: bool,
     pub composer: Entity<TextareaState>,
@@ -219,6 +222,7 @@ impl Workspace {
             changes: Vec::new(),
             changes_generation: 0,
             composer,
+            review: crate::review::Review::new(window, cx),
             search,
             scroller,
             model: providers.iter().find(|p| p.id == selected_provider).map_or_else(SharedString::default, |p| {

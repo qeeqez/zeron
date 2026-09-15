@@ -71,6 +71,9 @@ mod providers;
 mod resume;
 #[cfg(test)]
 mod resume_tests;
+mod review;
+#[cfg(test)]
+mod review_tests;
 mod root;
 mod send;
 mod send_queue;

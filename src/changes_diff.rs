@@ -42,6 +42,24 @@ pub struct FileDiff {
     pub truncated: bool,
 }
 
+/// Resolve a `ReviewTarget` against the change list: the file's path plus
+/// the diff line's number and text, as a `ReviewComment` with empty `text`.
+/// `None` when the row has no diff or the line carries no line number
+/// (hunk headers, "\ No newline" markers) — those rows aren't commentable.
+pub(crate) fn review_anchor(changes: &[FileChange], target: crate::model::ReviewTarget) -> Option<crate::model::ReviewComment> {
+    let change = changes.get(target.file_ix)?;
+    let line = change.diff.as_ref()?.lines.get(target.line_ix)?;
+    // Prefer the new side; a removed line anchors on the old side instead.
+    let (number, old_side) = line.new.map(|n| (n, false)).or_else(|| line.old.map(|n| (n, true)))?;
+    Some(crate::model::ReviewComment {
+        path: change.path.clone(),
+        line: number,
+        old_side,
+        code: line.text.clone(),
+        text: String::new(),
+    })
+}
+
 /// Working-tree diff for `change` under `dir`. `None` only when git itself
 /// can't run; a file with no textual diff (binary, mode-only, vanished)
 /// yields an empty `FileDiff`.

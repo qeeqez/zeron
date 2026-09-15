@@ -46,12 +46,20 @@ impl Workspace {
         if text.is_empty() {
             return;
         }
+        self.send_or_queue(text, window, cx);
+        self.clear_composer(window, cx);
+    }
+
+    /// Send `text` as the active chat's next message, or queue it behind a
+    /// running turn — the shared tail of `send` (composer text) and
+    /// `send_review` (diff comments). Slash commands still dispatch locally;
+    /// the few safe mid-reply ones run immediately.
+    pub(crate) fn send_or_queue(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         if self.chats[self.active].running {
             // Codex parity: Enter during a reply queues the message; it sends
             // when the turn ends (see `drain_queued`). Slash commands queue
             // too — except the few that are safe mid-reply (`runs_now`).
             if runs_now(text) && self.run_slash(text, window, cx) {
-                self.clear_composer(window, cx);
                 return;
             }
             let live: HashSet<u64> = self.chats.iter().map(|c| c.id).collect();
@@ -62,18 +70,15 @@ impl Workspace {
             self.send_queue
                 .enqueue(chat_id, Queued::new(text.to_string(), attachments), |id| live.contains(&id));
             self.persist_queue();
-            self.clear_composer(window, cx);
             self.spawn_queue_drain(chat_id, cx);
             cx.notify();
             return;
         }
         if self.run_slash(text, window, cx) {
-            self.clear_composer(window, cx);
             return;
         }
         let attachments = std::mem::take(&mut self.chats[self.active].attachments);
         self.send_text(Queued::new(text.to_string(), attachments), window, cx);
-        self.clear_composer(window, cx);
     }
 
     fn clear_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {

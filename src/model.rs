@@ -137,6 +137,33 @@ pub enum Role {
     Assistant,
 }
 
+/// One pending review comment on a diff line — collected in the Changes
+/// panel and sent to the agent as a structured review message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReviewComment {
+    /// Project-relative file path the comment is anchored to.
+    pub path: String,
+    /// Line number in the file — the new side when the diff line has one,
+    /// else the old side (removed lines only exist there).
+    pub line: u32,
+    /// `line` counts on the old side — a removed line can share its number
+    /// with an added line, so the side is part of the anchor's identity.
+    pub old_side: bool,
+    /// The diff line's content, quoted in the review for context.
+    pub code: String,
+    /// The reviewer's comment text.
+    pub text: String,
+}
+
+/// The diff row the comment editor is anchored to: `file_ix` indexes
+/// `Workspace::changes`, `line_ix` indexes that row's `FileDiff::lines`.
+/// Indices (not line numbers) so the editor tracks its row across re-renders.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReviewTarget {
+    pub file_ix: usize,
+    pub line_ix: usize,
+}
+
 pub struct Chat {
     /// Shared with the scroller's render closure — `Rc::make_mut` clones
     /// only when a snapshot is still alive.

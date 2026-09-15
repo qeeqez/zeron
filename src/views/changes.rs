@@ -86,7 +86,12 @@ impl Workspace {
 
     pub fn render_changes_panel(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut next_line = 0usize;
-        let rows: Vec<AnyElement> = self.changes.iter().enumerate().map(|(ix, c)| change_entry(ix, c, &mut next_line, cx)).collect();
+        let rows: Vec<AnyElement> = self
+            .changes
+            .iter()
+            .enumerate()
+            .map(|(ix, c)| change_entry(ix, c, &mut next_line, self, cx))
+            .collect();
         let added: u32 = self.changes.iter().map(|c| c.added).sum();
         let deleted: u32 = self.changes.iter().map(|c| c.deleted).sum();
         div()
@@ -131,6 +136,7 @@ impl Workspace {
                             .on_click(cx.listener(|this, _, _, cx| this.toggle_changes_panel(cx))),
                     ),
             )
+            .when(!self.review.comments.is_empty(), |d| d.child(crate::views::diff::review_banner(self, cx)))
             .child(
                 div()
                     .id("changes-list")
@@ -167,10 +173,10 @@ impl Workspace {
 
 /// A file row plus, when expanded, its inline diff. `next_line` hands out
 /// unique `("diff-line", n)` ids across every expanded file in the panel.
-fn change_entry(ix: usize, change: &FileChange, next_line: &mut usize, cx: &mut Context<Workspace>) -> AnyElement {
+fn change_entry(ix: usize, change: &FileChange, next_line: &mut usize, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     let mut entry = div().flex().flex_col().child(change_row(ix, change, cx));
     if let Some(diff) = &change.diff {
-        entry = entry.child(crate::views::diff::render_diff(ix, diff, next_line, cx));
+        entry = entry.child(crate::views::diff::render_diff(ix, diff, next_line, ws, cx));
     }
     entry.into_any_element()
 }
