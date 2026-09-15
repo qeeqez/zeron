@@ -2,7 +2,7 @@
 //! the SLOC cap. Everything here is pure: tests feed fixture output without a
 //! real repository.
 
-use crate::git::{Branch, ChangeStatus, FileChange};
+use crate::git::{Branch, ChangeStatus, Commit, CommitFileDiff, FileChange};
 
 /// Parse `git status --porcelain=v1 -z` output. Entries are NUL-separated
 /// `XY path`; renames/copies append a second field holding the source path.
@@ -128,4 +128,69 @@ pub(crate) fn line_count(path: &std::path::Path) -> u32 {
     }
     let newlines = bytes.iter().filter(|b| **b == b'\n').count() as u32;
     newlines + u32::from(!bytes.is_empty() && bytes.last() != Some(&b'\n'))
+}
+
+/// Parse `git log --format=%h%x00%s%x00%an%x00%ar` output: one commit per
+/// line, fields NUL-separated. `%s` is always single-line so newlines stay a
+/// safe record separator; malformed lines are skipped.
+pub(crate) fn parse_log(raw: &str) -> Vec<Commit> {
+    raw.lines()
+        .filter_map(|line| {
+            let mut f = line.split('\0');
+            let hash = f.next()?;
+            if hash.is_empty() {
+                return None;
+            }
+            Some(Commit {
+                hash: hash.to_string(),
+                subject: f.next().unwrap_or_default().to_string(),
+                author: f.next().unwrap_or_default().to_string(),
+                rel_time: f.next().unwrap_or_default().to_string(),
+                diff: None,
+                diff_load: 0,
+            })
+        })
+        .collect()
+}
+
+/// Parse `git show --format=` output into per-file patches. The diff body
+/// splits on `diff --git` boundaries — a line starting a new file can never
+/// be content, since content lines carry a ` `/`+`/`-` prefix. Each file's
+/// hunks go through `changes_diff::parse_diff`; sections with no diffable
+/// lines (binary, mode-only) are dropped.
+pub(crate) fn parse_commit_diff(raw: &str) -> crate::git::CommitDiff {
+    let mut out = crate::git::CommitDiff::default();
+    for section in raw.split("\ndiff --git ") {
+        let Some(path) = patch_path(section) else { continue };
+        let diff = crate::changes_diff::parse_diff(section);
+        if diff.lines.is_empty() {
+            continue;
+        }
+        out.truncated |= diff.truncated;
+        out.files.push(CommitFileDiff { path, diff });
+    }
+    out
+}
+
+/// The file a `diff --git` section touches: the `+++ b/` post-image name,
+/// or the `--- a/` name for a deletion (whose `+++` is `/dev/null`). Falls
+/// back to the `diff --git` header's `b/` token for header-only sections.
+fn patch_path(section: &str) -> Option<String> {
+    let mut deleted = None;
+    for line in section.lines() {
+        if let Some(p) = line.strip_prefix("+++ ") {
+            if p != "/dev/null" {
+                return Some(strip_ab(p).to_string());
+            }
+        } else if let Some(p) = line.strip_prefix("--- ") {
+            deleted = Some(strip_ab(p).to_string());
+        }
+    }
+    deleted.or_else(|| section.rsplit_once(" b/").map(|(_, p)| p.trim().trim_matches('"').to_string()))
+}
+
+/// Drop the `a/`/`b/` prefix and surrounding quotes from a `---`/`+++` path.
+fn strip_ab(path: &str) -> &str {
+    let path = path.trim().trim_matches('"');
+    path.strip_prefix("a/").or_else(|| path.strip_prefix("b/")).unwrap_or(path)
 }

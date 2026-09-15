@@ -7,18 +7,27 @@
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
 
-use crate::git::{Branch, BranchStatus, FileChange};
+use crate::git::{Branch, BranchStatus, Commit, FileChange};
 use crate::workspace::Workspace;
 
 /// Token source for in-flight row-diff loads — each expand stamps the row
 /// with a fresh id so a stale result can't attach after collapse+re-expand.
-static NEXT_DIFF_LOAD: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+pub(crate) static NEXT_DIFF_LOAD: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// What a background diff load was issued under: `(change-list generation,
 /// row load token)`. Both must still match when the result lands — a refresh
 /// bumps the generation, collapse/re-expand changes the token — or the diff
 /// is stale and gets discarded.
-type DiffStamp = (u64, u64);
+pub(crate) type DiffStamp = (u64, u64);
+
+/// One collected snapshot of the panel's git state — the file list, branch
+/// header, and recent commits land together so a stale refresh can't publish
+/// a half-new snapshot.
+pub(crate) struct ChangesSnapshot {
+    pub changes: Vec<FileChange>,
+    pub branch: Option<BranchStatus>,
+    pub commits: Vec<Commit>,
+}
 
 /// Git-action state for the Changes panel: the branch header, the commit
 /// message input, a busy flag that serializes ops, and the status note shown
@@ -30,6 +39,9 @@ pub struct ChangesGit {
     /// Local branches for the picker's list — filled when the picker opens,
     /// empty until then.
     pub branches: Vec<Branch>,
+    /// Recent commits for the "Recent commits" section — refreshed alongside
+    /// `branch` by `refresh_changes`, empty on unborn HEADs.
+    pub commits: Vec<Commit>,
     /// Bumped per `refresh_branches` request; a stale list can't overwrite a
     /// newer one when two fetches land out of order.
     branches_generation: u64,
@@ -65,6 +77,7 @@ impl ChangesGit {
         Self {
             branch: None,
             branches: Vec::new(),
+            commits: Vec::new(),
             branches_generation: 0,
             commit_input,
             new_branch_input,
@@ -75,7 +88,7 @@ impl ChangesGit {
 }
 
 /// One git action run off the UI thread.
-enum GitOp {
+pub(crate) enum GitOp {
     Stage(String),
     Unstage(String),
     Commit(String),
@@ -83,6 +96,7 @@ enum GitOp {
     CreatePr,
     Checkout(String),
     CreateBranch(String),
+    Revert(String),
 }
 
 impl GitOp {
@@ -97,6 +111,7 @@ impl GitOp {
             Self::CreatePr => crate::git::create_pr(dir, &[]),
             Self::Checkout(name) => crate::git::checkout(dir, name),
             Self::CreateBranch(name) => crate::git::create_branch(dir, name),
+            Self::Revert(sha) => crate::git::revert(dir, sha),
         };
         (self, result)
     }
@@ -145,32 +160,39 @@ impl Workspace {
     }
 
     /// Re-run git collection for the Changes panel: the file list plus the
-    /// branch header. Collection shells out to several git processes and
-    /// reads untracked files, so it runs on the background executor and
-    /// publishes the result back when done.
+    /// branch header and recent commits. Collection shells out to several git
+    /// processes and reads untracked files, so it runs on the background
+    /// executor and publishes the result back when done.
     pub fn refresh_changes(&mut self, cx: &mut Context<Self>) {
         self.changes_generation += 1;
         let generation = self.changes_generation;
         let root = self.project.root().to_path_buf();
         cx.spawn(async move |this, cx| {
-            let (changes, branch) = cx
+            let snapshot = cx
                 .background_executor()
-                .spawn(async move { (crate::git::collect(&root), crate::git::branch_status(&root)) })
+                .spawn(async move {
+                    ChangesSnapshot {
+                        changes: crate::git::collect(&root),
+                        branch: crate::git::branch_status(&root),
+                        commits: crate::git::log(&root, 20),
+                    }
+                })
                 .await;
-            let _ = this.update(cx, |this, cx| this.land_changes(generation, changes, branch, cx));
+            let _ = this.update(cx, |this, cx| this.land_changes(generation, snapshot, cx));
         })
         .detach();
     }
 
-    /// Publish a collected change list — skipped when a newer refresh was
+    /// Publish a collected snapshot — skipped when a newer refresh was
     /// requested while this one ran, so an older result can't revert the
     /// panel to a stale snapshot.
-    pub(crate) fn land_changes(&mut self, generation: u64, changes: Vec<FileChange>, branch: Option<BranchStatus>, cx: &mut Context<Self>) {
+    pub(crate) fn land_changes(&mut self, generation: u64, snapshot: ChangesSnapshot, cx: &mut Context<Self>) {
         if generation != self.changes_generation {
             return;
         }
-        self.changes = changes;
-        self.git.branch = branch;
+        self.changes = snapshot.changes;
+        self.git.branch = snapshot.branch;
+        self.git.commits = snapshot.commits;
         cx.notify();
     }
 
@@ -253,7 +275,7 @@ impl Workspace {
     /// Run `op` on the background executor, then land its note and refresh
     /// the panel. Refused while another op is in flight — staging then
     /// committing mid-stage would race the index.
-    fn run_git_op(&mut self, op: GitOp, cx: &mut Context<Self>) {
+    pub(crate) fn run_git_op(&mut self, op: GitOp, cx: &mut Context<Self>) {
         if self.git.busy {
             return;
         }

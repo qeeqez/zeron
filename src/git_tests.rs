@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests {
     use crate::git::ChangeStatus;
-    use crate::git_parse::{parse_numstat, parse_status};
+    use crate::git_parse::{parse_commit_diff, parse_log, parse_numstat, parse_status};
 
     #[test]
     fn status_parses_each_change_kind() {
@@ -151,6 +151,130 @@ mod tests {
             assert_eq!(got.len(), 1);
             assert_eq!(got[0].status, ChangeStatus::Modified);
             assert_eq!((got[0].added, got[0].deleted), (2, 1), "net HEAD→worktree delta");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn log_parses_nul_separated_fields() {
+        let got = parse_log("abc1234\x00first commit\x00Alice\x002 hours ago\ndef5678\x00fix: thing\x00Bob\x003 days ago\n");
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].hash, "abc1234");
+        assert_eq!(got[0].subject, "first commit");
+        assert_eq!(got[0].author, "Alice");
+        assert_eq!(got[0].rel_time, "2 hours ago");
+        assert_eq!(got[1].hash, "def5678");
+    }
+
+    #[test]
+    fn log_skips_malformed_and_empty_lines() {
+        let got = parse_log("\nabc1234\0subj\n\n");
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].hash, "abc1234");
+        assert_eq!(got[0].subject, "subj");
+        assert_eq!(got[0].author, "", "missing fields default empty");
+    }
+
+    #[test]
+    fn commit_diff_splits_files_and_drops_binary() {
+        let raw = "diff --git a/f.txt b/f.txt\nindex 1..2 100644\n--- a/f.txt\n+++ b/f.txt\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/g.bin b/g.bin\nindex 3..4 100644\nBinary files a/g.bin and b/g.bin differ\n";
+        let got = parse_commit_diff(raw);
+        assert_eq!(got.files.len(), 1, "binary-only section dropped");
+        assert_eq!(got.files[0].path, "f.txt");
+        let kinds: Vec<_> = got.files[0].diff.lines.iter().map(|l| l.kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                crate::changes_diff::DiffLineKind::Hunk,
+                crate::changes_diff::DiffLineKind::Removed,
+                crate::changes_diff::DiffLineKind::Added
+            ]
+        );
+    }
+
+    #[test]
+    fn commit_diff_names_deleted_file_from_old_side() {
+        let raw = "diff --git a/gone.txt b/gone.txt\nindex 1..0 100644\n--- a/gone.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-bye\n";
+        let got = parse_commit_diff(raw);
+        assert_eq!(got.files[0].path, "gone.txt");
+    }
+
+    /// Real repo: `log` lists newest-first with all fields, an unborn HEAD
+    /// yields an empty list, and `commit_diff` returns the commit's patch.
+    /// Skips when `git` is unavailable.
+    #[test]
+    fn log_and_commit_diff_read_real_repo() {
+        let dir = std::env::temp_dir().join(format!("rixlcode-git-log-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        };
+        if run(&["init", "-q"]) {
+            assert!(crate::git::log(&dir, 20).is_empty(), "unborn HEAD yields no commits");
+            std::fs::write(dir.join("f.txt"), "one\n").unwrap();
+            run(&["add", "f.txt"]);
+            run(&["-c", "user.email=t@t", "-c", "user.name=Alice", "commit", "-qm", "first"]);
+            std::fs::write(dir.join("f.txt"), "one\ntwo\n").unwrap();
+            run(&["add", "f.txt"]);
+            run(&["-c", "user.email=t@t", "-c", "user.name=Bob", "commit", "-qm", "second"]);
+
+            let got = crate::git::log(&dir, 20);
+            assert_eq!(got.len(), 2);
+            assert_eq!(got[0].subject, "second", "newest first");
+            assert_eq!(got[0].author, "Bob");
+            assert!(!got[0].hash.is_empty() && !got[0].rel_time.is_empty());
+            assert_eq!(got[1].subject, "first");
+
+            let diff = crate::git::commit_diff(&dir, &got[0].hash).expect("show parses");
+            assert_eq!(diff.files.len(), 1);
+            assert_eq!(diff.files[0].path, "f.txt");
+            assert!(
+                diff.files[0]
+                    .diff
+                    .lines
+                    .iter()
+                    .any(|l| l.kind == crate::changes_diff::DiffLineKind::Added && l.text == "two")
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `revert` adds a new commit undoing the target — the file returns to
+    /// its prior content and the log gains an entry. Skips when git is
+    /// unavailable.
+    #[test]
+    fn revert_adds_a_reverting_commit() {
+        let dir = std::env::temp_dir().join(format!("rixlcode-git-revert-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        };
+        if run(&["init", "-q"]) {
+            std::fs::write(dir.join("f.txt"), "one\n").unwrap();
+            run(&["add", "f.txt"]);
+            run(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "first"]);
+            std::fs::write(dir.join("f.txt"), "two\n").unwrap();
+            run(&["add", "f.txt"]);
+            run(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "second"]);
+
+            let sha = crate::git::log(&dir, 1)[0].hash.clone();
+            crate::git::revert(&dir, &sha).unwrap();
+            assert_eq!(std::fs::read_to_string(dir.join("f.txt")).unwrap(), "one\n");
+            let log = crate::git::log(&dir, 5);
+            assert_eq!(log.len(), 3);
+            assert!(log[0].subject.contains("Revert"), "newest commit is the revert");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -223,9 +223,25 @@ fn stale_refresh_result_is_discarded() {
             this.changes = vec![change("old.rs", ChangeStatus::Modified, 1, 0)];
             let stale_gen = this.changes_generation;
             this.changes_generation += 1; // a newer refresh was requested
-            this.land_changes(stale_gen, vec![change("stale.rs", ChangeStatus::Added, 5, 0)], None, cx);
+            this.land_changes(
+                stale_gen,
+                crate::changes::ChangesSnapshot {
+                    changes: vec![change("stale.rs", ChangeStatus::Added, 5, 0)],
+                    branch: None,
+                    commits: vec![],
+                },
+                cx,
+            );
             assert_eq!(this.changes[0].path, "old.rs", "stale collection did not publish");
-            this.land_changes(this.changes_generation, vec![change("fresh.rs", ChangeStatus::Added, 5, 0)], None, cx);
+            this.land_changes(
+                this.changes_generation,
+                crate::changes::ChangesSnapshot {
+                    changes: vec![change("fresh.rs", ChangeStatus::Added, 5, 0)],
+                    branch: None,
+                    commits: vec![],
+                },
+                cx,
+            );
             assert_eq!(this.changes[0].path, "fresh.rs", "current collection publishes");
         });
     });

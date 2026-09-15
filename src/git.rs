@@ -198,6 +198,68 @@ pub(crate) fn commit(dir: &std::path::Path, message: &str) -> Result<String, Str
     git_env(dir, &["commit", "-m", message], &[]).map(|_| "Committed".to_string())
 }
 
+/// `git revert --no-edit <sha>` — a new commit undoing `sha`, never a
+/// history rewrite. Merge commits need `-m` and are refused by git itself;
+/// conflicts land as the panel's error note.
+pub(crate) fn revert(dir: &std::path::Path, sha: &str) -> Result<String, String> {
+    git_env(dir, &["revert", "--no-edit", sha], &[]).map(|_| format!("Reverted {sha}"))
+}
+
+/// One commit as the Changes panel's "Recent commits" list sees it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Commit {
+    /// Abbreviated hash — shown in the row and passed to `git show`/`revert`.
+    pub hash: String,
+    /// Subject line (`%s` — always single-line).
+    pub subject: String,
+    /// Author name (`%an`).
+    pub author: String,
+    /// Relative committer time (`%ar` — "2 hours ago").
+    pub rel_time: String,
+    /// The expanded commit diff — `Some` while the row is open.
+    pub diff: Option<CommitDiff>,
+    /// In-flight diff-load token; see `FileChange::diff_load`.
+    pub diff_load: u64,
+}
+
+/// One file's patch inside a commit diff — the path plus its parsed hunks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommitFileDiff {
+    /// The file's post-image path (old path for a deletion).
+    pub path: String,
+    pub diff: crate::changes_diff::FileDiff,
+}
+
+/// The parsed `git show` patch for one commit — one entry per touched file.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CommitDiff {
+    pub files: Vec<CommitFileDiff>,
+    /// True when the raw output hit the byte or row cap and was cut off.
+    pub truncated: bool,
+}
+
+/// Most stdout bytes read from `git show` — bounds the subprocess buffer
+/// before `parse_commit_diff` applies its own row cap.
+const MAX_SHOW_BYTES: u64 = 512 * 1024;
+
+/// The `n` most recent commits under `dir`, newest first. Empty on non-repo
+/// dirs and unborn HEADs — `git log` exits non-zero there, same probe the
+/// branch header uses to hide the git block.
+pub(crate) fn log(dir: &std::path::Path, n: usize) -> Vec<Commit> {
+    let n = n.to_string();
+    let out = git(dir, &["log", "-n", &n, "--format=%h%x00%s%x00%an%x00%ar"]);
+    out.map(|o| crate::git_parse::parse_log(&o)).unwrap_or_default()
+}
+
+/// `git show --format= <sha>` — the commit's patch, split per file. `None`
+/// when git can't run or `sha` doesn't resolve.
+pub(crate) fn commit_diff(dir: &std::path::Path, sha: &str) -> Option<CommitDiff> {
+    let (raw, capped) = git_diff(dir, &["show", "--format=", sha], MAX_SHOW_BYTES)?;
+    let mut diff = crate::git_parse::parse_commit_diff(&raw);
+    diff.truncated |= capped;
+    Some(diff)
+}
+
 /// `git push`; when the branch has no upstream, `push -u origin HEAD` sets it.
 pub(crate) fn push(dir: &std::path::Path) -> Result<String, String> {
     let args: &[&str] = if branch_status(dir).is_some_and(|b| b.upstream.is_some()) {

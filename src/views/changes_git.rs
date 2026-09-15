@@ -44,6 +44,7 @@ pub fn git_block(ws: &Workspace, branch: &BranchStatus, cx: &mut Context<Workspa
                     .child(text),
             )
         })
+        .when(!ws.git.commits.is_empty(), |d| d.child(crate::views::changes_commits::commits_section(ws, cx)))
         .into_any_element()
 }
 

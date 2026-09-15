@@ -23,6 +23,9 @@ mod backend_run;
 #[cfg(test)]
 mod backend_run_tests;
 mod changes;
+mod changes_commits;
+#[cfg(test)]
+mod changes_commits_ui_tests;
 mod changes_diff;
 #[cfg(test)]
 mod changes_diff_tests;
