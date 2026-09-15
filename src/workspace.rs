@@ -40,6 +40,9 @@ pub struct Workspace {
     /// Pending diff review — comments collected from the Changes panel's
     /// diff lines plus the inline editor's state (see `crate::review`).
     pub review: crate::review::Review,
+    /// Git actions for the Changes panel — branch header, commit input,
+    /// busy flag and status note (see `crate::changes`).
+    pub git: crate::changes::ChangesGit,
     pub sidebar_width: f32,
     pub resizing_sidebar: bool,
     pub composer: Entity<TextareaState>,
@@ -227,6 +230,7 @@ impl Workspace {
             changes_generation: 0,
             composer,
             review: crate::review::Review::new(window, cx),
+            git: crate::changes::ChangesGit::new(window, cx),
             search,
             scroller,
             model: providers.iter().find(|p| p.id == selected_provider).map_or_else(SharedString::default, |p| {

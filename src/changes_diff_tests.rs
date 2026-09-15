@@ -28,6 +28,7 @@ mod tests {
             status,
             added,
             deleted,
+            staged: false,
             diff: None,
             diff_load: 0,
         }

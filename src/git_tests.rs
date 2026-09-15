@@ -3,7 +3,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::git::{ChangeStatus, parse_numstat, parse_status};
+    use crate::git::ChangeStatus;
+    use crate::git_parse::{parse_numstat, parse_status};
 
     #[test]
     fn status_parses_each_change_kind() {

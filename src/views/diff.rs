@@ -244,7 +244,11 @@ fn review_banner_row(ix: usize, comment: &ReviewComment, ws: &Workspace, cx: &mu
             .flex_shrink_0()
             .text_color(theme.muted_foreground)
             .child(IconName::X)
-            .on_click(cx.listener(move |this, _, _, cx| this.remove_review_comment(ix, cx))),
+            .on_click(cx.listener(move |this, _, _, cx| {
+                // Keep the click off the row — removing must not reopen the editor.
+                cx.stop_propagation();
+                this.remove_review_comment(ix, cx);
+            })),
     )
     .into_any_element()
 }

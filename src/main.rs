@@ -17,9 +17,14 @@ mod backend_parse_tests;
 mod backend_run;
 #[cfg(test)]
 mod backend_run_tests;
+mod changes;
 mod changes_diff;
 #[cfg(test)]
 mod changes_diff_tests;
+#[cfg(test)]
+mod changes_git_ui_tests;
+#[cfg(test)]
+mod changes_tests;
 #[cfg(test)]
 mod changes_ui_tests;
 mod chat_delete;
@@ -45,6 +50,7 @@ mod continuity_tests;
 mod export;
 mod files;
 mod git;
+mod git_parse;
 #[cfg(test)]
 mod git_tests;
 mod lifecycle;

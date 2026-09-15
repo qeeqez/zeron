@@ -3,6 +3,7 @@ mod agents_panel;
 mod approval;
 mod cards;
 mod changes;
+mod changes_git;
 mod chat_view;
 mod composer;
 mod composer_helpers;

@@ -1,7 +1,8 @@
 //! Working-tree git changes for the Changes panel — collected by shelling out
-//! to `git` in the project root. Parsing lives in `parse_status`/`parse_numstat`
-//! so tests can feed fixture output without a real repository. Line-level diffs
-//! for expanded rows live in `crate::changes_diff`.
+//! to `git` in the project root, plus the panel's write actions (stage,
+//! unstage, commit, push, create-PR) and the branch header. Output parsing
+//! lives in `crate::git_parse` so tests can feed fixtures without a real
+//! repository. Line-level diffs for expanded rows live in `crate::changes_diff`.
 
 /// One file's working-tree change, as listed by `git status --porcelain`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -14,6 +15,10 @@ pub struct FileChange {
     pub status: ChangeStatus,
     pub added: u32,
     pub deleted: u32,
+    /// Whether the file has index changes staged for the next commit — the
+    /// porcelain `X` column. Untracked and conflicted files report false so
+    /// the panel's stage toggle offers `git add` for them.
+    pub staged: bool,
     /// Parsed unified diff, loaded on demand when the panel row expands —
     /// `None` means collapsed. Collection never fills this; the workspace
     /// owns no extra per-file state, so the row doubles as the cache.
@@ -48,7 +53,7 @@ pub(crate) fn collect(dir: &std::path::Path) -> Vec<FileChange> {
     let Some(status) = git(dir, &["status", "--porcelain=v1", "-z", "--untracked-files=all"]) else {
         return Vec::new();
     };
-    let mut changes = parse_status(&status);
+    let mut changes = crate::git_parse::parse_status(&status);
     if changes.is_empty() {
         return changes;
     }
@@ -59,14 +64,14 @@ pub(crate) fn collect(dir: &std::path::Path) -> Vec<FileChange> {
     let numstat = git(dir, &["diff", "HEAD", "--numstat", "-z"])
         .or_else(|| git(dir, &["diff", &empty_tree_id(dir)?, "--numstat", "-z"]))
         .unwrap_or_default();
-    let counts = parse_numstat(&numstat);
+    let counts = crate::git_parse::parse_numstat(&numstat);
     for change in &mut changes {
         if let Some((added, deleted)) = counts.get(&change.path) {
             change.added = *added;
             change.deleted = *deleted;
         } else if change.status == ChangeStatus::Added {
             // Untracked files never appear in numstat — count lines on disk.
-            change.added = line_count(&dir.join(&change.path));
+            change.added = crate::git_parse::line_count(&dir.join(&change.path));
         }
     }
     changes
@@ -95,6 +100,117 @@ pub(crate) fn git_env(dir: &std::path::Path, args: &[&str], envs: &[(&str, &str)
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// Branch header for the Changes panel — `None` when `dir` isn't a repo, so
+/// the panel hides its git actions entirely.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BranchStatus {
+    /// Branch name, or the short commit id on a detached HEAD.
+    pub name: String,
+    /// Upstream ref (`origin/main`) when the branch tracks one.
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+/// Current branch state under `dir` via `status --porcelain=v2 --branch`.
+/// `None` on non-repo dirs — the same probe the panel uses to decide whether
+/// the git actions render at all.
+pub(crate) fn branch_status(dir: &std::path::Path) -> Option<BranchStatus> {
+    let out = git(dir, &["status", "--porcelain=v2", "--branch", "--untracked-files=no"])?;
+    Some(parse_branch(&out))
+}
+
+/// Parse the `# branch.*` headers of `status --porcelain=v2 --branch`.
+/// Detached HEADs report `(detached)` — fall back to the short commit id.
+/// An unborn branch reports `(initial)` oid with the real name in `head`.
+pub(crate) fn parse_branch(raw: &str) -> BranchStatus {
+    let mut status = BranchStatus::default();
+    let mut oid = "";
+    for line in raw.lines() {
+        let Some(rest) = line.strip_prefix("# ") else { continue };
+        if let Some(v) = rest.strip_prefix("branch.oid ") {
+            oid = v.trim();
+        } else if let Some(v) = rest.strip_prefix("branch.head ") {
+            status.name = v.trim().to_string();
+        } else if let Some(v) = rest.strip_prefix("branch.upstream ") {
+            status.upstream = Some(v.trim().to_string());
+        } else if let Some(v) = rest.strip_prefix("branch.ab ") {
+            // "+<ahead> -<behind>"
+            let mut parts = v.split_whitespace();
+            status.ahead = parts.next().and_then(|s| s.trim_start_matches('+').parse().ok()).unwrap_or(0);
+            status.behind = parts.next().and_then(|s| s.trim_start_matches('-').parse().ok()).unwrap_or(0);
+        }
+    }
+    if status.name.is_empty() || status.name == "(detached)" {
+        status.name = oid.get(..8).unwrap_or(oid).to_string();
+    }
+    status
+}
+
+/// `git add -- <path>` — stage the file's worktree changes. For a conflicted
+/// path this marks the conflict resolved, matching the panel's toggle.
+pub(crate) fn stage(dir: &std::path::Path, path: &str) -> Result<String, String> {
+    git_env(dir, &["add", "--", path], &[]).map(|_| format!("Staged {path}"))
+}
+
+/// Unstage `path`: `restore --staged` on a normal HEAD, `reset` when HEAD is
+/// unborn (a fresh repo where `restore` can't resolve the default source).
+pub(crate) fn unstage(dir: &std::path::Path, path: &str) -> Result<String, String> {
+    git_env(dir, &["restore", "--staged", "--", path], &[])
+        .or_else(|_| git_env(dir, &["reset", "-q", "--", path], &[]))
+        .map(|_| format!("Unstaged {path}"))
+}
+
+/// `git commit -m <message>` — commits whatever is staged.
+pub(crate) fn commit(dir: &std::path::Path, message: &str) -> Result<String, String> {
+    git_env(dir, &["commit", "-m", message], &[]).map(|_| "Committed".to_string())
+}
+
+/// `git push`; when the branch has no upstream, `push -u origin HEAD` sets it.
+pub(crate) fn push(dir: &std::path::Path) -> Result<String, String> {
+    let args: &[&str] = if branch_status(dir).is_some_and(|b| b.upstream.is_some()) {
+        &["push"]
+    } else {
+        &["push", "-u", "origin", "HEAD"]
+    };
+    git_env(dir, args, &[]).map(|_| "Pushed".to_string())
+}
+
+/// Push, then open a PR via `gh pr create --fill`. Without `gh` on PATH the
+/// push still happens and the note tells the user to open the PR by hand.
+/// `envs` lets tests point PATH at a fake `gh`.
+pub(crate) fn create_pr(dir: &std::path::Path, envs: &[(&str, &str)]) -> Result<String, String> {
+    push(dir)?;
+    match gh_pr_create(dir, envs) {
+        Ok(url) => Ok(if url.is_empty() { "PR created".to_string() } else { format!("PR created: {url}") }),
+        Err(Gh::Missing) => Ok("Pushed — install `gh` to create a PR from here".to_string()),
+        Err(Gh::Failed(e)) => Err(e),
+    }
+}
+
+/// Why `gh pr create` didn't produce a URL: the binary isn't installed, or it
+/// ran and failed (no remote, existing PR, not logged in).
+enum Gh {
+    Missing,
+    Failed(String),
+}
+
+/// `gh pr create --fill` — title/body from the branch's commits. Stdout is
+/// the new PR's URL.
+fn gh_pr_create(dir: &std::path::Path, envs: &[(&str, &str)]) -> Result<String, Gh> {
+    let out = std::process::Command::new("gh")
+        .args(["pr", "create", "--fill"])
+        .current_dir(dir)
+        .envs(envs.iter().copied())
+        .output()
+        .map_err(|_| Gh::Missing)?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        Err(Gh::Failed(String::from_utf8_lossy(&out.stderr).trim().to_string()))
     }
 }
 
@@ -131,102 +247,4 @@ pub(crate) fn git_diff(dir: &std::path::Path, args: &[&str], max_bytes: u64) -> 
     }
     let code = child.wait().ok()?.code().unwrap_or(-1);
     (capped || code == 0 || code == 1).then(|| (String::from_utf8_lossy(&buf).into_owned(), capped))
-}
-
-/// Parse `git status --porcelain=v1 -z` output. Entries are NUL-separated
-/// `XY path`; renames/copies append a second field holding the source path.
-pub(crate) fn parse_status(raw: &str) -> Vec<FileChange> {
-    let mut fields = raw.split('\0');
-    let mut out = Vec::new();
-    while let Some(field) = fields.next() {
-        if field.len() < 4 {
-            continue;
-        }
-        let (code, path) = (&field.as_bytes()[..2], &field[3..]);
-        // `!!` ignored entries only appear with --ignored; never a change.
-        if code == b"!!" {
-            continue;
-        }
-        let status = status_of(code);
-        // Renames/copies append the source path as a second NUL field —
-        // consume it whenever the raw code says so, even when the display
-        // status masks it (`RD` shows Deleted but still emits the field).
-        let source = if code.contains(&b'R') || code.contains(&b'C') {
-            fields.next().map(str::to_string).filter(|s| !s.is_empty())
-        } else {
-            None
-        };
-        out.push(FileChange {
-            path: path.to_string(),
-            source,
-            status,
-            added: 0,
-            deleted: 0,
-            diff: None,
-            diff_load: 0,
-        });
-    }
-    out
-}
-
-/// Map the two-column porcelain code to a display status. Conflict wins over
-/// delete, delete over rename, rename over add, add over modify — the most
-/// surprising state is the one worth showing.
-fn status_of(code: &[u8]) -> ChangeStatus {
-    if code.contains(&b'U') || code == b"AA" || code == b"DD" {
-        ChangeStatus::Conflicted
-    } else if code.contains(&b'D') {
-        ChangeStatus::Deleted
-    } else if code.contains(&b'R') || code.contains(&b'C') {
-        ChangeStatus::Renamed
-    } else if code.contains(&b'A') || code == b"??" {
-        ChangeStatus::Added
-    } else {
-        ChangeStatus::Modified
-    }
-}
-
-/// Parse `git diff --numstat -z` output into `path → (added, deleted)`. Binary
-/// files report `-` counts and parse as zero. A rename's path field is empty;
-/// the following two fields are the old then new path, keyed under the new.
-pub(crate) fn parse_numstat(raw: &str) -> std::collections::HashMap<String, (u32, u32)> {
-    let mut fields = raw.split('\0');
-    let mut out = std::collections::HashMap::new();
-    while let Some(field) = fields.next() {
-        let mut cols = field.splitn(3, '\t');
-        let (Some(added), Some(deleted), Some(path)) = (cols.next(), cols.next(), cols.next()) else {
-            continue;
-        };
-        let path = if path.is_empty() {
-            // Rename: skip the old path, take the new one.
-            let _old = fields.next();
-            fields.next().unwrap_or_default()
-        } else {
-            path
-        };
-        if path.is_empty() {
-            continue;
-        }
-        out.insert(path.to_string(), (parse_num(added), parse_num(deleted)));
-    }
-    out
-}
-
-fn parse_num(s: &str) -> u32 {
-    s.parse().unwrap_or(0)
-}
-
-/// Line count for an untracked file — newlines plus a trailing partial line.
-/// Binary files (NUL in the first 8 KiB) and unreadable files report zero.
-fn line_count(path: &std::path::Path) -> u32 {
-    const MAX: u64 = 8 * 1024 * 1024;
-    if std::fs::metadata(path).map(|m| m.len() > MAX).unwrap_or(true) {
-        return 0;
-    }
-    let Ok(bytes) = std::fs::read(path) else { return 0 };
-    if bytes.iter().take(8192).any(|b| *b == 0) {
-        return 0;
-    }
-    let newlines = bytes.iter().filter(|b| **b == b'\n').count() as u32;
-    newlines + u32::from(!bytes.is_empty() && bytes.last() != Some(&b'\n'))
 }

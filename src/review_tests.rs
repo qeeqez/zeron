@@ -79,6 +79,7 @@ fn change(path: &str, status: ChangeStatus, added: u32, deleted: u32) -> FileCha
         status,
         added,
         deleted,
+        staged: false,
         diff: None,
         diff_load: 0,
     }
