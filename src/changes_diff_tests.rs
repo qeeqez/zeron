@@ -4,7 +4,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::changes_diff::{DiffLineKind, FileDiff, diff_for_file, parse_diff};
+    use crate::changes_diff::{DiffLineKind, DiffMode, FileDiff, SplitRow, diff_for_file, parse_diff, split_rows};
     use crate::git::{ChangeStatus, FileChange};
 
     fn kinds(diff: &FileDiff) -> Vec<DiffLineKind> {
@@ -56,6 +56,60 @@ mod tests {
         assert_eq!((diff.lines[5].old, diff.lines[5].new), (Some(12), Some(13)));
         assert_eq!(diff.lines[3].text, "new();", "marker is stripped");
         assert!(!diff.truncated);
+    }
+
+    #[test]
+    fn split_rows_pairs_removed_with_added() {
+        // ctx | -a -b | +x +y +z | tail — removed lines pair index-wise with
+        // added lines; the third added gets an empty old cell.
+        let diff = parse_diff("@@ -1,4 +1,5 @@\n ctx\n-a\n-b\n+x\n+y\n+z\n tail\n");
+        let rows = split_rows(&diff);
+        assert_eq!(
+            rows,
+            [
+                SplitRow::Wide(0),
+                SplitRow::Pair { old: Some(1), new: Some(1) },
+                SplitRow::Pair { old: Some(2), new: Some(4) },
+                SplitRow::Pair { old: Some(3), new: Some(5) },
+                SplitRow::Pair { old: None, new: Some(6) },
+                SplitRow::Pair { old: Some(7), new: Some(7) },
+            ]
+        );
+        // Every numbered line lands in exactly one cell — nothing is dropped.
+        for (ix, line) in diff.lines.iter().enumerate() {
+            if line.old.is_some() || line.new.is_some() {
+                assert!(rows.iter().any(|r| r.contains(ix)), "line {ix} missing from split rows");
+            }
+        }
+    }
+
+    #[test]
+    fn split_rows_leaves_unpaired_removals_and_marks_their_side() {
+        // Two removed, one added → the second removed pairs with an empty
+        // new cell; the "\ No newline" marker rides the old side it
+        // describes; the next hunk header is a wide row.
+        let diff = parse_diff("@@ -1,3 +1,2 @@\n-a\n-b\n\\ No newline at end of file\n+x\n@@ -9,1 +9,1 @@\n c\n");
+        let rows = split_rows(&diff);
+        assert_eq!(
+            rows,
+            [
+                SplitRow::Wide(0),
+                SplitRow::Pair { old: Some(1), new: Some(4) },
+                SplitRow::Pair { old: Some(2), new: None },
+                SplitRow::Pair { old: Some(3), new: None },
+                SplitRow::Wide(5),
+                SplitRow::Pair { old: Some(6), new: Some(6) },
+            ]
+        );
+    }
+
+    #[test]
+    fn diff_mode_names_round_trip() {
+        assert_eq!(DiffMode::from_name(DiffMode::Unified.name()), DiffMode::Unified);
+        assert_eq!(DiffMode::from_name(DiffMode::Split.name()), DiffMode::Split);
+        // Missing/unknown persisted values fall back to Unified.
+        assert_eq!(DiffMode::from_name(""), DiffMode::Unified);
+        assert_eq!(DiffMode::from_name("columns"), DiffMode::Unified);
     }
 
     #[test]

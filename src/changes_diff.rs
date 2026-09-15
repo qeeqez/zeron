@@ -42,6 +42,122 @@ pub struct FileDiff {
     pub truncated: bool,
 }
 
+/// How the expanded diff lays out its lines — the Changes panel's view-mode
+/// toggle. Persisted as `Settings.diff_mode` via `name`/`from_name`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DiffMode {
+    /// One column: removed and added lines interleaved in unified order.
+    #[default]
+    Unified,
+    /// Two columns: old on the left, new on the right, aligned by line.
+    Split,
+}
+
+impl DiffMode {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Unified => "unified",
+            Self::Split => "split",
+        }
+    }
+
+    /// Anything unrecognized (including an empty legacy value) is Unified.
+    pub fn from_name(name: &str) -> Self {
+        match name {
+            "split" => Self::Split,
+            _ => Self::Unified,
+        }
+    }
+}
+
+/// One row of the split layout: either a full-width line (hunk header) or
+/// an old|new cell pair. Values are indexes into `FileDiff::lines`, so
+/// review anchors keep resolving against the same
+/// `ReviewTarget { file_ix, line_ix }` the unified view uses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SplitRow {
+    /// A line with no side — hunk headers span both columns.
+    Wide(usize),
+    /// Old-side line index | new-side line index. Context lines put the same
+    /// index in both cells; a `None` cell is the empty side of an unpaired
+    /// removal or addition.
+    Pair { old: Option<usize>, new: Option<usize> },
+}
+
+impl SplitRow {
+    /// Whether this row renders `line_ix` in either cell — used to place the
+    /// comment editor under the row its anchor lives in.
+    pub fn contains(&self, line_ix: usize) -> bool {
+        match self {
+            Self::Wide(ix) => *ix == line_ix,
+            Self::Pair { old, new } => *old == Some(line_ix) || *new == Some(line_ix),
+        }
+    }
+}
+
+/// Lay `diff` out as split rows: each run of removed lines pairs with the
+/// run of added lines that follows it (GitHub-style — the first removed
+/// line sits across from the first added line, leftovers get an empty
+/// opposite cell). Context lines span both columns; hunk headers are
+/// full-width rows; "\ No newline" markers ride the side they describe.
+pub(crate) fn split_rows(diff: &FileDiff) -> Vec<SplitRow> {
+    /// Emit the pending removed/added runs as paired rows — the first
+    /// removed line sits across from the first added line, leftovers get an
+    /// empty opposite cell — then the buffered "\ No newline" markers, each
+    /// on the side of the line it describes.
+    fn flush(
+        removed: &mut Vec<usize>, added: &mut Vec<usize>, old_marks: &mut Vec<usize>, new_marks: &mut Vec<usize>, rows: &mut Vec<SplitRow>,
+    ) {
+        let n = removed.len().max(added.len());
+        for i in 0..n {
+            rows.push(SplitRow::Pair { old: removed.get(i).copied(), new: added.get(i).copied() });
+        }
+        rows.extend(old_marks.drain(..).map(|ix| SplitRow::Pair { old: Some(ix), new: None }));
+        rows.extend(new_marks.drain(..).map(|ix| SplitRow::Pair { old: None, new: Some(ix) }));
+        removed.clear();
+        added.clear();
+    }
+
+    let mut rows = Vec::with_capacity(diff.lines.len());
+    let (mut removed, mut added) = (Vec::new(), Vec::new());
+    // Markers buffer on the side of the line they describe so they don't
+    // split a removed+added run's pairing.
+    let (mut old_marks, mut new_marks) = (Vec::new(), Vec::new());
+    let mut last_kind = None;
+    for (ix, line) in diff.lines.iter().enumerate() {
+        match line.kind {
+            DiffLineKind::Removed => {
+                removed.push(ix);
+                last_kind = Some(DiffLineKind::Removed);
+            },
+            DiffLineKind::Added => {
+                added.push(ix);
+                last_kind = Some(DiffLineKind::Added);
+            },
+            DiffLineKind::Context if line.old.is_none() => match last_kind {
+                Some(DiffLineKind::Removed) => old_marks.push(ix),
+                Some(DiffLineKind::Added) => new_marks.push(ix),
+                // After a context line the marker describes both sides.
+                _ => rows.push(SplitRow::Wide(ix)),
+            },
+            // A numbered context line pairs with itself; a hunk header is a
+            // wide row. Either way the pending runs end here and pair off.
+            DiffLineKind::Context | DiffLineKind::Hunk => {
+                flush(&mut removed, &mut added, &mut old_marks, &mut new_marks, &mut rows);
+                last_kind = Some(line.kind);
+                rows.push(if line.old.is_some() {
+                    SplitRow::Pair { old: Some(ix), new: Some(ix) }
+                } else {
+                    SplitRow::Wide(ix)
+                });
+            },
+        }
+    }
+
+    flush(&mut removed, &mut added, &mut old_marks, &mut new_marks, &mut rows);
+    rows
+}
+
 /// Resolve a `ReviewTarget` against the change list: the file's path plus
 /// the diff line's number and text, as a `ReviewComment` with empty `text`.
 /// `None` when the row has no diff or the line carries no line number

@@ -21,6 +21,7 @@ impl Default for Settings {
             notify_on_done: true,
             notify_sound: true,
             word_wrap: true,
+            diff_mode: "unified".into(),
             preferred_editor: String::new(),
             legacy_backend: String::new(),
             legacy_model: String::new(),

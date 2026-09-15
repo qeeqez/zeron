@@ -51,6 +51,7 @@ impl Workspace {
             default_permissions: self.default_permissions.map_or_else(String::new, |a| a.name().to_string()),
             default_workspace: self.default_workspace.name().into(),
             word_wrap: self.word_wrap,
+            diff_mode: self.diff_mode.name().into(),
             preferred_editor: self.preferred_editor.name().into(),
             font_size: self.font_size,
             font_family: self.font_family.clone(),
@@ -75,6 +76,14 @@ impl Workspace {
             theme,
             ..Default::default()
         });
+    }
+
+    /// Set the Changes panel's diff layout (unified | split) and persist it.
+    /// A no-op pick still notifies so the toggle's pressed state re-renders.
+    pub fn set_diff_mode(&mut self, mode: crate::changes_diff::DiffMode, cx: &mut Context<Self>) {
+        self.diff_mode = mode;
+        self.save_settings();
+        cx.notify();
     }
 
     /// Set the appearance mode ("system" | "light" | "dark"), persist it and

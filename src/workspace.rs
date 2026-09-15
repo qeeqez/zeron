@@ -44,6 +44,9 @@ pub struct Workspace {
     /// Pending diff review — comments collected from the Changes panel's
     /// diff lines plus the inline editor's state (see `crate::review`).
     pub review: crate::review::Review,
+    /// Expanded diffs render unified or split — the panel header's
+    /// segmented control; persisted as `Settings.diff_mode`.
+    pub diff_mode: crate::changes_diff::DiffMode,
     /// Git actions for the Changes panel — branch header, commit input,
     /// busy flag and status note (see `crate::changes`).
     pub git: crate::changes::ChangesGit,

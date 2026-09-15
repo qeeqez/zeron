@@ -13,13 +13,14 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::changes_diff::{DiffLine, DiffLineKind};
+use crate::changes_diff::{DiffLine, DiffLineKind, DiffMode};
 use crate::git::FileChange;
 use crate::model::{ReviewComment, ReviewTarget};
 use crate::workspace::Workspace;
 
 /// The expanded diff under `change`'s file row. `next_line` is a running
-/// counter across the panel so every row gets a unique test id. Right-click
+/// counter across the panel so every unified row gets a unique test id;
+/// split rows key their cells by diff-line index instead. Right-click
 /// anywhere in the body opens the file menu.
 pub fn render_diff(file_ix: usize, change: &FileChange, next_line: &mut usize, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     let diff = change.diff.as_ref().expect("render_diff needs an expanded diff");
@@ -44,15 +45,11 @@ pub fn render_diff(file_ix: usize, change: &FileChange, next_line: &mut usize, w
     if diff.lines.is_empty() {
         body = body.child(div().px_2().py_1().text_color(muted_fg).child("No textual diff — binary or unchanged file"));
     } else {
-        for (line_ix, line) in diff.lines.iter().enumerate() {
-            let id = *next_line;
-            *next_line += 1;
-            let target = ReviewTarget { file_ix, line_ix };
-            body = body.child(diff_line(id, target, line, ws, cx));
-            if ws.review.target == Some(target) {
-                body = body.child(comment_editor(target, ws, cx));
-            }
-        }
+        let rows = match ws.diff_mode {
+            DiffMode::Unified => unified_rows(file_ix, diff, next_line, ws, cx),
+            DiffMode::Split => crate::views::diff_split::render_rows(file_ix, diff, ws, cx),
+        };
+        body = body.children(rows);
         if diff.truncated {
             body = body.child(div().px_2().py_1().text_color(muted_fg).child("… diff truncated"));
         }
@@ -65,10 +62,28 @@ pub fn render_diff(file_ix: usize, change: &FileChange, next_line: &mut usize, w
     .into_any_element()
 }
 
+/// The unified layout's rows: one numbered row per diff line, with the
+/// comment editor mounted under its anchor's row.
+fn unified_rows(
+    file_ix: usize, diff: &crate::changes_diff::FileDiff, next_line: &mut usize, ws: &Workspace, cx: &mut Context<Workspace>,
+) -> Vec<AnyElement> {
+    let mut rows = Vec::with_capacity(diff.lines.len());
+    for (line_ix, line) in diff.lines.iter().enumerate() {
+        let id = *next_line;
+        *next_line += 1;
+        let target = ReviewTarget { file_ix, line_ix };
+        rows.push(diff_line(id, target, line, ws, cx));
+        if ws.review.target == Some(target) {
+            rows.push(comment_editor(target, ws, cx));
+        }
+    }
+    rows
+}
+
 /// One numbered diff row: `old new │ sign text`, tinted by line kind. Rows
 /// with a line number are clickable — a click anchors the comment editor —
 /// and a row whose line already has a comment shows it after the code.
-fn diff_line(id: usize, target: ReviewTarget, line: &DiffLine, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
+pub(crate) fn diff_line(id: usize, target: ReviewTarget, line: &DiffLine, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     let theme = cx.theme();
     let (tint, fg, sign) = match line.kind {
         DiffLineKind::Added => (Some(theme.success.opacity(0.12)), theme.success, "+"),
@@ -108,25 +123,29 @@ fn diff_line(id: usize, target: ReviewTarget, line: &DiffLine, ws: &Workspace, c
                 this.open_review_comment(target.file_ix, target.line_ix, window, cx);
             }));
         if let Some(ix) = ws.review_comment_at(target) {
-            let comment = ws.review.comments[ix].clone();
-            row = row.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .pl_2()
-                    .text_color(theme.info)
-                    .child(IconName::MessageSquare)
-                    .child(comment.text),
-            );
+            row = row.child(comment_chip(&ws.review.comments[ix], cx));
         }
     }
     row.into_any_element()
 }
 
+/// The inline marker a commented diff line carries: a speech-bubble icon
+/// plus the comment text, appended after the code in a unified row or
+/// inside the owning cell in a split row.
+pub(crate) fn comment_chip(comment: &ReviewComment, cx: &mut Context<Workspace>) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .pl_2()
+        .text_color(cx.theme().info)
+        .child(IconName::MessageSquare)
+        .child(comment.text.clone())
+}
+
 /// The inline comment editor under its anchored diff row: the `path:line`
 /// label, the shared review input, a commit ✓ and a cancel ✕.
-fn comment_editor(target: ReviewTarget, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
+pub(crate) fn comment_editor(target: ReviewTarget, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     let theme = cx.theme();
     let label = crate::changes_diff::review_anchor(&ws.changes, target)
         .map(|a| format!("{}:{}", a.path, a.line))

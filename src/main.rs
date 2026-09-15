@@ -61,6 +61,8 @@ mod composer_tests;
 mod composer_testutil;
 #[cfg(test)]
 mod continuity_tests;
+#[cfg(test)]
+mod diff_mode_tests;
 mod export;
 mod feedback;
 #[cfg(test)]

@@ -11,6 +11,7 @@ mod composer;
 mod composer_helpers;
 mod composer_voice;
 mod diff;
+mod diff_split;
 mod empty;
 pub(crate) mod explorer;
 #[cfg(test)]

@@ -237,6 +237,8 @@ pub struct Settings {
     /// toast/system notification, so the sound can play without a popup.
     pub notify_sound: bool,
     pub word_wrap: bool,
+    /// Changes-panel diff layout — a `DiffMode::name` ("unified" | "split").
+    pub diff_mode: String,
     /// Preferred editor for "Open in Editor" — a `PreferredEditor::name`
     /// ("vscode" | "cursor" | "zed" | "finder" | "ask"); empty = Ask.
     pub preferred_editor: String,

@@ -116,6 +116,7 @@ impl Workspace {
             composer,
             review: crate::review::Review::new(window, cx),
             git: crate::changes::ChangesGit::new(window, cx),
+            diff_mode: crate::changes_diff::DiffMode::from_name(&settings.diff_mode),
             search,
             scroller,
             model: providers.iter().find(|p| p.id == selected_provider).map_or_else(SharedString::default, |p| {

@@ -10,6 +10,7 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::changes_diff::DiffMode;
 use crate::git::{ChangeStatus, FileChange};
 use crate::workspace::Workspace;
 
@@ -48,6 +49,7 @@ impl Workspace {
                     .child(IconName::FileDiff)
                     .child("Changes")
                     .child(div().flex_1())
+                    .child(diff_mode_toggle(self.diff_mode, cx))
                     .child(
                         div()
                             .id("refresh-changes")
@@ -178,4 +180,31 @@ fn change_row(ix: usize, change: &FileChange, ws: &Workspace, cx: &mut Context<W
             move |menu, window, cx| crate::open_in::file_menu(&ws, &path, menu, window, cx)
         })
         .into_any_element()
+}
+
+/// The unified|split segmented control in the panel header. The active
+/// segment carries the accent fill; clicking either segment persists the
+/// mode via `set_diff_mode`.
+fn diff_mode_toggle(mode: DiffMode, cx: &mut Context<Workspace>) -> impl IntoElement {
+    // Copy theme fields up front — `cx.theme()` borrows `*cx` and the
+    // segment builders below need `&mut cx` for their click listeners.
+    let (border, muted_fg, accent, accent_fg) = {
+        let theme = cx.theme();
+        (theme.border, theme.muted_foreground, theme.accent, theme.accent_foreground)
+    };
+    let segment = |id: &'static str, label: &'static str, segment_mode: DiffMode| {
+        let mut seg = div().id(id).test_support().cursor_pointer().px_2().py_0p5().text_xs().child(label);
+        seg = if segment_mode == mode { seg.bg(accent).text_color(accent_fg) } else { seg.text_color(muted_fg) };
+        seg.on_click(cx.listener(move |this, _, _, cx| this.set_diff_mode(segment_mode, cx)))
+    };
+    div()
+        .flex()
+        .items_center()
+        .rounded_md()
+        .overflow_hidden()
+        .border_1()
+        .border_color(border)
+        .child(segment("diff-mode-unified", "Unified", DiffMode::Unified))
+        .child(div().w(px(1.)).h_full().bg(border))
+        .child(segment("diff-mode-split", "Split", DiffMode::Split))
 }
