@@ -114,6 +114,15 @@ pub struct Workspace {
     /// the backend all scope to it (see `crate::project`).
     pub project: crate::project::Project,
 
+    /// Past threads the backend can reopen — the sidebar's Resume section.
+    /// Filled by `refresh_sessions`; empty until the first fetch lands.
+    pub sessions: Vec<crate::backend::SessionInfo>,
+    /// A `list_sessions` fetch is in flight — the section shows a loading
+    /// row and won't spawn a second fetch.
+    pub sessions_loading: bool,
+    /// The Resume section is expanded in the sidebar.
+    pub resume_open: bool,
+
     pub backend: std::sync::Arc<dyn crate::backend::AgentBackend>,
 }
 
@@ -263,6 +272,9 @@ impl Workspace {
             theme_persisted: settings.theme.clone(),
             project_files: Vec::new(),
             project,
+            sessions: Vec::new(),
+            sessions_loading: false,
+            resume_open: false,
         };
         let loaded = crate::persist::load_chats(&this.project.chats_dir(), &mut this.next_chat_id, !crate::lifecycle::any_turn_running(cx));
         if loaded.is_empty() {

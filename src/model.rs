@@ -138,6 +138,10 @@ pub struct Chat {
     /// `workdir` is a git worktree owned by this thread — removed when the
     /// chat is deleted.
     pub worktree: bool,
+    /// Backend thread this chat continues — set when the chat was created
+    /// by resuming a past codex session. Empty = each send starts a fresh
+    /// thread.
+    pub thread_id: String,
 }
 
 impl Chat {
@@ -164,6 +168,7 @@ impl Chat {
             access: None,
             workdir: String::new(),
             worktree: false,
+            thread_id: String::new(),
         }
     }
 

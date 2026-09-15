@@ -43,6 +43,16 @@ impl Workspace {
             .icon(IconName::Plus)
             .on_click(cx.listener(|this, _, _, cx| this.new_chat(cx)));
 
+        // Resume past threads — only backends with session support (codex)
+        // get the row; others never see the affordance.
+        let resume_open = self.resume_open;
+        let resume = self.backend.supports_sessions().then(|| {
+            crate::views::nav_row::NavRow::new("resume-toggle", "Resume")
+                .icon(IconName::RotateCcw)
+                .suffix(move |_, _| if resume_open { IconName::ChevronDown } else { IconName::ChevronRight })
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_resume(cx)))
+        });
+
         let query = self.search.read(cx).value().to_lowercase();
         let filtered = self.sidebar_order(&query);
         let archived: Vec<usize> = (0..self.chats.len())
@@ -65,7 +75,36 @@ impl Workspace {
             groups.push(SidebarGroup::new("Archived").children(items));
         }
 
-        let actions = SidebarGroup::new("").child(new_chat);
+        // The Resume section leads the list when open — past sessions sit
+        // above the chat groups like Codex's history view.
+        if self.resume_open {
+            let items: Vec<crate::views::nav_row::NavRow> = self
+                .sessions
+                .iter()
+                .enumerate()
+                .map(|(ix, s)| {
+                    let session = s.clone();
+                    // The thread's directory basename — sessions can come
+                    // from other projects, so the row says where it ran.
+                    let dir: SharedString = std::path::Path::new(&s.cwd)
+                        .file_name()
+                        .map(|f| f.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                        .into();
+                    crate::views::nav_row::NavRow::new(("resume-session", ix), s.title.clone())
+                        .icon(IconName::FileText)
+                        .suffix(move |_, cx| div().text_xs().text_color(cx.theme().muted_foreground).child(dir.clone()))
+                        .on_click(cx.listener(move |this, _, window, cx| this.open_session(&session, window, cx)))
+                })
+                .collect();
+            let label = if self.sessions_loading { "Resume — loading…" } else { "Resume" };
+            groups.insert(0, SidebarGroup::new(label).children(items));
+        }
+
+        let mut actions = SidebarGroup::new("").child(new_chat);
+        if let Some(resume) = resume {
+            actions = actions.child(resume);
+        }
 
         let footer = div()
             .flex()

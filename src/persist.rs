@@ -32,6 +32,10 @@ pub(crate) struct StoredChat {
     workdir: String,
     #[serde(default)]
     worktree: bool,
+    /// Backend thread the chat continues (resumed sessions); missing in
+    /// files written before resume existed.
+    #[serde(default)]
+    thread_id: String,
 }
 
 /// Chats dir for the current project — kept for `RevealChats` in root.rs.
@@ -61,6 +65,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             access: chat.access.map_or_else(String::new, |a| a.name().to_string()),
             workdir: chat.workdir.clone(),
             worktree: chat.worktree,
+            thread_id: chat.thread_id.clone(),
         };
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
@@ -164,6 +169,7 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
             };
             chat.workdir = stored.workdir;
             chat.worktree = stored.worktree;
+            chat.thread_id = stored.thread_id;
             Some(chat)
         })
         .collect()

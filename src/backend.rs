@@ -10,6 +10,7 @@ mod codex;
 mod http;
 mod models;
 mod rpc;
+mod sessions;
 
 #[cfg(test)]
 mod acp_rpc_tests;
@@ -24,6 +25,8 @@ mod appserver_turn_tests;
 mod claude_tests;
 #[cfg(test)]
 mod codex_tests;
+#[cfg(test)]
+mod sessions_tests;
 
 pub use acp::AcpBackend;
 pub use claude::ClaudeCliBackend;
@@ -132,13 +135,47 @@ pub struct TurnContext {
     pub cwd: std::path::PathBuf,
     /// Filesystem access for Agent-mode turns.
     pub access: AccessMode,
+    /// Backend thread to continue instead of starting a fresh one — set on
+    /// chats created by resuming a past session (`thread/resume` on codex).
+    /// `None` = the backend starts a new thread for this turn.
+    pub thread_id: Option<String>,
 }
 
 impl TurnContext {
-    /// A turn rooted at `cwd` with `access`.
+    /// A turn rooted at `cwd` with `access`, starting a fresh thread.
     pub fn at(cwd: std::path::PathBuf, access: AccessMode) -> Self {
-        Self { cwd, access }
+        Self { cwd, access, thread_id: None }
     }
+}
+
+/// One past agent thread a backend can reopen — a row in the sidebar's
+/// Resume section.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionInfo {
+    /// Backend thread id — passed back to `resume_session` and carried on
+    /// `TurnContext::thread_id` so sends continue the thread.
+    pub id: String,
+    /// Display title — the thread's name or its first prompt line.
+    pub title: String,
+    /// Last activity as unix seconds (`thread.updatedAt`).
+    pub updated: u64,
+    /// Working directory the thread ran in.
+    pub cwd: String,
+}
+
+/// A reopened thread: its identity plus the transcript the backend
+/// returned, ready to land on a chat.
+#[derive(Clone)]
+pub struct ResumedSession {
+    /// The resumed thread's id — bound to the chat so sends continue it.
+    pub id: String,
+    /// Thread title (name or preview).
+    pub title: String,
+    /// The thread's working directory.
+    pub cwd: String,
+    /// Past turns rendered as chat messages — user prompts, agent text,
+    /// and completed tool cards.
+    pub messages: Vec<crate::model::ChatMessage>,
 }
 
 /// Events streamed from an agent backend into a chat.
@@ -224,6 +261,23 @@ pub trait AgentBackend: Send + Sync {
     /// events until `Done`/`Error` or cancellation (drop the stream to
     /// cancel).
     fn send(&self, prompt: &str, model: &str, mode: &str, ctx: &TurnContext) -> ReplyStream;
+    /// Whether this backend keeps resumable threads — gates the sidebar's
+    /// Resume section. Cheap: no I/O, just capability.
+    fn supports_sessions(&self) -> bool {
+        false
+    }
+    /// Past threads this backend can reopen, newest first. `None` when the
+    /// backend has no session support; `Some(vec![])` when it does but the
+    /// list is empty or the fetch failed. Blocking — call off the UI thread.
+    fn list_sessions(&self) -> Option<Vec<SessionInfo>> {
+        None
+    }
+    /// Reopen a past thread: returns its transcript for display. `None`
+    /// when unsupported or the resume failed — the caller still binds the
+    /// thread id so the next send continues it. Blocking.
+    fn resume_session(&self, _thread_id: &str) -> Option<ResumedSession> {
+        None
+    }
 }
 pub struct SimBackend;
 

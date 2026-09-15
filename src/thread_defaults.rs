@@ -108,9 +108,13 @@ impl Workspace {
     }
 
     /// The `TurnContext` for the active chat's next backend turn — its
-    /// worktree or the project root, plus its access mode.
+    /// worktree or the project root, plus its access mode. A chat bound to
+    /// a past session carries its backend thread id so the turn resumes it.
     pub(crate) fn turn_context(&self) -> crate::backend::TurnContext {
         let chat = &self.chats[self.active];
-        crate::backend::TurnContext::at(crate::worktree::workdir_for(chat, self.project.root()), chat.access.unwrap_or(self.access))
+        let mut ctx =
+            crate::backend::TurnContext::at(crate::worktree::workdir_for(chat, self.project.root()), chat.access.unwrap_or(self.access));
+        ctx.thread_id = if chat.thread_id.is_empty() { None } else { Some(chat.thread_id.clone()) };
+        ctx
     }
 }

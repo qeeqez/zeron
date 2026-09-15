@@ -61,6 +61,9 @@ mod provider_ops;
 #[cfg(test)]
 mod provider_tests;
 mod providers;
+mod resume;
+#[cfg(test)]
+mod resume_tests;
 mod root;
 mod send;
 mod send_queue;

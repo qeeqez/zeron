@@ -9,7 +9,7 @@ use std::io::Write;
 use serde_json::{Value, json};
 
 use super::appserver::TurnDecoder;
-use super::rpc::{initialize_req, thread_start_req, turn_start_req};
+use super::rpc::{initialize_req, thread_resume_req, thread_start_req, turn_start_req};
 use super::{AgentBackend, AgentEvent, ReplyStream, kill_slot};
 
 /// Backend that shells out to `codex app-server` (the desktop transport).
@@ -41,6 +41,7 @@ impl AgentBackend for CodexCliBackend {
             mode: mode.to_string(),
             access: ctx.access,
             cwd: ctx.cwd.clone(),
+            resume: ctx.thread_id.clone(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         });
@@ -51,6 +52,20 @@ impl AgentBackend for CodexCliBackend {
             child: Some(turn.slot.clone()),
             cancelled: turn.cancelled.clone(),
         }
+    }
+
+    fn supports_sessions(&self) -> bool {
+        true
+    }
+
+    /// `thread/list` — past codex threads for the sidebar's Resume section.
+    fn list_sessions(&self) -> Option<Vec<super::SessionInfo>> {
+        super::sessions::fetch_codex_sessions().ok()
+    }
+
+    /// `thread/resume` — reopen the thread and return its transcript.
+    fn resume_session(&self, thread_id: &str) -> Option<super::ResumedSession> {
+        super::sessions::resume_codex_session(thread_id).ok()
     }
 }
 
@@ -66,6 +81,9 @@ pub(super) struct CodexTurn {
     /// The thread's working directory — the project root, or its git
     /// worktree when the thread runs in one.
     cwd: std::path::PathBuf,
+    /// Resume this codex thread instead of starting an ephemeral one — set
+    /// on chats bound to a past session.
+    resume: Option<String>,
     slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
     /// Set when the UI drops the stream — checked before each retry so a
     /// cancelled turn can't spawn a fresh child.
@@ -82,9 +100,16 @@ impl CodexTurn {
             mode: mode.into(),
             access,
             cwd: std::path::PathBuf::from("/tmp/thread-wt"),
+            resume: None,
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
+    }
+
+    /// A turn bound to an existing codex thread — the handshake resumes it.
+    pub(super) fn resuming(mut self, thread_id: &str) -> Self {
+        self.resume = Some(thread_id.to_string());
+        self
     }
 }
 
@@ -120,7 +145,7 @@ enum CodexOutcome {
 }
 
 /// Handshake phase: which request id we're waiting on next.
-enum Phase {
+pub(super) enum Phase {
     Init,
     Thread,
     Turn,
@@ -232,7 +257,7 @@ fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (C
 
 /// Handle a response to one of our handshake requests: send the next
 /// request in the sequence. Returns Ok(true) when the line was consumed.
-fn advance_phase(phase: &mut Phase, turn: &CodexTurn, msg: &Value, stdin: &mut dyn Write) -> Result<bool, String> {
+pub(super) fn advance_phase(phase: &mut Phase, turn: &CodexTurn, msg: &Value, stdin: &mut dyn Write) -> Result<bool, String> {
     let id = msg["id"].as_i64().unwrap_or(-1);
     if let Some(err) = msg.get("error") {
         let m = err["message"].as_str().unwrap_or("request failed");
@@ -240,9 +265,14 @@ fn advance_phase(phase: &mut Phase, turn: &CodexTurn, msg: &Value, stdin: &mut d
     }
     match (std::mem::replace(phase, Phase::Run), id) {
         (Phase::Init, 1) => {
-            // `initialized` notification, then start an ephemeral thread.
+            // `initialized` notification, then open the turn's thread —
+            // resume a bound session's thread, else start an ephemeral one.
+            let open = match &turn.resume {
+                Some(tid) => thread_resume_req(2, tid, Some(&turn.model), Some(sandbox_of(turn)), Some(approval_of(turn))),
+                None => thread_start_req(2, &turn.model, sandbox_of(turn), approval_of(turn), &turn.cwd),
+            };
             writeln!(stdin, "{}", json!({"method": "initialized", "params": {}}))
-                .and_then(|()| writeln!(stdin, "{}", thread_start_req(2, &turn.model, sandbox_of(turn), approval_of(turn), &turn.cwd)))
+                .and_then(|()| writeln!(stdin, "{open}"))
                 .map_err(|e| format!("codex stdin: {e}"))?;
             *phase = Phase::Thread;
             Ok(true)
