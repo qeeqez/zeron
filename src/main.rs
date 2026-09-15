@@ -29,7 +29,11 @@ mod chat_search_tests;
 #[cfg(test)]
 mod composer_queue_tests;
 #[cfg(test)]
+mod composer_queue_ui_tests;
+#[cfg(test)]
 mod composer_tests;
+#[cfg(test)]
+mod composer_testutil;
 #[cfg(test)]
 mod continuity_tests;
 mod export;

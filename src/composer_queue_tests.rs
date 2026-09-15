@@ -7,82 +7,12 @@
 
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext, px, size};
+use gpui_kit::{AppContext, TestAppContext, VisualTestContext, px, size};
 
+use crate::composer_testutil::{open_workspace, type_and_send, until, use_sim, user_msgs};
 use crate::model::{Chat, MessageKind, Role};
 use crate::send_queue::{Queued, SendQueue};
 use crate::workspace::Workspace;
-
-/// Mount a `Workspace` in a headless window with `HOME` redirected to a temp
-/// dir so settings/chats reads+writes stay off the real profile.
-fn open_workspace(cx: &mut TestAppContext) -> (Entity<Workspace>, &'static mut VisualTestContext) {
-    let dir = std::env::temp_dir().join(format!("rixlcode-test-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    // SAFETY: nextest runs each test in its own process, so no other thread
-    // can observe HOME mid-write.
-    unsafe { std::env::set_var("HOME", &dir) };
-    cx.update(gpui_kit::init);
-    let mut workspace = None;
-    let window = cx.open_window(size(px(1024.), px(768.)), |window, cx| {
-        let view = cx.new(|cx| Workspace::new(window, cx));
-        workspace = Some(view.clone());
-        Root::new(view, window, cx)
-    });
-    let cx = VisualTestContext::from_window(window.into(), cx).into_mut();
-    let workspace = workspace.unwrap();
-    for _ in 0..200 {
-        cx.run_until_parked();
-        if workspace.read_with(cx, |ws, _| !ws.project_files.is_empty()) {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    cx.update(|window, cx| {
-        workspace.update(cx, |ws, cx| {
-            ws.composer.update(cx, |composer, cx| composer.focus(window, cx));
-        });
-    });
-    (workspace, cx)
-}
-
-/// Send `text` through the real input path: type, then Enter.
-fn type_and_send(cx: &mut VisualTestContext, text: &str) {
-    cx.update(|window, cx| {
-        window.input(text, cx);
-        window.press("enter", cx);
-    });
-}
-
-/// Advance the test clock until `cond` holds or the budget runs out.
-fn until(workspace: &Entity<Workspace>, cx: &mut VisualTestContext, cond: impl Fn(&Workspace) -> bool) {
-    for _ in 0..64 {
-        cx.executor().advance_clock(std::time::Duration::from_secs(1));
-        cx.run_until_parked();
-        if workspace.read_with(cx, |ws, _| cond(ws)) {
-            return;
-        }
-    }
-    panic!("condition never held");
-}
-
-/// Count user messages whose text contains `needle`.
-fn user_msgs(ws: &Workspace, needle: &str) -> usize {
-    ws.chats[ws.active]
-        .messages
-        .iter()
-        .filter(|m| m.role == Role::User && matches!(&m.kind, MessageKind::Text(t) if t.contains(needle)))
-        .count()
-}
-
-/// Point the workspace at the sim backend so sends complete on the test clock.
-fn use_sim(workspace: &Entity<Workspace>, cx: &mut VisualTestContext) {
-    cx.update(|_, cx| {
-        workspace.update(cx, |ws, _| {
-            ws.backend = std::sync::Arc::new(crate::backend::SimBackend);
-        });
-    });
-}
 
 /// Two windows whose chats share id 0 must not share queues — the queue is
 /// workspace state, not a thread-local keyed by chat id alone.
