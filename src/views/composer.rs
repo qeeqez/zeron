@@ -23,6 +23,9 @@ struct PickerSpec {
 
 impl Workspace {
     pub fn render_composer(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        // Adopt persisted queues once per window — a restart restores what
+        // was pending when the app closed (see `SendQueue::hydrate`).
+        self.send_queue.hydrate(&self.project.chats_dir(), &self.chats);
         let running = self.chats[self.active].running;
         let ws = cx.entity();
 
@@ -156,14 +159,13 @@ impl Workspace {
                     })
                     .when(!queued.is_empty(), |d| {
                         d.child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .gap_0p5()
-                                .pb_1()
-                                .border_b_1()
-                                .border_color(cx.theme().border)
-                                .children(queued.iter().map(|item| queued_item(item, &ws, cx).into_any_element()).collect::<Vec<_>>()),
+                            div().flex().flex_col().gap_0p5().pb_1().border_b_1().border_color(cx.theme().border).children(
+                                queued
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(ix, item)| queued_item(item, ix == 0, ix + 1 == queued.len(), &ws, cx).into_any_element())
+                                    .collect::<Vec<_>>(),
+                            ),
                         )
                     })
                     .child(

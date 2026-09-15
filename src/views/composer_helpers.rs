@@ -1,7 +1,7 @@
 use gpui_kit::assets::IconName;
-use gpui_kit::component::Sizable;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::theme::ActiveTheme;
+use gpui_kit::component::{Disableable, Sizable};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
@@ -112,40 +112,80 @@ pub fn apply_pick(ws: &Entity<Workspace>, set: fn(&mut Workspace, &'static str),
     });
 }
 
-/// One queued-message row: dimmed text plus an ✕ that drops it.
-pub fn queued_item(item: &Queued, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
+/// A queued row's icon button — `id` is the test/click target, `icon` the
+/// glyph, `disabled` greys out edge moves, `on_click` runs the queue op.
+fn queue_button(
+    id: SharedString, icon: IconName, disabled: bool, on_click: impl Fn(&mut Workspace, &mut Context<Workspace>) + 'static,
+    ws: &Entity<Workspace>,
+) -> impl IntoElement {
     let ws = ws.clone();
+    div().id(id.clone()).test_support().child(
+        Button::new(SharedString::from(format!("{id}-btn")))
+            .ghost()
+            .xsmall()
+            .disabled(disabled)
+            .icon(icon)
+            .on_click(move |_, _, cx| ws.update(cx, |this, cx| on_click(this, cx))),
+    )
+}
+
+/// One queued-message row: click the text to reopen it in the composer,
+/// arrows reorder, the send icon jumps it to the front, ✕ drops it.
+pub fn queued_item(item: &Queued, first: bool, last: bool, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
     let id = item.id;
     div()
-        .id(SharedString::from(format!("queued-{}", item.id)))
+        .id(SharedString::from(format!("queued-{id}")))
         .test_support()
         .flex()
         .items_center()
-        .gap_2()
+        .gap_1()
         .px_2()
         .py_1()
         .child(
             div()
+                .id(SharedString::from(format!("queued-edit-{id}")))
+                .test_support()
+                .cursor_pointer()
                 .flex_1()
                 .min_w_0()
                 .text_sm()
                 .text_color(cx.theme().muted_foreground)
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .child(item.text.clone()),
+                .child(item.text.clone())
+                .on_click({
+                    let ws = ws.clone();
+                    move |_, window, cx| {
+                        ws.update(cx, |this, cx| this.edit_queued(id, window, cx));
+                    }
+                }),
         )
-        .child(
-            div().id(SharedString::from(format!("dequeue-{}", item.id))).test_support().child(
-                Button::new(SharedString::from(format!("dequeue-btn-{}", item.id)))
-                    .ghost()
-                    .xsmall()
-                    .icon(IconName::X)
-                    .on_click(move |_, _, cx| {
-                        ws.update(cx, |this, cx| {
-                            this.send_queue.remove(this.chats[this.active].id, id);
-                            cx.notify();
-                        });
-                    }),
-            ),
-        )
+        .child(queue_button(
+            SharedString::from(format!("queue-up-{id}")),
+            IconName::ChevronUp,
+            first,
+            move |this, cx| this.move_queued(id, -1, cx),
+            ws,
+        ))
+        .child(queue_button(
+            SharedString::from(format!("queue-down-{id}")),
+            IconName::ChevronDown,
+            last,
+            move |this, cx| this.move_queued(id, 1, cx),
+            ws,
+        ))
+        .child(queue_button(
+            SharedString::from(format!("queue-send-{id}")),
+            IconName::Send,
+            false,
+            move |this, cx| this.send_queued_now(id, cx),
+            ws,
+        ))
+        .child(queue_button(
+            SharedString::from(format!("dequeue-{id}")),
+            IconName::X,
+            false,
+            move |this, cx| this.remove_queued(id, cx),
+            ws,
+        ))
 }

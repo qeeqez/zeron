@@ -9,7 +9,8 @@ use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext, px, size};
 
-use crate::model::{MessageKind, Role};
+use crate::model::{Chat, MessageKind, Role};
+use crate::send_queue::{Queued, SendQueue};
 use crate::workspace::Workspace;
 
 /// Mount a `Workspace` in a headless window with `HOME` redirected to a temp
@@ -209,4 +210,94 @@ fn queued_message_snapshots_attachments(cx: &mut TestAppContext) {
         vec![gpui_kit::SharedString::from("/tmp/c.rs")],
         "the newer attachment stays live for the next message"
     );
+}
+
+/// Editing a queued message keeps its slot: the item leaves the queue while
+/// parked, then commits back at its original index with the new text.
+#[test]
+fn queue_edit_updates_in_place() {
+    let mut q = SendQueue::default();
+    let live = |_| true;
+    q.enqueue(7, Queued::new("aaa".into(), vec![]), live);
+    q.enqueue(7, Queued::new("bbb".into(), vec![]), live);
+    q.enqueue(7, Queued::new("ccc".into(), vec![]), live);
+
+    let parked = q.begin_edit(7, 1, "draft".into(), vec![]).expect("id 1 is queued");
+    assert_eq!(parked.text, "bbb");
+    assert!(q.editing_for(7));
+    assert_eq!(q.queued(7).iter().map(|i| i.text.as_str()).collect::<Vec<_>>(), ["aaa", "ccc"]);
+
+    let edit = q.commit_edit("bbb edited".into(), vec![]).expect("edit is open");
+    assert_eq!(edit.saved_text, "draft");
+    assert!(!q.editing_for(7));
+    assert_eq!(q.queued(7).iter().map(|i| i.text.as_str()).collect::<Vec<_>>(), ["aaa", "bbb edited", "ccc"]);
+}
+
+/// An empty commit cancels the edit — the original message returns to its
+/// slot unchanged (deletion is the row's ✕, not a blank send).
+#[test]
+fn queue_edit_empty_commit_restores() {
+    let mut q = SendQueue::default();
+    let live = |_| true;
+    q.enqueue(7, Queued::new("aaa".into(), vec![]), live);
+    q.enqueue(7, Queued::new("bbb".into(), vec![]), live);
+
+    q.begin_edit(7, 1, String::new(), vec![]);
+    q.commit_edit("   ".into(), vec![]);
+    assert_eq!(q.queued(7).iter().map(|i| i.text.as_str()).collect::<Vec<_>>(), ["aaa", "bbb"]);
+}
+
+/// Reorder changes send order: up/down move an item, edges are no-ops, and
+/// send-now jumps it to the front.
+#[test]
+fn queue_reorder_and_send_now() {
+    let mut q = SendQueue::default();
+    let live = |_| true;
+    for text in ["a", "b", "c"] {
+        q.enqueue(7, Queued::new(text.into(), vec![]), live);
+    }
+    let order = |q: &SendQueue| q.queued(7).iter().map(|i| i.text.clone()).collect::<Vec<_>>();
+
+    assert!(!q.move_by(7, 0, -1), "first item can't move up");
+    assert!(q.move_by(7, 1, -1), "b moves up");
+    assert_eq!(order(&q), ["b", "a", "c"]);
+    assert!(q.move_by(7, 1, 1), "b moves back down");
+    assert_eq!(order(&q), ["a", "b", "c"]);
+    assert!(!q.move_by(7, 2, 1), "c is already last — no-op");
+    assert_eq!(order(&q), ["a", "b", "c"]);
+    assert!(q.move_to_front(7, 2));
+    assert_eq!(order(&q), ["c", "a", "b"]);
+    assert!(!q.move_by(7, 99, -1), "unknown id is a no-op");
+}
+
+/// The queue persists per chat: a fresh SendQueue over the same directory
+/// adopts the pending messages in order, keyed by `created_at` so chat id
+/// reassignment on load can't misroute them.
+#[test]
+fn queue_persists_per_chat() {
+    let dir = std::env::temp_dir().join(format!("rixlcode-queue-{}", std::process::id()));
+    let mut chats = vec![Chat::new(0, "one"), Chat::new(1, "two")];
+    let mut q = SendQueue::default();
+    let live = |id| chats.iter().any(|c| c.id == id);
+    q.enqueue(0, Queued::new("first".into(), vec![]), live);
+    q.enqueue(0, Queued::new("second".into(), vec![]), live);
+    q.enqueue(1, Queued::new("other chat".into(), vec![]), live);
+    q.persist(&dir, &chats);
+
+    // Reloaded chats get fresh ids — the queue must still find them.
+    let mut reloaded = vec![Chat::new(5, "one"), Chat::new(6, "two")];
+    reloaded[0].created_at = chats[0].created_at;
+    reloaded[1].created_at = chats[1].created_at;
+    let mut restored = SendQueue::default();
+    restored.hydrate(&dir, &reloaded);
+    assert_eq!(restored.queued(5).iter().map(|i| i.text.as_str()).collect::<Vec<_>>(), ["first", "second"]);
+    assert_eq!(restored.queued(6).iter().map(|i| i.text.as_str()).collect::<Vec<_>>(), ["other chat"]);
+
+    // Deleting a chat drops its queue from the file on the next persist.
+    chats.remove(0);
+    q.persist(&dir, &chats);
+    let mut after_delete = SendQueue::default();
+    after_delete.hydrate(&dir, &reloaded);
+    assert!(after_delete.queued(5).is_empty(), "deleted chat's queue must not persist");
+    assert_eq!(after_delete.queued(6).len(), 1);
 }

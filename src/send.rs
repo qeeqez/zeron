@@ -47,6 +47,17 @@ fn build_prompt(text: &str, attachments: &[SharedString]) -> String {
 
 impl Workspace {
     pub fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // A queued message parked in the composer commits back into the
+        // queue — Enter never starts a new send while an edit is open.
+        if self.send_queue.editing_for(self.chats[self.active].id) {
+            self.commit_queued_edit(window, cx);
+            return;
+        }
+        // An edit parked on another chat is abandoned — the composer text
+        // belongs to this chat's draft now, so the original goes back.
+        if self.send_queue.abandon_edit() {
+            self.persist_queue();
+        }
         let text = self.composer.read(cx).value().to_string();
         let text = text.trim();
         if text.is_empty() {
@@ -71,6 +82,7 @@ impl Workspace {
             };
             self.send_queue
                 .enqueue(chat_id, Queued::new(text.to_string(), attachments), |id| live.contains(&id));
+            self.persist_queue();
             self.clear_composer(window, cx);
             self.spawn_queue_drain(chat_id, cx);
             cx.notify();
@@ -164,6 +176,7 @@ impl Workspace {
             return Drain::Wait;
         }
         let Some(item) = self.send_queue.pop(chat_id) else { return Drain::Done };
+        self.persist_queue();
         // Queued slash commands run locally now that the stream is over —
         // their notes can no longer corrupt an in-flight reply.
         if !self.run_slash(&item.text, window, cx) {
@@ -172,49 +185,11 @@ impl Workspace {
         Drain::Sent
     }
 
-    /// Re-run the reply for the last assistant message.
-    pub fn retry_last(&mut self, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[self.active];
-        if chat.running {
-            return;
-        }
-        while matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant) {
-            Rc::make_mut(&mut chat.messages).pop();
-        }
-        chat.running = true;
-        chat.failed_flag = false;
-        chat.started_at = Some(std::time::Instant::now());
-        self.search_match_ix = 0;
-        let count = self.filtered_count(cx);
-        self.scroller.update(cx, |s, cx| {
-            s.reset(count, cx);
-        });
-        cx.notify();
-        let (prompt, attachments) = self.chats[self.active]
-            .messages
-            .iter()
-            .rev()
-            .find(|m| m.role == Role::User)
-            .map(|m| match &m.kind {
-                MessageKind::Text(t) => (t.to_string(), m.attachments.clone()),
-                _ => (String::new(), vec![]),
-            })
-            .unwrap_or_default();
-        // Re-attach the files — the original prompt included them.
-        let prompt = if attachments.is_empty() {
-            prompt
-        } else {
-            let files = attachments.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", ");
-            format!("{prompt}\n\n[Attached files: {files}]")
-        };
-        self.start_reply(&prompt, cx);
-    }
-
     /// Dispatch to the real backend or the simulator. Only `sim` is fake —
     /// every other backend (codex-cli, http) goes through `run_backend`.
     /// A provider with no catalog has no model to send — the turn becomes
     /// an error note instead of a synthetic "default".
-    fn start_reply(&mut self, prompt: &str, cx: &mut Context<Self>) {
+    pub(crate) fn start_reply(&mut self, prompt: &str, cx: &mut Context<Self>) {
         if self.model.is_empty() {
             let chat_id = self.chats[self.active].id;
             self.push_note("**Error:** the selected provider has no models — pick a provider with a catalog.".into(), cx);

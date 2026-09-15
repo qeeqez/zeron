@@ -1,4 +1,5 @@
-//! Per-message operations: rate, edit, recall, copy.
+//! Per-message operations: rate, edit, recall, copy, retry — plus the
+//! queued-message edit path (a queued item reopens in the composer).
 
 use std::process::{Child, Command};
 use std::rc::Rc;
@@ -158,6 +159,104 @@ impl Workspace {
             MessageKind::Diff(d) => format!("{} (+{} -{})\n{}", d.path, d.added, d.removed, d.hunks),
         };
         cx.write_to_clipboard(ClipboardItem::new_string(text));
+    }
+
+    /// Re-run the reply for the last assistant message.
+    pub fn retry_last(&mut self, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[self.active];
+        if chat.running {
+            return;
+        }
+        while matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant) {
+            Rc::make_mut(&mut chat.messages).pop();
+        }
+        chat.running = true;
+        chat.failed_flag = false;
+        chat.started_at = Some(std::time::Instant::now());
+        self.search_match_ix = 0;
+        let count = self.filtered_count(cx);
+        self.scroller.update(cx, |s, cx| {
+            s.reset(count, cx);
+        });
+        cx.notify();
+        let (prompt, attachments) = self.chats[self.active]
+            .messages
+            .iter()
+            .rev()
+            .find(|m| m.role == Role::User)
+            .map(|m| match &m.kind {
+                MessageKind::Text(t) => (t.to_string(), m.attachments.clone()),
+                _ => (String::new(), vec![]),
+            })
+            .unwrap_or_default();
+        // Re-attach the files — the original prompt included them.
+        let prompt = if attachments.is_empty() {
+            prompt
+        } else {
+            let files = attachments.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", ");
+            format!("{prompt}\n\n[Attached files: {files}]")
+        };
+        self.start_reply(&prompt, cx);
+    }
+}
+
+impl Workspace {
+    /// Open a queued message in the composer: the item leaves the queue
+    /// (a turn ending mid-edit can't drain stale text) and the composer's
+    /// current contents are stashed on the edit for restore-on-commit.
+    /// Editing a second row commits the first with the composer's text.
+    pub fn edit_queued(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let chat_id = self.chats[self.active].id;
+        let (draft, chips) = if self.send_queue.editing_for(chat_id) {
+            // Commit the open edit first; the new edit inherits its stash —
+            // the real draft is what was set aside when editing began, not
+            // the item text currently in the composer.
+            let text = self.composer.read(cx).value().to_string();
+            let attachments = std::mem::take(&mut self.chats[self.active].attachments);
+            self.send_queue
+                .commit_edit(text, attachments)
+                .map(|e| (e.saved_text, e.saved_attachments))
+                .unwrap_or_default()
+        } else {
+            // A parked edit on another chat restores untouched — the
+            // composer holds this chat's draft, not that edit's text.
+            self.send_queue.abandon_edit();
+            (self.composer.read(cx).value().to_string(), std::mem::take(&mut self.chats[self.active].attachments))
+        };
+        // `draft`/`chips` clone cheap — on a miss they go back.
+        let Some(item) = self.send_queue.begin_edit(chat_id, id, draft.clone(), chips.clone()) else {
+            // The item drained between render and click — restore the
+            // composer as it was (draft text + chips). A chained commit
+            // above may still have changed the queue — persist it.
+            self.chats[self.active].attachments = chips;
+            self.composer.update(cx, |s, cx| s.set_value(draft, window, cx));
+            self.persist_queue();
+            return;
+        };
+        self.chats[self.active].attachments = item.attachments.clone();
+        self.composer.update(cx, |s, cx| {
+            s.set_value(item.text.clone(), window, cx);
+            s.focus(window, cx);
+        });
+        self.persist_queue();
+        cx.notify();
+    }
+
+    /// Enter while a queued edit is open: write the composer text back at
+    /// the item's queue position and restore the stashed draft. An empty
+    /// composer cancels — the original message returns untouched.
+    pub(crate) fn commit_queued_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self.composer.read(cx).value().to_string();
+        let attachments = std::mem::take(&mut self.chats[self.active].attachments);
+        let Some(edit) = self.send_queue.commit_edit(text, attachments) else { return };
+        self.chats[self.active].attachments = edit.saved_attachments;
+        self.composer.update(cx, |s, cx| {
+            s.set_value(edit.saved_text.clone(), window, cx);
+            s.focus(window, cx);
+        });
+        self.persist_queue();
+        self.spawn_queue_drain(edit.chat_id, cx);
+        cx.notify();
     }
 }
 
