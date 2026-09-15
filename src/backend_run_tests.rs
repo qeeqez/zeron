@@ -13,6 +13,7 @@ use crate::workspace::Workspace;
 /// the real `~/.rixl/rixlcode` settings and chats.
 fn sandbox_home() {
     let dir = std::env::temp_dir().join(format!("rixlcode-run-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     // SAFETY: nextest runs each test in its own process, so no other thread
     // can observe HOME mid-write.
@@ -108,9 +109,29 @@ fn stop_reply_snapshots_tools_onto_agent_row() {
             this.send(window, cx);
         });
     });
-    for _ in 0..8 {
+    // Wait for the pump thread to forward the two queued events into the
+    // reply task. `advance_clock`/`run_until_parked` only drive the fake
+    // executor — the `std::thread::spawn` pump runs in real time, so a
+    // fixed iteration count can finish before the OS schedules it under
+    // parallel test load. Poll the applied state with a real-time
+    // deadline instead.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
         cx.executor().advance_clock(std::time::Duration::from_millis(50));
         cx.run_until_parked();
+        let applied = ws.read_with(cx, |ws, _| {
+            ws.chats[0]
+                .messages
+                .iter()
+                .any(|m| matches!(&m.kind, MessageKind::Tool(t) if t.output.contains("partial")))
+        });
+        if applied {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "pump thread never delivered the tool events");
+        // Deschedule so the OS gives the pump thread a core — yield_now can
+        // return immediately when the run queue is full of test threads.
+        std::thread::sleep(std::time::Duration::from_millis(1));
     }
 
     cx.update(|_window, cx| {

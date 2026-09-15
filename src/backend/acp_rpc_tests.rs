@@ -154,6 +154,7 @@ fn permission_follows_turn_policy() {
 #[test]
 fn fs_read_honors_line_window() {
     let dir = std::env::temp_dir().join(format!("rixl-acp-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("f.txt");
     std::fs::write(&path, "a\nb\nc\nd\n").unwrap();
@@ -174,6 +175,7 @@ fn fs_read_honors_line_window() {
 #[test]
 fn fs_write_respects_policy_and_workspace() {
     let dir = std::env::temp_dir().join(format!("rixl-acp-w-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let target = dir.join("out.txt");
     let msg = |path: &std::path::Path| json!({"id": 8, "method": "fs/write_text_file", "params": {"sessionId": "s", "path": path, "content": "hi"}});

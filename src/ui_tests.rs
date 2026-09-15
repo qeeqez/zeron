@@ -20,6 +20,7 @@ use crate::workspace::Workspace;
 /// dir so settings/chats reads+writes stay off the real profile.
 fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
     let dir = std::env::temp_dir().join(format!("rixlcode-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     unsafe { std::env::set_var("HOME", &dir) };
     cx.update(gpui_kit::init);

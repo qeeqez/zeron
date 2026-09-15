@@ -15,6 +15,7 @@ mod tests {
     /// thread can observe HOME mid-write.
     fn sandbox_home() -> PathBuf {
         let dir = std::env::temp_dir().join(format!("rixlcode-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         unsafe { std::env::set_var("HOME", &dir) };
         dir

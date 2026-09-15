@@ -15,6 +15,7 @@ use crate::workspace::Workspace;
 /// temp dir so settings/chats reads+writes stay off the real profile.
 fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
     let dir = std::env::temp_dir().join(format!("rixlcode-models-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     // SAFETY: nextest runs each test in its own process, so no other
     // thread can observe HOME mid-write.

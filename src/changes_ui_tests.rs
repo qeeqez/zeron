@@ -13,6 +13,7 @@ use crate::workspace::Workspace;
 /// dir so settings/chats reads+writes stay off the real profile.
 fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
     let dir = std::env::temp_dir().join(format!("rixlcode-changes-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     unsafe { std::env::set_var("HOME", &dir) };
     cx.update(gpui_kit::init);
@@ -150,6 +151,7 @@ fn opening_panel_collects_off_the_ui_thread() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     let dir = std::env::temp_dir().join(format!("rixlcode-changes-collect-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let run = |args: &[&str]| {
         std::process::Command::new("git")

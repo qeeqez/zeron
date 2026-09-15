@@ -113,6 +113,7 @@ mod tests {
     #[test]
     fn diff_for_file_reads_real_repo() {
         let dir = std::env::temp_dir().join(format!("rixlcode-diff-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let run = |args: &[&str]| git_ok(&dir, args);
         if run(&["init", "-q"]) {
@@ -139,6 +140,7 @@ mod tests {
     #[test]
     fn diff_for_rename_shows_delta_not_all_added() {
         let dir = std::env::temp_dir().join(format!("rixlcode-diff-rename-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let run = |args: &[&str]| git_ok(&dir, args);
         if run(&["init", "-q"]) {
@@ -164,6 +166,7 @@ mod tests {
     #[test]
     fn diff_for_unborn_head_shows_net_worktree() {
         let dir = std::env::temp_dir().join(format!("rixlcode-diff-unborn-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let run = |args: &[&str]| git_ok(&dir, args);
         if run(&["init", "-q"]) {
@@ -186,6 +189,7 @@ mod tests {
     #[test]
     fn diff_for_unborn_head_works_in_sha256_repo() {
         let dir = std::env::temp_dir().join(format!("rixlcode-diff-sha256-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let run = |args: &[&str]| git_ok(&dir, args);
         if run(&["init", "-q", "--object-format=sha256"]) {
@@ -211,6 +215,7 @@ mod tests {
     #[test]
     fn oversized_diff_is_capped_at_the_pipe() {
         let dir = std::env::temp_dir().join(format!("rixlcode-diff-cap-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let run = |args: &[&str]| git_ok(&dir, args);
         if run(&["init", "-q"]) {

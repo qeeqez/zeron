@@ -37,6 +37,7 @@ impl AgentBackend for RecordingBackend {
 /// temp dir so settings/chats reads+writes stay off the real profile.
 fn mount<'a>(cx: &'a mut TestAppContext, name: &str) -> (Entity<Workspace>, &'a mut VisualTestContext) {
     let dir = std::env::temp_dir().join(format!("rixlcode-td-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     unsafe { std::env::set_var("HOME", &dir) };
     cx.update(gpui_kit::init);

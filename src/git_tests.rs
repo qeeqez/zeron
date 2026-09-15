@@ -100,6 +100,7 @@ mod tests {
     #[test]
     fn collect_lists_untracked_and_handles_non_repo() {
         let dir = std::env::temp_dir().join(format!("rixlcode-git-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         assert!(crate::git::collect(&dir).is_empty(), "non-repo dir yields no changes");
 
@@ -126,6 +127,7 @@ mod tests {
     #[test]
     fn collect_reports_net_counts_for_partially_staged() {
         let dir = std::env::temp_dir().join(format!("rixlcode-git-mm-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let run = |args: &[&str]| {
             std::process::Command::new("git")

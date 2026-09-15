@@ -14,6 +14,7 @@ use crate::workspace::Workspace;
 /// the real `~/.rixl/rixlcode` settings and chats.
 fn sandbox_home() {
     let dir = std::env::temp_dir().join(format!("rixlcode-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     // SAFETY: nextest runs each test in its own process, so no other thread
     // can observe HOME mid-write.
