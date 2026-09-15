@@ -68,7 +68,7 @@ pub fn section_body(section: Section, s: &SettingsView, cx: &App) -> impl IntoEl
         Section::General => crate::views::settings_general::general_section(s, cx).into_any_element(),
         Section::Appearance => crate::views::settings_appearance::appearance_section(s, cx).into_any_element(),
         Section::Providers => crate::views::settings_providers::providers_section(s, cx).into_any_element(),
-        Section::Shortcuts => shortcuts_section(cx).into_any_element(),
+        Section::Shortcuts => crate::views::settings_shortcuts::shortcuts_section(cx).into_any_element(),
         Section::Voice => placeholder_section("Voice input and dictation are not configured yet.", cx),
         Section::Profile => placeholder_section("Signed in as a local account — no profile to manage.", cx),
         Section::McpServers => crate::views::settings_mcp::mcp_section(s, cx).into_any_element(),
@@ -89,34 +89,6 @@ fn placeholder_section(text: &'static str, cx: &App) -> AnyElement {
 pub(crate) fn group_label(text: &'static str, cx: &App) -> Div {
     div().pt_2().text_sm().font_semibold().text_color(cx.theme().muted_foreground).child(text)
 }
-
-fn shortcuts_section(cx: &App) -> impl IntoElement {
-    div().flex().flex_col().gap_1().text_xs().children(SHORTCUTS.iter().map(|(key, desc)| {
-        div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .child(div().w(px(160.)).font_weight(FontWeight::SEMIBOLD).child(*key))
-            .child(div().text_color(cx.theme().muted_foreground).child(*desc))
-    }))
-}
-
-pub const SHORTCUTS: [(&str, &str); 14] = [
-    ("Cmd+N", "New chat"),
-    ("Cmd+Shift+N", "New window"),
-    ("Cmd+B", "Toggle sidebar"),
-    ("Cmd+J", "Toggle agents panel"),
-    ("Cmd+K", "Command palette"),
-    ("Cmd+F", "Search in chat"),
-    ("Cmd+W", "Close window"),
-    ("Cmd+,", "Settings"),
-    ("Cmd+/", "Keyboard shortcuts"),
-    ("Cmd+Shift+Backspace", "Delete chat"),
-    ("Cmd+1..9", "Switch to chat N"),
-    ("Cmd+Up", "Recall last message"),
-    ("Cmd+Shift+Up/Down", "Cycle message history"),
-    ("Esc", "Stop reply / close search"),
-];
 
 /// A label + `Switch` row that writes a workspace flag, then persists
 /// settings and re-renders — `set` applies the requested value plus any side
