@@ -48,6 +48,8 @@ pub struct SettingsView {
     pub permissions_select: Entity<SelectState<Vec<String>>>,
     /// Default workspace for new threads — `WorkspaceMode::ALL` labels.
     pub workspace_select: Entity<SelectState<Vec<String>>>,
+    /// Preferred editor for "Open in Editor" — `PreferredEditor::ALL` labels.
+    pub editor_select: Entity<SelectState<Vec<String>>>,
     /// Configured MCP servers — the MCP Servers section's list.
     pub mcp_servers: Vec<crate::mcp::McpServer>,
     /// Live per-server status keyed by name (codex `mcpServerStatus/list`).

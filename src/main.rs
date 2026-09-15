@@ -68,6 +68,9 @@ mod model_picker_tests;
 mod notify;
 #[cfg(test)]
 mod notify_tests;
+mod open_in;
+#[cfg(test)]
+mod open_in_tests;
 mod palette;
 mod palette_fuzzy;
 mod palette_items;

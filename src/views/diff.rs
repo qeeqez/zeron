@@ -8,17 +8,21 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::Input;
+use gpui_kit::component::menu::ContextMenuExt;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::changes_diff::{DiffLine, DiffLineKind, FileDiff};
+use crate::changes_diff::{DiffLine, DiffLineKind};
+use crate::git::FileChange;
 use crate::model::{ReviewComment, ReviewTarget};
 use crate::workspace::Workspace;
 
-/// The expanded diff under file row `file_ix`. `next_line` is a running
-/// counter across the panel so every row gets a unique test id.
-pub fn render_diff(file_ix: usize, diff: &FileDiff, next_line: &mut usize, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
+/// The expanded diff under `change`'s file row. `next_line` is a running
+/// counter across the panel so every row gets a unique test id. Right-click
+/// anywhere in the body opens the file menu.
+pub fn render_diff(file_ix: usize, change: &FileChange, next_line: &mut usize, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
+    let diff = change.diff.as_ref().expect("render_diff needs an expanded diff");
     // Copy the theme fields up front — `cx.theme()` borrows `*cx` and the
     // per-line builders below need `&mut cx` for their click listeners.
     let (border, muted_fg, mono) = {
@@ -53,7 +57,12 @@ pub fn render_diff(file_ix: usize, diff: &FileDiff, next_line: &mut usize, ws: &
             body = body.child(div().px_2().py_1().text_color(muted_fg).child("… diff truncated"));
         }
     }
-    body.into_any_element()
+    body.context_menu({
+        let ws = cx.entity();
+        let path = change.path.clone();
+        move |menu, window, cx| crate::open_in::file_menu(&ws, &path, menu, window, cx)
+    })
+    .into_any_element()
 }
 
 /// One numbered diff row: `old new │ sign text`, tinted by line kind. Rows

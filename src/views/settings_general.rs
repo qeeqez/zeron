@@ -7,14 +7,17 @@
 
 use gpui_kit::component::Sizable;
 use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::select::Select;
+use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::backend::AccessMode;
+use crate::open_in::PreferredEditor;
+use crate::views::settings::SettingsPanel;
 use crate::views::settings_default_model::default_model_picker;
 use crate::views::settings_sections::{SettingsView, group_label, toggle_row};
+use crate::workspace::Workspace;
 use crate::worktree::WorkspaceMode;
 
 /// The General content pane: thread defaults first, then the controls that
@@ -51,6 +54,15 @@ pub(crate) fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
             div()
                 .w(px(220.))
                 .child(Select::new(&s.workspace_select).id("default-workspace").small().appearance(true)),
+            cx,
+        ))
+        .child(group_label("Files", cx))
+        .child(default_row(
+            "Editor",
+            "Editor used by \"Open in Editor\" on file rows.",
+            div()
+                .w(px(220.))
+                .child(Select::new(&s.editor_select).id("preferred-editor").small().appearance(true)),
             cx,
         ))
         .child(group_label("Notifications", cx))
@@ -122,4 +134,25 @@ pub(crate) fn workspace_mode_from_label(label: &str) -> WorkspaceMode {
 /// event — `from_name` parses persisted names, not display labels.
 pub(crate) fn access_mode_from_label(label: &str) -> AccessMode {
     AccessMode::ALL.iter().copied().find(|m| m.label() == label).unwrap_or_default()
+}
+
+/// The preferred-editor select: `PreferredEditor::ALL` labels with the
+/// persisted pick selected; Confirm writes `Workspace::preferred_editor`
+/// via `set_preferred_editor`. Lives here (not inline in `SettingsPanel::new`)
+/// to keep `settings.rs` under the SLOC cap.
+pub(crate) fn editor_picker(
+    ws: &WeakEntity<Workspace>, settings: &crate::persist::Settings, window: &mut Window, cx: &mut Context<SettingsPanel>,
+) -> Entity<SelectState<Vec<String>>> {
+    let editor = PreferredEditor::from_name(&settings.preferred_editor);
+    let selected = PreferredEditor::ALL.iter().position(|e| *e == editor).map(gpui_kit::component::IndexPath::new);
+    let select = cx.new(|cx| SelectState::new(PreferredEditor::ALL.map(|e| e.label().to_string()).to_vec(), selected, window, cx));
+    let ws = ws.clone();
+    cx.subscribe_in(&select, window, move |_, _, event: &SelectEvent<Vec<String>>, _window, cx| {
+        let SelectEvent::Confirm(label) = event;
+        if let Some(label) = label {
+            let _ = ws.update(cx, |this, cx| this.set_preferred_editor(PreferredEditor::from_label(label), cx));
+        }
+    })
+    .detach();
+    select
 }

@@ -228,6 +228,9 @@ pub struct Settings {
     /// toast/system notification, so the sound can play without a popup.
     pub notify_sound: bool,
     pub word_wrap: bool,
+    /// Preferred editor for "Open in Editor" — a `PreferredEditor::name`
+    /// ("vscode" | "cursor" | "zed" | "finder" | "ask"); empty = Ask.
+    pub preferred_editor: String,
     /// Legacy field: the pre-instances backend selector ("codex-cli" |
     /// "claude-cli" | "sim" | "http" | "acp"). Read for migration, never
     /// written back.

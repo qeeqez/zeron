@@ -49,6 +49,8 @@ pub struct SettingsPanel {
     pub(crate) permissions_select: Entity<SelectState<Vec<String>>>,
     /// Default workspace for new threads — `WorkspaceMode::ALL` labels.
     pub(crate) workspace_select: Entity<SelectState<Vec<String>>>,
+    /// Preferred editor for "Open in Editor" — `PreferredEditor::ALL` labels.
+    pub(crate) editor_select: Entity<SelectState<Vec<String>>>,
     /// Configured MCP servers — the MCP Servers section's list; persisted
     /// to settings.json and mirrored into `~/.codex/config.toml`.
     pub(crate) mcp_servers: Vec<crate::mcp::McpServer>,
@@ -146,6 +148,7 @@ impl SettingsPanel {
             }
         })
         .detach();
+        let editor_select = crate::views::settings_general::editor_picker(&ws, settings, window, cx);
         let mcp_inputs = Self::new_mcp_inputs(window, cx);
         // The detail panel opens on the active provider (or the first one).
         let provider_selection = settings
@@ -168,6 +171,7 @@ impl SettingsPanel {
             contrast_slider,
             permissions_select,
             workspace_select,
+            editor_select,
             mcp_servers: settings.mcp_servers.clone(),
             mcp_status: HashMap::new(),
             mcp_status_loading: false,
@@ -223,6 +227,7 @@ impl Render for SettingsPanel {
             font_select: self.font_select.clone(),
             code_font_select: self.code_font_select.clone(),
             contrast_slider: self.contrast_slider.clone(),
+            editor_select: self.editor_select.clone(),
             permissions_select: self.permissions_select.clone(),
             workspace_select: self.workspace_select.clone(),
         };

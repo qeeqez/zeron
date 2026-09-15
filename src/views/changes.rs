@@ -5,6 +5,7 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
+use gpui_kit::component::menu::ContextMenuExt;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -105,8 +106,8 @@ impl Workspace {
 /// unique `("diff-line", n)` ids across every expanded file in the panel.
 fn change_entry(ix: usize, change: &FileChange, next_line: &mut usize, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     let mut entry = div().flex().flex_col().child(change_row(ix, change, ws, cx));
-    if let Some(diff) = &change.diff {
-        entry = entry.child(crate::views::diff::render_diff(ix, diff, next_line, ws, cx));
+    if change.diff.is_some() {
+        entry = entry.child(crate::views::diff::render_diff(ix, change, next_line, ws, cx));
     }
     entry.into_any_element()
 }
@@ -171,5 +172,10 @@ fn change_row(ix: usize, change: &FileChange, ws: &Workspace, cx: &mut Context<W
             d.child(div().flex_shrink_0().text_xs().text_color(cx.theme().danger).child(format!("-{}", change.deleted)))
         })
         .on_click(cx.listener(move |this, _, _, cx| this.toggle_change_diff(ix, cx)))
+        .context_menu({
+            let ws = cx.entity();
+            let path = change.path.clone();
+            move |menu, window, cx| crate::open_in::file_menu(&ws, &path, menu, window, cx)
+        })
         .into_any_element()
 }

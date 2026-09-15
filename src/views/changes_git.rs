@@ -7,6 +7,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::input::Input;
+use gpui_kit::component::menu::ContextMenuExt;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -44,6 +45,7 @@ pub fn git_block(ws: &Workspace, branch: &BranchStatus, cx: &mut Context<Workspa
 }
 
 /// `⎇ branch ↑n ↓n → upstream` — the upstream name only shows when set.
+/// Right-click opens the file menu for the repo root (empty path).
 fn branch_row(branch: &BranchStatus, cx: &mut Context<Workspace>) -> AnyElement {
     div()
         .id("git-branch")
@@ -58,6 +60,10 @@ fn branch_row(branch: &BranchStatus, cx: &mut Context<Workspace>) -> AnyElement 
         .when(branch.behind > 0, |d| d.child(div().text_color(cx.theme().warning).child(format!("↓{}", branch.behind))))
         .child(div().flex_1())
         .when_some(branch.upstream.clone(), |d, up| d.child(div().text_color(cx.theme().muted_foreground).child(up)))
+        .context_menu({
+            let ws = cx.entity();
+            move |menu, window, cx| crate::open_in::file_menu(&ws, "", menu, window, cx)
+        })
         .into_any_element()
 }
 

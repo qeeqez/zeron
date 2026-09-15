@@ -21,6 +21,7 @@ impl Default for Settings {
             notify_on_done: true,
             notify_sound: true,
             word_wrap: true,
+            preferred_editor: String::new(),
             legacy_backend: String::new(),
             legacy_model: String::new(),
             legacy_http_url: String::new(),

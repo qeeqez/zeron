@@ -6,6 +6,7 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::h_flex;
+use gpui_kit::component::menu::ContextMenuExt;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -203,6 +204,8 @@ fn render_row(ix: usize, row: Row, selected: Option<&str>, cx: &mut Context<Work
         Row::File { path, depth } => {
             let indent = 8. + depth as f32 * 14. + 16.;
             let is_selected = selected == Some(path.as_str());
+            let menu_path = path.to_string();
+            let ws = cx.entity();
             div()
                 .id(("explorer-file", ix))
                 .test_support()
@@ -227,6 +230,7 @@ fn render_row(ix: usize, row: Row, selected: Option<&str>, cx: &mut Context<Work
                         .child(file_name(&path).to_string()),
                 )
                 .on_click(cx.listener(move |this, _, window, cx| this.mention_file(&path, window, cx)))
+                .context_menu(move |menu, window, cx| crate::open_in::file_menu(&ws, &menu_path, menu, window, cx))
                 .into_any_element()
         },
     }

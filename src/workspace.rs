@@ -6,15 +6,7 @@ use gpui_kit::*;
 use crate::model::{Agent, Chat};
 use crate::send_queue::SendQueue;
 
-/// How an in-flight rename is driven: the sidebar row's inline editor, or
-/// the rename dialog. The row only mounts its editor for `Inline` — a
-/// dialog rename shares `Workspace::rename`, so without the split the row
-/// would mount an editor whose outside-click commits behind the dialog.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum RenameMode {
-    Inline,
-    Dialog,
-}
+pub use crate::chat_ops::RenameMode;
 
 pub struct Workspace {
     pub chats: Vec<Chat>,
@@ -112,6 +104,8 @@ pub struct Workspace {
     /// System bell when a turn finishes — independent of `notify_on_done`.
     pub notify_sound: bool,
     pub word_wrap: bool,
+    /// Preferred editor for "Open in Editor" — `Settings.preferred_editor`.
+    pub preferred_editor: crate::open_in::PreferredEditor,
     pub font_size: u8,
     /// Interface font family; empty = system default.
     pub font_family: String,
@@ -290,6 +284,7 @@ impl Workspace {
             notify_sound: settings.notify_sound,
             backend,
             word_wrap: settings.word_wrap,
+            preferred_editor: crate::open_in::PreferredEditor::from_name(&settings.preferred_editor),
             font_size: settings.font_size.clamp(crate::appearance::FONT_SIZE_MIN, crate::appearance::FONT_SIZE_MAX),
             font_family: settings.font_family.clone(),
             code_font_family: settings.code_font_family.clone(),

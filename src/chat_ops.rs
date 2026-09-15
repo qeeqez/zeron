@@ -4,6 +4,18 @@ use gpui_kit::*;
 
 use crate::model::{Chat, MessageKind, Role, ToolStatus};
 use crate::workspace::Workspace;
+
+/// How an in-flight rename is driven: the sidebar row's inline editor, or
+/// the rename dialog. The row only mounts its editor for `Inline` — a
+/// dialog rename shares `Workspace::rename`, so without the split the row
+/// would mount an editor whose outside-click commits behind the dialog.
+/// Re-exported from `crate::workspace` for its existing callers.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RenameMode {
+    Inline,
+    Dialog,
+}
+
 impl Workspace {
     pub fn new_chat(&mut self, cx: &mut Context<Self>) {
         // Stash the current draft before switching — the composer text

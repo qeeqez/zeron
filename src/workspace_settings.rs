@@ -51,6 +51,7 @@ impl Workspace {
             default_permissions: self.default_permissions.map_or_else(String::new, |a| a.name().to_string()),
             default_workspace: self.default_workspace.name().into(),
             word_wrap: self.word_wrap,
+            preferred_editor: self.preferred_editor.name().into(),
             font_size: self.font_size,
             font_family: self.font_family.clone(),
             code_font_family: self.code_font_family.clone(),
