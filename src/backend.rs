@@ -1,5 +1,8 @@
 use gpui_kit::SharedString;
 
+mod acp;
+mod acp_decode;
+mod acp_rpc;
 mod appserver;
 mod claude;
 mod claude_parse;
@@ -9,12 +12,18 @@ mod models;
 mod rpc;
 
 #[cfg(test)]
+mod acp_rpc_tests;
+#[cfg(test)]
+mod acp_tests;
+
+#[cfg(test)]
 mod appserver_tests;
 #[cfg(test)]
 mod appserver_turn_tests;
 #[cfg(test)]
 mod claude_tests;
 
+pub use acp::AcpBackend;
 pub use claude::ClaudeCliBackend;
 pub use codex::CodexCliBackend;
 pub use http::HttpBackend;
@@ -233,6 +242,7 @@ pub fn backend_for(provider_id: &str, http_url: &str, http_key_env: &str) -> std
     match provider_id {
         "sim" => std::sync::Arc::new(SimBackend),
         "http" if !http_url.is_empty() => std::sync::Arc::new(HttpBackend::new(http_url.to_string(), http_key_env.to_string())),
+        "acp" => std::sync::Arc::new(AcpBackend::default()),
         "claude-cli" => std::sync::Arc::new(ClaudeCliBackend::new()),
         _ => std::sync::Arc::new(CodexCliBackend::new()),
     }
@@ -242,5 +252,8 @@ pub fn backend_for(provider_id: &str, http_url: &str, http_key_env: &str) -> std
 /// settings (acp's command, http's endpoint) are honored here — sibling
 /// backends hook their configured construction into this match.
 pub fn make_backend(s: &crate::persist::Settings) -> std::sync::Arc<dyn AgentBackend> {
-    backend_for(s.backend_name(), &s.http_url, &s.http_key_env)
+    match s.backend_name() {
+        "acp" => std::sync::Arc::new(AcpBackend::new(s.acp_command.clone())),
+        name => backend_for(name, &s.http_url, &s.http_key_env),
+    }
 }

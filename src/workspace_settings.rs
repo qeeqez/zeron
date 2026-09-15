@@ -44,6 +44,8 @@ impl Workspace {
             backend: self.provider.into(),
             http_url: self.http_url.clone(),
             http_key_env: self.http_key_env.clone(),
+            // No UI edits this — keep the file's value like window_bounds.
+            acp_command: prev.acp_command,
             use_codex_cli: None,
             window_bounds: prev.window_bounds,
             sidebar_width: self.sidebar_width,

@@ -153,15 +153,18 @@ pub struct Settings {
     pub access: String,
     pub notify_on_done: bool,
     pub word_wrap: bool,
-    /// Backend selector: "codex-cli" | "claude-cli" | "sim" | "http".
-    /// Migrated from the old `use_codex_cli` bool — see `use_codex_cli`
-    /// below.
+    /// Backend selector: "codex-cli" | "claude-cli" | "sim" | "http" |
+    /// "acp". Migrated from the old `use_codex_cli` bool — see
+    /// `use_codex_cli` below.
     pub backend: String,
     /// HTTP transport endpoint (POST, NDJSON response stream).
     pub http_url: String,
     /// Env var holding the bearer token for `http_url` — the key itself
     /// is never written to this file.
     pub http_key_env: String,
+    /// Command used to spawn the ACP agent subprocess (program + args,
+    /// whitespace-separated) — e.g. "npx -y @zed-industries/claude-code-acp".
+    pub acp_command: String,
     /// Legacy field: present only in pre-`backend` files. Read for
     /// migration, never written back.
     #[serde(skip_serializing)]
@@ -218,6 +221,7 @@ impl Default for Settings {
             backend: "codex-cli".into(),
             http_url: String::new(),
             http_key_env: "RIXL_API_KEY".into(),
+            acp_command: crate::backend::AcpBackend::DEFAULT_COMMAND.into(),
             use_codex_cli: None,
             font_size: 14,
             font_family: String::new(),
