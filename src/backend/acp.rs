@@ -64,6 +64,9 @@ impl AgentBackend for AcpBackend {
             access: ctx.access,
             cwd: ctx.cwd.clone(),
             images: ctx.images.clone(),
+            // Snapshot the configured MCP servers — `session/new` advertises
+            // them so the agent spawns/connects them for this session.
+            mcp_servers: crate::persist::load_settings().mcp_servers,
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             models: self.models.clone(),
@@ -87,6 +90,9 @@ pub(super) struct AcpTurn {
     mode: String,
     /// Filesystem access snapshot — drives the permission/fs policy.
     access: super::AccessMode,
+    /// Configured MCP servers handed to `session/new` — snapshotted at
+    /// send time so a mid-turn settings change can't alter the session.
+    mcp_servers: Vec<crate::mcp::McpServer>,
     /// Session working directory — `session/new`'s `cwd` and the
     /// workspace-write confinement root for `fs/write_text_file`.
     cwd: std::path::PathBuf,
@@ -103,6 +109,7 @@ impl AcpTurn {
     /// A turn over a fake command for pump/decoder tests — never spawned.
     pub(super) fn for_test(model: &str, mode: &str, access: super::AccessMode) -> Self {
         Self {
+            mcp_servers: Vec::new(),
             command: vec!["acp-agent".into()],
             prompt: "hi".into(),
             model: model.into(),
@@ -114,6 +121,13 @@ impl AcpTurn {
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             models: std::sync::Arc::new(parking_lot::Mutex::new(vec![])),
         }
+    }
+
+    /// A turn carrying configured MCP servers — `session/new` must
+    /// advertise them.
+    pub(super) fn with_mcp(mut self, servers: Vec<crate::mcp::McpServer>) -> Self {
+        self.mcp_servers = servers;
+        self
     }
 }
 
@@ -274,12 +288,7 @@ fn drain_done(events: Vec<AgentEvent>, tx: &std::sync::mpsc::Sender<AgentEvent>)
 /// answers (a dropped responder — stop/delete — answers Deny). Other
 /// requests (fs/*, unknown) get a canned reply so the turn can't hang.
 /// `Some(end)` when the pump should stop.
-fn agent_request(
-    msg: &Value,
-    hs: &mut Handshake,
-    policy: &wire::Policy,
-    tx: &std::sync::mpsc::Sender<AgentEvent>,
-) -> Option<PumpEnd> {
+fn agent_request(msg: &Value, hs: &mut Handshake, policy: &wire::Policy, tx: &std::sync::mpsc::Sender<AgentEvent>) -> Option<PumpEnd> {
     let method = msg["method"].as_str().unwrap_or("");
     if method == "session/request_permission" && matches!(policy.route, super::ApprovalRoute::Ask) {
         let (respond, rx) = std::sync::mpsc::channel();
@@ -336,7 +345,7 @@ impl Handshake {
             Phase::Init => {
                 check_err(msg)?;
                 self.seq += 1;
-                self.send(&wire::session_new_req(self.seq, &turn.cwd.to_string_lossy()))?;
+                self.send(&wire::session_new_req(self.seq, &turn.cwd.to_string_lossy(), crate::mcp::acp_mcp_servers(&turn.mcp_servers)))?;
                 self.phase = Phase::Session;
             },
             Phase::Session => {

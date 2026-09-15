@@ -60,6 +60,9 @@ impl Workspace {
             notify_on_done: self.notify_on_done,
             notify_sound: self.notify_sound,
             window_bounds: prev.window_bounds,
+            // MCP servers live on the settings panel, not this window —
+            // keep the file's list so an unrelated save can't drop them.
+            mcp_servers: prev.mcp_servers,
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
             theme,

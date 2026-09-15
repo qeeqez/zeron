@@ -279,6 +279,11 @@ pub struct Settings {
     pub active_chat: usize,
     /// Appearance: "system" | "light" | "dark".
     pub theme: String,
+    /// Configured MCP servers — the settings section's list; enabled ones
+    /// are mirrored into `~/.codex/config.toml` `[mcp_servers]` and passed
+    /// to ACP `session/new`.
+    #[serde(default = "Vec::new")]
+    pub mcp_servers: Vec<crate::mcp::McpServer>,
 }
 
 fn settings_path() -> PathBuf {
@@ -296,7 +301,6 @@ pub fn save_settings(s: &Settings) {
         let _ = fs::rename(&tmp, &path);
     }
 }
-
 pub fn load_settings() -> Settings {
     let mut s: Settings = fs::read_to_string(settings_path())
         .ok()
@@ -308,6 +312,7 @@ pub fn load_settings() -> Settings {
         s.providers = crate::persist_migrate::default_providers();
         s.selected_provider = crate::providers::ProviderKind::CodexCli.slug().to_string();
     }
+    crate::mcp_config::import_codex_servers(&mut s);
     s
 }
 

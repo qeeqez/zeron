@@ -45,6 +45,20 @@ pub struct SettingsPanel {
     pub(crate) permissions_select: Entity<SelectState<Vec<String>>>,
     /// Default workspace for new threads — `WorkspaceMode::ALL` labels.
     pub(crate) workspace_select: Entity<SelectState<Vec<String>>>,
+    /// Configured MCP servers — the MCP Servers section's list; persisted
+    /// to settings.json and mirrored into `~/.codex/config.toml`.
+    pub(crate) mcp_servers: Vec<crate::mcp::McpServer>,
+    /// Live per-server status from codex `mcpServerStatus/list`, keyed by
+    /// server name — empty until a fetch lands.
+    pub(crate) mcp_status: HashMap<String, crate::mcp::McpStatus>,
+    /// A status fetch is in flight — the section shows "checking…".
+    pub(crate) mcp_status_loading: bool,
+    /// The add-server form is open.
+    pub(crate) mcp_adding: bool,
+    /// Add-form validation error shown under the inputs.
+    pub(crate) mcp_error: Option<String>,
+    /// The add form's inputs — created once so typed text survives renders.
+    pub(crate) mcp_inputs: crate::views::settings_mcp::McpInputs,
 }
 
 impl SettingsPanel {
@@ -128,6 +142,7 @@ impl SettingsPanel {
             }
         })
         .detach();
+        let mcp_inputs = Self::new_mcp_inputs(window, cx);
         // The detail panel opens on the active provider (or the first one).
         let provider_selection = settings
             .providers
@@ -148,6 +163,12 @@ impl SettingsPanel {
             contrast_slider,
             permissions_select,
             workspace_select,
+            mcp_servers: settings.mcp_servers.clone(),
+            mcp_status: HashMap::new(),
+            mcp_status_loading: false,
+            mcp_adding: false,
+            mcp_error: None,
+            mcp_inputs,
         }
     }
 }
@@ -185,6 +206,12 @@ impl Render for SettingsPanel {
             ws: ws.clone(),
             panel: cx.entity(),
             provider_inputs: self.provider_inputs.clone(),
+            mcp_servers: self.mcp_servers.clone(),
+            mcp_status: self.mcp_status.clone(),
+            mcp_status_loading: self.mcp_status_loading,
+            mcp_adding: self.mcp_adding,
+            mcp_error: self.mcp_error.clone(),
+            mcp_inputs: self.mcp_inputs.clone(),
             provider_selection: self.provider_selection.clone(),
             font_select: self.font_select.clone(),
             code_font_select: self.code_font_select.clone(),

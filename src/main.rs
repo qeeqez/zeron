@@ -55,6 +55,8 @@ mod git_parse;
 #[cfg(test)]
 mod git_tests;
 mod lifecycle;
+mod mcp;
+mod mcp_config;
 mod model;
 mod model_catalog;
 #[cfg(test)]

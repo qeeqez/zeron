@@ -26,6 +26,8 @@ pub mod settings_default_model;
 pub mod settings_general;
 #[cfg(test)]
 mod settings_general_tests;
+pub mod settings_mcp;
+pub mod settings_mcp_ops;
 pub mod settings_nav;
 pub mod settings_provider_detail;
 pub mod settings_provider_wizard;
@@ -40,3 +42,7 @@ pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_it
 pub use empty::render_empty_state;
 pub use message::render_message;
 pub use model_picker::{EffortPickerSpec, ModelPickerSpec, PickerProvider, PickerSpec, effort_picker, model_picker, picker};
+
+#[cfg(test)]
+#[path = "../settings_mcp_tests.rs"]
+mod settings_mcp_tests;

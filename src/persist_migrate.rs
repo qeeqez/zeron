@@ -39,6 +39,7 @@ impl Default for Settings {
             sidebar_collapsed: false,
             active_chat: 0,
             theme: "system".into(),
+            mcp_servers: Vec::new(),
         }
     }
 }

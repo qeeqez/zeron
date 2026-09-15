@@ -45,6 +45,18 @@ pub struct SettingsView {
     pub permissions_select: Entity<SelectState<Vec<String>>>,
     /// Default workspace for new threads — `WorkspaceMode::ALL` labels.
     pub workspace_select: Entity<SelectState<Vec<String>>>,
+    /// Configured MCP servers — the MCP Servers section's list.
+    pub mcp_servers: Vec<crate::mcp::McpServer>,
+    /// Live per-server status keyed by name (codex `mcpServerStatus/list`).
+    pub mcp_status: HashMap<String, crate::mcp::McpStatus>,
+    /// A status fetch is in flight.
+    pub mcp_status_loading: bool,
+    /// The add-server form is open.
+    pub mcp_adding: bool,
+    /// Add-form validation error.
+    pub mcp_error: Option<String>,
+    /// The add form's inputs.
+    pub mcp_inputs: crate::views::settings_mcp::McpInputs,
 }
 
 /// The content pane for the selected section.
@@ -56,7 +68,7 @@ pub fn section_body(section: Section, s: &SettingsView, cx: &App) -> impl IntoEl
         Section::Shortcuts => shortcuts_section(cx).into_any_element(),
         Section::Voice => placeholder_section("Voice input and dictation are not configured yet.", cx),
         Section::Profile => placeholder_section("Signed in as a local account — no profile to manage.", cx),
-        Section::McpServers => placeholder_section("No MCP servers configured.", cx),
+        Section::McpServers => crate::views::settings_mcp::mcp_section(s, cx).into_any_element(),
     };
     div()
         .id(SharedString::from(format!("settings-section-{}", section.name())))

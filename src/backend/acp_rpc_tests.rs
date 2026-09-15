@@ -19,10 +19,24 @@ fn initialize_advertises_fs_caps() {
 
 #[test]
 fn session_new_and_prompt_shapes() {
-    let new = wire::session_new_req(2, "/work");
+    let new = wire::session_new_req(2, "/work", vec![]);
     assert_eq!(new["method"], json!("session/new"));
     assert_eq!(new["params"]["cwd"], json!("/work"));
     assert_eq!(new["params"]["mcpServers"], json!([]));
+
+    // Configured servers land on session/new — stdio argv + env pairs.
+    let servers = crate::mcp::acp_mcp_servers(&[crate::mcp::McpServer {
+        name: "docs".into(),
+        command: "docs-mcp --serve".into(),
+        env: [("KEY".to_string(), "v".to_string())].into_iter().collect(),
+        enabled: true,
+        ..Default::default()
+    }]);
+    let with_mcp = wire::session_new_req(2, "/work", servers);
+    assert_eq!(
+        with_mcp["params"]["mcpServers"],
+        json!([{"command": "docs-mcp", "args": ["--serve"], "env": [{"name": "KEY", "value": "v"}]}])
+    );
 
     let prompt = wire::prompt_req(3, "s1", "hello", &[]);
     assert_eq!(prompt["method"], json!("session/prompt"));

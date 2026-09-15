@@ -50,6 +50,11 @@ fn nav_item(section: Section, selected: bool, panel: &Entity<SettingsPanel>) -> 
         .on_click(move |_, _, cx| {
             panel.update(cx, |this, cx| {
                 this.section = section;
+                // Opening the MCP section kicks a live status fetch — the
+                // dots refresh from `mcpServerStatus/list`.
+                if section == Section::McpServers {
+                    this.refresh_mcp_status(cx);
+                }
                 cx.notify();
             });
         })

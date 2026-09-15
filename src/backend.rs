@@ -18,6 +18,8 @@ mod sessions;
 mod steer;
 
 #[cfg(test)]
+mod acp_mcp_tests;
+#[cfg(test)]
 mod acp_rpc_tests;
 #[cfg(test)]
 mod acp_tests;
@@ -36,6 +38,9 @@ pub use acp::AcpBackend;
 pub use approval::{ApprovalCard, ApprovalDecision, ApprovalKind, ApprovalResponder, ApprovalRoute};
 pub use claude::ClaudeCliBackend;
 pub use codex::CodexCliBackend;
+pub use codex::fetch_mcp_status;
+#[cfg(test)]
+pub(crate) use codex::read_mcp_status;
 pub use http::HttpBackend;
 pub use models::fetch_codex_models;
 pub use steer::TurnHandle;

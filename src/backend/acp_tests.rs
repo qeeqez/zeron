@@ -164,7 +164,7 @@ fn sent(buf: &SharedBuf) -> Vec<Value> {
     text.lines().map(|l| serde_json::from_str(l).unwrap()).collect()
 }
 
-fn drive(agent_out: &[Value], turn: &AcpTurn) -> (PumpEnd, Vec<Value>, Vec<AgentEvent>) {
+pub(super) fn drive(agent_out: &[Value], turn: &AcpTurn) -> (PumpEnd, Vec<Value>, Vec<AgentEvent>) {
     let input = agent_out.iter().map(|v| format!("{v}\n")).collect::<String>();
     let buf = SharedBuf(std::sync::Arc::new(parking_lot::Mutex::new(vec![])));
     let (tx, rx) = std::sync::mpsc::channel();
@@ -237,12 +237,15 @@ fn pump_eof_before_prompt_response() {
 
 /// Drive the pump on a worker thread so a blocking approval `recv` doesn't
 /// deadlock the test — the test answers through the event's responder.
-fn drive_threaded(agent_out: &[Value], turn: AcpTurn) -> (std::sync::mpsc::Receiver<AgentEvent>, SharedBuf, std::thread::JoinHandle<PumpEnd>) {
+fn drive_threaded(
+    agent_out: &[Value], turn: AcpTurn,
+) -> (std::sync::mpsc::Receiver<AgentEvent>, SharedBuf, std::thread::JoinHandle<PumpEnd>) {
     let input = agent_out.iter().map(|v| format!("{v}\n")).collect::<String>();
     let buf = SharedBuf(std::sync::Arc::new(parking_lot::Mutex::new(vec![])));
     let (tx, rx) = std::sync::mpsc::channel();
     let writer = SharedBuf(buf.0.clone());
-    let handle = std::thread::spawn(move || pump(&turn, std::io::BufReader::new(std::io::Cursor::new(input.into_bytes())), Box::new(writer), &tx));
+    let handle =
+        std::thread::spawn(move || pump(&turn, std::io::BufReader::new(std::io::Cursor::new(input.into_bytes())), Box::new(writer), &tx));
     (rx, buf, handle)
 }
 

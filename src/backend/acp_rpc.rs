@@ -35,13 +35,14 @@ pub(super) fn initialize_req(id: i64, write_fs: bool) -> Value {
 }
 
 /// `session/new` — one session per turn (no history is kept, matching the
-/// codex backend's ephemeral threads). No MCP servers are configured.
-pub(super) fn session_new_req(id: i64, cwd: &str) -> Value {
+/// codex backend's ephemeral threads). `mcp_servers` is the ACP wire form
+/// of the configured servers (`crate::mcp::acp_mcp_servers`).
+pub(super) fn session_new_req(id: i64, cwd: &str, mcp_servers: Vec<Value>) -> Value {
     json!({
         "jsonrpc": "2.0",
         "method": "session/new",
         "id": id,
-        "params": {"cwd": cwd, "mcpServers": []},
+        "params": {"cwd": cwd, "mcpServers": mcp_servers},
     })
 }
 
