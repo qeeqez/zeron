@@ -146,6 +146,7 @@ impl Workspace {
             search_match_ix: 0,
             recall_saved: None,
             editing: None,
+            feedback: crate::feedback::FeedbackState::new(window, cx),
             close_confirmed: std::cell::Cell::new(false),
             settings_open: false,
             settings_panel,

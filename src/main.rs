@@ -62,6 +62,9 @@ mod composer_testutil;
 #[cfg(test)]
 mod continuity_tests;
 mod export;
+mod feedback;
+#[cfg(test)]
+mod feedback_tests;
 mod files;
 mod git;
 mod git_parse;

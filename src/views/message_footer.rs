@@ -1,8 +1,10 @@
 //! The message row's hover-revealed footer: ghost action icons (copy,
 //! edit, view-raw, retry, rating, read-aloud) plus the turn duration,
-//! token usage and timestamp.
+//! token usage and timestamp. A thumbs-down also mounts a "what went
+//! wrong" note editor under the row (see `crate::feedback`).
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::input::{Escape as InputEscape, Input};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -86,8 +88,8 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
         for (id, icon, up) in [("up", IconName::ThumbsUp, true), ("down", IconName::ThumbsDown, false)] {
             let ws = ws.clone();
             let color = if rating == Some(up) { accent } else { muted };
-            row = row.child(action_icon((id, ix), icon, color, &group, move |_, _, cx| {
-                ws.update(cx, |this, cx| this.rate_message(ix, up, cx));
+            row = row.child(action_icon((id, ix), icon, color, &group, move |_, window, cx| {
+                ws.update(cx, |this, cx| this.rate_message(ix, up, window, cx));
             }));
         }
         {
@@ -107,11 +109,93 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
             );
         }
     }
-    row.child(div().flex_1())
+    let row = row
+        .child(div().flex_1())
         .when_some(msg.usage, |d, u| d.child(div().text_xs().text_color(muted).child(format!("{} in · {} out", u.input, u.output))))
-        .child(div().text_xs().text_color(muted).child(format_time(msg.at)))
+        .child(div().text_xs().text_color(muted).child(format_time(msg.at)));
+    let mut footer = div().flex().flex_col().child(row);
+    if msg.role == Role::Assistant {
+        let editing = ws.read(cx).feedback_editing(ix);
+        if editing {
+            footer = footer.child(feedback_editor(ix, ws, cx));
+        } else if let Some(note) = Workspace::feedback_note(&ws.read(cx).chats[ws.read(cx).active], msg.at).map(str::to_string) {
+            footer = footer.child(feedback_note_row(ix, note, ws, cx));
+        }
+    }
+    footer
 }
 
 fn format_time(at: std::time::SystemTime) -> String {
     chrono::DateTime::<chrono::Local>::from(at).format("%H:%M").to_string()
+}
+
+/// The "what went wrong" editor under a thumbs-down: the shared feedback
+/// input, a Save and a Cancel. Enter commits via the input's `PressEnter`
+/// subscription (see `FeedbackState::new`); Escape cancels here.
+fn feedback_editor(ix: usize, ws: &Entity<Workspace>, cx: &mut App) -> gpui_kit::base::ObservedElement<Stateful<Div>> {
+    let ws_save = ws.clone();
+    let ws_cancel = ws.clone();
+    let ws_esc = ws.clone();
+    div()
+        .id(("feedback-edit", ix))
+        .test_support()
+        .flex()
+        .items_center()
+        .gap_2()
+        .py_1()
+        .on_action(move |_: &InputEscape, window, cx| {
+            cx.stop_propagation();
+            ws_esc.update(cx, |this, cx| this.cancel_feedback(window, cx));
+        })
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .child(Input::new(&ws.read(cx).feedback.input).id(("feedback-input", ix)).appearance(true).w_full()),
+        )
+        .child(
+            div()
+                .id(("feedback-save", ix))
+                .test_support()
+                .cursor_pointer()
+                .text_color(cx.theme().accent)
+                .text_xs()
+                .child("Save")
+                .on_click(move |_, window, cx| {
+                    ws_save.update(cx, |this, cx| this.commit_feedback(window, cx));
+                }),
+        )
+        .child(
+            div()
+                .id(("feedback-cancel", ix))
+                .test_support()
+                .cursor_pointer()
+                .text_color(cx.theme().muted_foreground)
+                .text_xs()
+                .child("Cancel")
+                .on_click(move |_, window, cx| {
+                    ws_cancel.update(cx, |this, cx| this.cancel_feedback(window, cx));
+                }),
+        )
+}
+
+/// A saved "what went wrong" note under the footer — always visible (unlike
+/// the ghost icons), click to reopen the editor.
+fn feedback_note_row(ix: usize, note: String, ws: &Entity<Workspace>, cx: &mut App) -> gpui_kit::base::ObservedElement<Stateful<Div>> {
+    let ws = ws.clone();
+    div()
+        .id(("feedback-note", ix))
+        .test_support()
+        .flex()
+        .items_center()
+        .gap_1()
+        .py_1()
+        .cursor_pointer()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child(IconName::MessageCircle)
+        .child(note)
+        .on_click(move |_, window, cx| {
+            ws.update(cx, |this, cx| this.edit_feedback_note(ix, window, cx));
+        })
 }

@@ -95,6 +95,9 @@ pub struct Workspace {
     /// A user message open in the inline editor — commit truncates the
     /// transcript after it and resends (see `crate::chat_edit`).
     pub editing: Option<crate::chat_edit::EditMessage>,
+    /// Thumbs-down note editor state — which message it's open on plus the
+    /// shared input (see `crate::feedback`).
+    pub feedback: crate::feedback::FeedbackState,
     pub chat_search: Entity<InputState>,
     /// In-chat find bar state (Cmd-F) — highlights + navigates matches
     /// without filtering the transcript (see `crate::chat_find`).

@@ -212,6 +212,9 @@ pub struct Chat {
     /// turn's user message — the "Undo turn" affordance restores them.
     /// Persisted so revert survives restarts.
     pub checkpoints: Vec<crate::checkpoints::TurnCheckpoint>,
+    /// "What went wrong" notes attached to thumbs-down ratings, pinned to
+    /// each message's `at` timestamp (see `crate::feedback`). Persisted.
+    pub feedback: Vec<crate::feedback::FeedbackNote>,
 }
 
 impl Chat {
@@ -242,6 +245,7 @@ impl Chat {
             thread_id: String::new(),
             usage: crate::usage::ChatUsage::default(),
             checkpoints: Vec::new(),
+            feedback: Vec::new(),
         }
     }
 }

@@ -1,6 +1,7 @@
-//! Per-message operations: rate, recall, copy, retry — plus the
-//! queued-message edit path (a queued item reopens in the composer).
-//! Edit-and-resend of a sent user message lives in `crate::chat_edit`.
+//! Per-message operations: recall, copy, retry — plus the queued-message
+//! edit path (a queued item reopens in the composer). Message rating lives
+//! in `crate::feedback`; edit-and-resend of a sent user message lives in
+//! `crate::chat_edit`.
 
 use std::rc::Rc;
 
@@ -10,18 +11,6 @@ use crate::model::{MessageKind, Role};
 use crate::workspace::Workspace;
 
 impl Workspace {
-    pub fn rate_message(&mut self, ix: usize, up: bool, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[self.active];
-        let Some(msg) = Rc::make_mut(&mut chat.messages).get_mut(ix) else { return };
-        msg.rating = if msg.rating == Some(up) { None } else { Some(up) };
-        let pos = self.filtered_pos(ix, cx);
-        self.scroller.update(cx, |s, cx| {
-            s.remeasure_items(pos..pos + 1, cx);
-        });
-        cx.notify();
-        self.save();
-    }
-
     /// Cmd+Up: load the last user message into the composer (no truncation).
     /// Seeds the recall cycle so Cmd+Shift+Up continues from here.
     pub fn recall_last(&mut self, window: &mut Window, cx: &mut Context<Self>) {

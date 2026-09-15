@@ -43,6 +43,10 @@ pub(crate) struct StoredChat {
     /// checkpoints existed.
     #[serde(default)]
     checkpoints: Vec<crate::checkpoints::TurnCheckpoint>,
+    /// "What went wrong" notes on thumbs-down ratings — missing in files
+    /// written before message feedback existed.
+    #[serde(default)]
+    pub(crate) feedback: Vec<crate::feedback::FeedbackNote>,
 }
 
 /// Chats dir for the current project — kept for `RevealChats` in root.rs.
@@ -75,6 +79,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             worktree: chat.worktree,
             thread_id: chat.thread_id.clone(),
             checkpoints: chat.checkpoints.clone(),
+            feedback: chat.feedback.clone(),
         };
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
@@ -97,6 +102,9 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
         {
             stored.messages = on_disk.messages;
         }
+        // Drop notes whose anchor message is gone (truncated by an edit or
+        // /clear, or swapped out by the foreign-turn merge above).
+        stored.feedback.retain(|n| stored.messages.iter().any(|m| m.at == n.at));
         if let Ok(json) = serde_json::to_string_pretty(&stored) {
             // Skip the write when nothing changed — save() runs on every
             // keystroke-adjacent action and most chats are untouched.
@@ -181,6 +189,7 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
             chat.worktree = stored.worktree;
             chat.checkpoints = stored.checkpoints;
             chat.thread_id = stored.thread_id;
+            chat.feedback = stored.feedback;
             Some(chat)
         })
         .collect()
