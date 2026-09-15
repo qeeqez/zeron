@@ -1,6 +1,8 @@
 use gpui_kit::SharedString;
 
 mod appserver;
+mod claude;
+mod claude_parse;
 mod codex;
 mod http;
 mod models;
@@ -10,7 +12,10 @@ mod rpc;
 mod appserver_tests;
 #[cfg(test)]
 mod appserver_turn_tests;
+#[cfg(test)]
+mod claude_tests;
 
+pub use claude::ClaudeCliBackend;
 pub use codex::CodexCliBackend;
 pub use http::HttpBackend;
 pub use models::fetch_codex_models;
@@ -228,6 +233,7 @@ pub fn backend_for(provider_id: &str, http_url: &str, http_key_env: &str) -> std
     match provider_id {
         "sim" => std::sync::Arc::new(SimBackend),
         "http" if !http_url.is_empty() => std::sync::Arc::new(HttpBackend::new(http_url.to_string(), http_key_env.to_string())),
+        "claude-cli" => std::sync::Arc::new(ClaudeCliBackend::new()),
         _ => std::sync::Arc::new(CodexCliBackend::new()),
     }
 }

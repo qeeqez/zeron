@@ -153,8 +153,9 @@ pub struct Settings {
     pub access: String,
     pub notify_on_done: bool,
     pub word_wrap: bool,
-    /// Backend selector: "codex-cli" | "sim" | "http". Migrated from the
-    /// old `use_codex_cli` bool — see `use_codex_cli` below.
+    /// Backend selector: "codex-cli" | "claude-cli" | "sim" | "http".
+    /// Migrated from the old `use_codex_cli` bool — see `use_codex_cli`
+    /// below.
     pub backend: String,
     /// HTTP transport endpoint (POST, NDJSON response stream).
     pub http_url: String,
