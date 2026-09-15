@@ -9,6 +9,10 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::backend::AccessMode;
+use crate::views::settings_general::{access_mode_from_label, workspace_mode_from_label, workspace_mode_label};
+use crate::worktree::WorkspaceMode;
+
 /// Codex-style settings screen: a left nav rail over a content pane, rendered
 /// as a full-window overlay from `Workspace::render` (sheets/dialogs can't
 /// host a two-pane layout and weren't mounted anyway).
@@ -28,6 +32,11 @@ pub struct SettingsPanel {
     pub(crate) code_font_select: Entity<SelectState<SearchableVec<String>>>,
     /// Contrast slider, 50–200%.
     pub(crate) contrast_slider: Entity<SliderState>,
+    /// Default permissions for new threads — `AccessMode::ALL` labels;
+    /// empty selection = follow the current access.
+    pub(crate) permissions_select: Entity<SelectState<Vec<String>>>,
+    /// Default workspace for new threads — `WorkspaceMode::ALL` labels.
+    pub(crate) workspace_select: Entity<SelectState<Vec<String>>>,
 }
 
 impl SettingsPanel {
@@ -95,6 +104,43 @@ impl SettingsPanel {
         })
         .detach();
 
+        // Thread-default selects: items are display labels; Confirm maps
+        // them back via `access_mode_from_label`/`workspace_mode_from_label`.
+        let permissions_select = cx.new(|cx| {
+            let selected = if settings.default_permissions.is_empty() {
+                None
+            } else {
+                Some(gpui_kit::component::IndexPath::new(
+                    AccessMode::ALL
+                        .iter()
+                        .position(|m| *m == AccessMode::from_name(&settings.default_permissions))
+                        .unwrap_or(0),
+                ))
+            };
+            SelectState::new(AccessMode::ALL.map(|m| m.label().to_string()).to_vec(), selected, window, cx)
+        });
+        let ws_perms = ws.clone();
+        cx.subscribe_in(&permissions_select, window, move |_, _, event: &SelectEvent<Vec<String>>, _window, cx| {
+            let SelectEvent::Confirm(label) = event;
+            let _ = ws_perms.update(cx, |this, cx| {
+                this.set_default_permissions(label.as_deref().map(access_mode_from_label), cx);
+            });
+        })
+        .detach();
+        let workspace_select = cx.new(|cx| {
+            let mode = WorkspaceMode::from_name(&settings.default_workspace);
+            let selected = WorkspaceMode::ALL.iter().position(|m| *m == mode).map(gpui_kit::component::IndexPath::new);
+            SelectState::new(WorkspaceMode::ALL.map(|m| workspace_mode_label(m).to_string()).to_vec(), selected, window, cx)
+        });
+        let ws_ws = ws.clone();
+        cx.subscribe_in(&workspace_select, window, move |_, _, event: &SelectEvent<Vec<String>>, _window, cx| {
+            let SelectEvent::Confirm(label) = event;
+            if let Some(label) = label {
+                let _ = ws_ws.update(cx, |this, cx| this.set_default_workspace(workspace_mode_from_label(label), cx));
+            }
+        })
+        .detach();
+
         Self {
             ws,
             section: Section::General,
@@ -104,6 +150,8 @@ impl SettingsPanel {
             font_select,
             code_font_select,
             contrast_slider,
+            permissions_select,
+            workspace_select,
         }
     }
 }
@@ -178,6 +226,8 @@ impl Render for SettingsPanel {
             font_select: self.font_select.clone(),
             code_font_select: self.code_font_select.clone(),
             contrast_slider: self.contrast_slider.clone(),
+            permissions_select: self.permissions_select.clone(),
+            workspace_select: self.workspace_select.clone(),
         };
         let theme = cx.theme();
         // Left edge sits at the main sidebar's right edge — the sidebar (now

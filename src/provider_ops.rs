@@ -26,6 +26,18 @@ impl Workspace {
         true
     }
 
+    /// Set the provider+model new threads start on and persist it —
+    /// `Settings.default_model`. Unlike `select_model` this never touches
+    /// the active thread's selection or backend.
+    pub fn set_default_model(&mut self, instance_id: &str, model_id: &str, cx: &mut Context<Self>) {
+        self.default_model = crate::persist::DefaultModel {
+            provider_instance_id: instance_id.to_string(),
+            model_id: model_id.to_string(),
+        };
+        self.save_settings();
+        cx.notify();
+    }
+
     /// Add a provider instance of `kind` and return its unique id. The new
     /// instance is enabled but not selected; its catalog seeds from the
     /// kind's static `models()`.

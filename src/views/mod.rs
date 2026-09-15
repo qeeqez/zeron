@@ -13,6 +13,10 @@ mod model_picker;
 pub(crate) mod nav_row;
 pub mod settings;
 pub mod settings_appearance;
+pub mod settings_default_model;
+pub mod settings_general;
+#[cfg(test)]
+mod settings_general_tests;
 pub mod settings_nav;
 pub mod settings_providers;
 pub mod settings_sections;

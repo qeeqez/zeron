@@ -8,6 +8,34 @@ use gpui_kit::*;
 use crate::workspace::Workspace;
 
 impl Workspace {
+    /// The access mode new threads start on — `None` follows the current
+    /// workspace access at `new_chat` time.
+    pub fn default_permissions(&self) -> Option<crate::backend::AccessMode> {
+        self.default_permissions
+    }
+
+    /// Set the access mode new threads start on and persist it —
+    /// `Settings.default_permissions`. `None` = follow the current access.
+    /// Existing threads keep their own stamped mode.
+    pub fn set_default_permissions(&mut self, mode: Option<crate::backend::AccessMode>, cx: &mut Context<Self>) {
+        self.default_permissions = mode;
+        self.save_settings();
+        cx.notify();
+    }
+
+    /// Where new threads run: the project checkout or a per-thread worktree.
+    pub fn default_workspace(&self) -> crate::worktree::WorkspaceMode {
+        self.default_workspace
+    }
+
+    /// Set where new threads run and persist it — `Settings.default_workspace`.
+    /// Existing threads keep their own stamped workdir.
+    pub fn set_default_workspace(&mut self, mode: crate::worktree::WorkspaceMode, cx: &mut Context<Self>) {
+        self.default_workspace = mode;
+        self.save_settings();
+        cx.notify();
+    }
+
     /// Stamp the active chat's provider/model/access from the live
     /// workspace selection — called before switching away so the outgoing
     /// thread keeps its own configuration.
@@ -33,12 +61,13 @@ impl Workspace {
                 self.select_model(&dm.provider_instance_id, &first, cx);
             }
         }
-        let access = self.default_permissions.unwrap_or(self.access);
+        let access = self.default_permissions().unwrap_or(self.access);
         self.access = access;
+        let workspace_mode = self.default_workspace();
         let chat_id = self.chats[self.active].id;
         let chat = &mut self.chats[self.active];
         chat.access = Some(access);
-        match self.default_workspace {
+        match workspace_mode {
             crate::worktree::WorkspaceMode::Checkout => {
                 chat.workdir = self.project.root().to_string_lossy().into_owned();
                 chat.worktree = false;

@@ -3,7 +3,6 @@
 
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::Sizable;
-use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::InputState;
 use gpui_kit::component::select::{SearchableVec, SelectState};
 use gpui_kit::component::slider::SliderState;
@@ -33,12 +32,16 @@ pub struct SettingsView {
     pub font_select: Entity<SelectState<SearchableVec<String>>>,
     pub code_font_select: Entity<SelectState<SearchableVec<String>>>,
     pub contrast_slider: Entity<SliderState>,
+    /// Default permissions for new threads — `AccessMode::ALL` labels.
+    pub permissions_select: Entity<SelectState<Vec<String>>>,
+    /// Default workspace for new threads — `WorkspaceMode::ALL` labels.
+    pub workspace_select: Entity<SelectState<Vec<String>>>,
 }
 
 /// The content pane for the selected section.
 pub fn section_body(section: Section, s: &SettingsView, cx: &App) -> impl IntoElement {
     let body = match section {
-        Section::General => general_section(s, cx).into_any_element(),
+        Section::General => crate::views::settings_general::general_section(s, cx).into_any_element(),
         Section::Appearance => crate::views::settings_appearance::appearance_section(s, cx).into_any_element(),
         Section::Providers => crate::views::settings_providers::providers_section(s, cx).into_any_element(),
         Section::Shortcuts => shortcuts_section(cx).into_any_element(),
@@ -61,39 +64,6 @@ fn placeholder_section(text: &'static str, cx: &App) -> AnyElement {
 
 pub(crate) fn group_label(text: &'static str, cx: &App) -> Div {
     div().pt_2().text_sm().font_semibold().text_color(cx.theme().muted_foreground).child(text)
-}
-
-fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
-    let ws = s.ws.clone();
-    div()
-        .flex()
-        .flex_col()
-        .gap_3()
-        .child(group_label("Notifications", cx))
-        .child(toggle_row(("toggle-notify", "Notify on reply complete"), s.notify, ws.clone(), |this, next, _w, _cx| {
-            this.notify_on_done = next;
-        }))
-        .child(group_label("Agent access", cx))
-        .child(div().flex().items_center().gap_2().text_xs().children(AccessMode::ALL.into_iter().map(|mode| {
-            let btn = Button::new(SharedString::from(mode.name())).label(mode.label()).on_click({
-                let ws = ws.clone();
-                move |_, _, cx| {
-                    ws.update(cx, |this, cx| this.set_access(mode, cx));
-                }
-            });
-            if mode == s.access { btn.primary() } else { btn.outline() }
-        })))
-        .child(
-            div()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child("Filesystem access for Agent-mode turns — Plan and Ask always stay read-only"),
-        )
-        .child(group_label("Messages", cx))
-        .child(toggle_row(("toggle-wrap", "Word wrap"), s.word_wrap, ws.clone(), |this, next, _w, cx| {
-            this.word_wrap = next;
-            this.scroller.update(cx, |s, cx| s.remeasure(cx));
-        }))
 }
 
 fn shortcuts_section(cx: &App) -> impl IntoElement {

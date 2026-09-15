@@ -68,6 +68,13 @@ impl Workspace {
         &self.model
     }
 
+    /// The configured default provider+model for new threads —
+    /// `Settings.default_model`. Empty fields mean "follow the current
+    /// selection"; `apply_thread_defaults` resolves them at `new_chat`.
+    pub fn default_model(&self) -> &crate::persist::DefaultModel {
+        &self.default_model
+    }
+
     /// The instance's effective model list: catalog filtered by its
     /// `ModelConfig` (disabled dropped, sorted by `order`). No synthetic
     /// default — an unfetched/empty catalog returns empty.
