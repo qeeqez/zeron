@@ -71,6 +71,12 @@ impl Workspace {
             voice_language: self.voice.language.clone(),
             voice_on_device: self.voice.on_device,
             instructions: self.instructions.clone(),
+            // Update-check bookkeeping is written by `crate::update`, not
+            // this window — keep the file's values so an unrelated save
+            // can't drop a pending or skipped release.
+            update_last_check: prev.update_last_check,
+            update_latest: prev.update_latest,
+            update_skip: prev.update_skip,
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
             terminal_open: self.terminal.open,

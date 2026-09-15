@@ -227,6 +227,7 @@ impl Render for SettingsPanel {
             voice_on_device: s.voice.on_device,
             voice_phase: s.voice.phase,
             voice_test_result: s.voice.test_result.clone(),
+            update: s.update.clone(),
             permissions_select: self.permissions_select.clone(),
             workspace_select: self.workspace_select.clone(),
             instructions_input: s.instructions_input.clone(),

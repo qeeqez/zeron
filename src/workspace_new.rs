@@ -191,6 +191,7 @@ impl Workspace {
                 input.set_value(settings.instructions.clone(), window, cx);
                 input
             }),
+            update: crate::update::UpdateState::restored(&settings),
             resume_open: false,
             auth: crate::auth::AuthBook::seeded(),
             terminal: crate::views::terminal::TerminalPanel::new(settings.terminal_open, terminal_input),
@@ -213,6 +214,7 @@ impl Workspace {
             .observe_window_appearance(move |window, cx| ws.update(cx, |this, cx| this.apply_theme(window, cx)))
             .detach();
         this.start_background(cx);
+        this.start_update_check(cx);
         this.refresh_model_catalogs(cx);
         this.refresh_auth(cx);
         // Launch-time retention pass — prunes aged/over-cap snapshots.

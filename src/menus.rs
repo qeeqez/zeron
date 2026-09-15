@@ -6,9 +6,9 @@
 use gpui_kit::*;
 
 use crate::{
-    AboutApp, BringAllToFront, CloseWindow, CopyTranscript, EmojiPalette, EnterFullscreen, FindInChat, HideApp, HideOthers, MinimizeWindow,
-    NewChat, NewWindow, OpenPalette, OpenProject, OpenSettings, QuitApp, RevealChats, SearchAllChats, ShortcutsHelp, ToggleAgents,
-    ToggleChanges, ToggleExplorer, ToggleSidebar, ToggleSnapshots, ToggleTerminal, ZoomWindow,
+    AboutApp, BringAllToFront, CheckForUpdates, CloseWindow, CopyTranscript, EmojiPalette, EnterFullscreen, FindInChat, HideApp, HideOthers,
+    MinimizeWindow, NewChat, NewWindow, OpenPalette, OpenProject, OpenSettings, QuitApp, RevealChats, SearchAllChats, ShortcutsHelp,
+    ToggleAgents, ToggleChanges, ToggleExplorer, ToggleSidebar, ToggleSnapshots, ToggleTerminal, ZoomWindow,
 };
 
 pub(crate) fn app_menus() -> Vec<Menu> {
@@ -17,6 +17,7 @@ pub(crate) fn app_menus() -> Vec<Menu> {
         Menu::new("Rixl Code").items([
             MenuItem::action("About Rixl Code", AboutApp),
             MenuItem::separator(),
+            MenuItem::action("Check for Updates", CheckForUpdates),
             MenuItem::action("Settings…", OpenSettings),
             MenuItem::separator(),
             MenuItem::os_submenu("Services", SystemMenuType::Services),

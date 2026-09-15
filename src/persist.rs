@@ -322,6 +322,15 @@ pub struct Settings {
     /// context ahead of the project's own instructions file (see
     /// `crate::instructions`).
     pub instructions: String,
+    /// Last update-check time — gates the daily automatic check (see
+    /// `crate::update`). `None` = never checked.
+    pub update_last_check: Option<std::time::SystemTime>,
+    /// Newest release tag seen by the last check; empty = up to date. Kept
+    /// so the About row can show a pending update before the next fetch.
+    pub update_latest: String,
+    /// Release tag the user dismissed — it won't notify again, though a
+    /// newer tag still does.
+    pub update_skip: String,
 }
 
 fn settings_path() -> PathBuf {

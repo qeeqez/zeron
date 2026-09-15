@@ -67,7 +67,66 @@ pub(crate) fn profile_section(s: &SettingsView, cx: &App) -> impl IntoElement {
         .when(any_signoutable, |d| d.child(sign_out_all_button(s)))
         .child(group_label("About", cx))
         .child(info_row("profile-version", "Version", env!("CARGO_PKG_VERSION"), cx))
+        .child(update_row(s, cx))
         .child(data_dir_row(cx))
+}
+
+/// The update line under Version: the pending release with Download/Skip,
+/// or the last check's outcome plus a Check button.
+fn update_row(s: &SettingsView, cx: &App) -> impl IntoElement {
+    use crate::update::UpdateStatus;
+    let (text, pending) = match &s.update.status {
+        UpdateStatus::Available(tag) if s.update.skipped => (format!("{tag} available — skipped"), Some(tag.clone())),
+        UpdateStatus::Available(tag) => (format!("{tag} available"), Some(tag.clone())),
+        UpdateStatus::Checking => ("Checking for updates…".to_string(), None),
+        UpdateStatus::UpToDate => ("You're up to date".to_string(), None),
+        UpdateStatus::Unknown => ("Not checked yet".to_string(), None),
+    };
+    div()
+        .flex()
+        .items_center()
+        .gap_4()
+        .child(div().w(px(120.)).text_sm().child("Updates"))
+        .child(
+            div()
+                .id("profile-update")
+                .test_support()
+                .aria_label(text.clone())
+                .flex_1()
+                .min_w_0()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(text),
+        )
+        .child(update_buttons(s, pending))
+}
+
+/// The update row's actions: Download + Skip while a release is pending,
+/// otherwise a Check button that runs a manual check.
+fn update_buttons(s: &SettingsView, pending: Option<String>) -> impl IntoElement {
+    let mut row = div().flex().items_center().gap_2();
+    if let Some(tag) = pending {
+        let url = s.update.url.clone();
+        let ws = s.ws.clone();
+        row = row
+            .child(
+                Button::new("profile-update-download")
+                    .label("Download")
+                    .icon(IconName::Download)
+                    .small()
+                    .outline()
+                    .on_click(move |_, _, cx| cx.open_url(&url)),
+            )
+            .child(Button::new("profile-update-skip").label("Skip").small().outline().on_click(move |_, _, cx| {
+                ws.update(cx, |ws, cx| ws.skip_update(&tag, cx));
+            }));
+    } else {
+        let ws = s.ws.clone();
+        row = row.child(Button::new("profile-update-check").label("Check now").small().outline().on_click(move |_, _, cx| {
+            ws.update(cx, |ws, cx| ws.check_updates(cx));
+        }));
+    }
+    row
 }
 
 /// One signed-in-capable provider: kind icon, instance name, and the auth

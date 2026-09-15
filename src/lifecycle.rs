@@ -4,9 +4,12 @@
 
 use std::time::Duration;
 
-use gpui_kit::component::{Root, WindowExt};
+use gpui_kit::assets::IconName;
+use gpui_kit::component::button::Button;
+use gpui_kit::component::{Root, Sizable, WindowExt};
 use gpui_kit::*;
 
+use crate::update::UpdateStatus;
 use crate::workspace::Workspace;
 
 impl Workspace {
@@ -233,16 +236,49 @@ pub fn show_about(cx: &mut App) {
 }
 
 fn show_about_dialog(window: &mut Window, cx: &mut App) {
-    window.open_dialog(cx, |dialog, _window, _cx| {
-        dialog.title("Rixl Code").overlay_closable(true).child(
-            div()
-                .id("about-dialog")
-                .test_support()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .child(format!("Version {}", env!("CARGO_PKG_VERSION")))
-                .child("A Codex-style agent workspace."),
-        )
+    let update = window_workspace(window, cx).map(|ws| ws.read(cx).update.clone());
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+        let mut body = div()
+            .id("about-dialog")
+            .test_support()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(format!("Version {}", env!("CARGO_PKG_VERSION")))
+            .child("A Codex-style agent workspace.");
+        if let Some(update) = &update {
+            body = body.child(about_update_row(update));
+        }
+        dialog.title("Rixl Code").overlay_closable(true).child(body)
     });
+}
+
+/// The `Workspace` entity behind a window's `Root` view, if it has one.
+fn window_workspace(window: &Window, cx: &App) -> Option<Entity<Workspace>> {
+    window.root::<Root>().flatten()?.read(cx).view().clone().downcast::<Workspace>().ok()
+}
+
+/// The About dialog's update line: a pending release with a Download
+/// button, or nothing while checking/up-to-date/unknown — the version line
+/// already covers those.
+fn about_update_row(update: &crate::update::UpdateState) -> impl IntoElement {
+    let mut row = div().flex().items_center().gap_2().text_sm();
+    match &update.status {
+        UpdateStatus::Available(tag) => {
+            let url = update.url.clone();
+            row = row.child(format!("{tag} available{}", if update.skipped { " — skipped" } else { "" })).child(
+                Button::new("about-update-download")
+                    .label("Download")
+                    .icon(IconName::Download)
+                    .small()
+                    .outline()
+                    .on_click(move |_, _, cx| cx.open_url(&url)),
+            );
+        },
+        UpdateStatus::Checking => {
+            row = row.child("Checking for updates…");
+        },
+        UpdateStatus::Unknown | UpdateStatus::UpToDate => {},
+    }
+    row
 }

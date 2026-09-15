@@ -170,6 +170,8 @@ pub struct Workspace {
     /// The Custom Instructions settings field — lives on the workspace so
     /// typed text survives settings open/close like the other inputs.
     pub instructions_input: Entity<TextareaState>,
+    /// Update-check state for the About row and toasts (see `crate::update`).
+    pub update: crate::update::UpdateState,
 
     /// Past threads the backend can reopen — the sidebar's Resume section.
     /// Filled by `refresh_sessions`; empty until the first fetch lands.

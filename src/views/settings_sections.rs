@@ -72,6 +72,8 @@ pub struct SettingsView {
     /// The Custom Instructions section's multiline field — owned by the
     /// workspace so typed text survives settings open/close.
     pub instructions_input: Entity<gpui_kit::component::input::TextareaState>,
+    /// Update-check state for the Profile section's About row.
+    pub update: crate::update::UpdateState,
 }
 
 /// The content pane for the selected section.

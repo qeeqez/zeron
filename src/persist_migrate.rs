@@ -49,6 +49,9 @@ impl Default for Settings {
             voice_language: String::new(),
             voice_on_device: false,
             instructions: String::new(),
+            update_last_check: None,
+            update_latest: String::new(),
+            update_skip: String::new(),
         }
     }
 }

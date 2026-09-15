@@ -159,9 +159,11 @@ mod thread_defaults;
 mod thread_defaults_tests;
 #[cfg(test)]
 mod ui_tests;
-mod usage;
+mod update;
+mod update_check;
 #[cfg(test)]
-mod usage_tests;
+mod update_tests;
+mod usage;
 mod views;
 mod voice;
 #[cfg(target_os = "macos")]
@@ -186,8 +188,8 @@ actions!([
     NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleSnapshots, ToggleExplorer, OpenPalette, GoToFile, ThemeLight,
     ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat,
     SearchAllChats, FindInChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext,
-    NewWindow, OpenProject, AboutApp, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront, ToggleDictation,
-    ToggleTerminal,
+    NewWindow, OpenProject, AboutApp, CheckForUpdates, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront,
+    ToggleDictation, ToggleTerminal,
 ]);
 
 /// Workspace-context key bindings. Menu items pick their key equivalents up
@@ -214,6 +216,7 @@ fn install_app_actions(cx: &mut App) {
     cx.on_action(|_: &NewWindow, cx| lifecycle::open_new_window(cx));
     cx.on_action(|_: &OpenProject, cx| lifecycle::prompt_open_project(cx));
     cx.on_action(|_: &AboutApp, cx| lifecycle::show_about(cx));
+    cx.on_action(|_: &CheckForUpdates, cx| update::check_for_updates(cx));
     cx.on_action(|_: &HideApp, cx| cx.hide());
     cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
     cx.on_action(|_: &BringAllToFront, cx| cx.activate(false));
