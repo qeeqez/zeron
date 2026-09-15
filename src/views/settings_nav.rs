@@ -74,6 +74,7 @@ pub fn settings_nav(nav: SettingsNav<'_>, window: &mut Window, cx: &mut App) -> 
     // "Back to app" sits at the very top of the rail, above the full-width
     // search field — same header slot the chat sidebar uses.
     let header = div()
+        .w_full()
         .flex()
         .flex_col()
         .gap_2()

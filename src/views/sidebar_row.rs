@@ -43,8 +43,14 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
     if renaming {
         row.body(rename_editor(ws_click.clone(), ws.rename.clone(), chat_id))
     } else {
-        row.on_click(move |_, window, cx| select_row(&ws_click, chat_id, window, cx))
-            .suffix(row_suffix(cx.entity(), chat_id, flags, (chat.running, chat.unread)))
+        row.on_click(move |ev, window, cx| {
+            if ev.click_count() >= 2 {
+                rename_row(&ws_click, chat_id, window, cx);
+            } else {
+                select_row(&ws_click, chat_id, window, cx);
+            }
+        })
+        .suffix(row_suffix(cx.entity(), chat_id, flags, (chat.running, chat.unread)))
     }
 }
 
@@ -53,6 +59,15 @@ fn select_row(ws: &Entity<Workspace>, chat_id: u64, window: &mut Window, cx: &mu
     ws.update(cx, |this, cx| {
         if let Some(ix) = this.chat_index(chat_id) {
             this.select_chat(ix, window, cx);
+        }
+    });
+}
+
+/// Double-click on the title → open the inline rename editor.
+fn rename_row(ws: &Entity<Workspace>, chat_id: u64, window: &mut Window, cx: &mut App) {
+    ws.update(cx, |this, cx| {
+        if let Some(ix) = this.chat_index(chat_id) {
+            this.start_inline_rename(ix, window, cx);
         }
     });
 }
@@ -113,9 +128,7 @@ fn row_suffix(ws: Entity<Workspace>, chat_id: u64, flags: RowFlags, status: (boo
                 div()
                     .id(("chat-menu", chat_id))
                     .test_support()
-                    .when(!menu_open.read(cx), |this| {
-                        this.invisible().group_hover(format!("chat-row-{chat_id}"), |style| style.visible())
-                    })
+                    .when(!menu_open.read(cx), |this| this.invisible().group_hover(format!("chat-row-{chat_id}"), |style| style.visible()))
                     .child(
                         Button::new(("chat-menu-btn", chat_id))
                             .ghost()
