@@ -33,6 +33,23 @@ mod tests {
     }
 
     #[test]
+    fn todo_list_items_decode_to_plan() {
+        // `codex exec --json` emits todo_list items on started/updated/
+        // completed — each carries the whole checklist.
+        for kind in ["item.started", "item.updated", "item.completed"] {
+            let evs = parse_codex_line(&format!(
+                r#"{{"type":"{kind}","item":{{"id":"t1","type":"todo_list","items":[{{"text":"scan","completed":true}},{{"text":"edit","completed":false}}]}}}}"#
+            ));
+            assert_eq!(evs.len(), 1, "{kind}");
+            let AgentEvent::Plan { steps, .. } = &evs[0] else { panic!("expected Plan") };
+            assert_eq!(steps.len(), 2);
+            assert_eq!(steps[0].label.as_str(), "scan");
+            assert_eq!(steps[0].status, crate::model::PlanStatus::Done);
+            assert_eq!(steps[1].status, crate::model::PlanStatus::Pending);
+        }
+    }
+
+    #[test]
     fn error_variants() {
         let evs = parse_codex_line(r#"{"type":"error","message":"boom"}"#);
         assert_eq!(evs.len(), 1);

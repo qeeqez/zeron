@@ -19,6 +19,7 @@ impl Workspace {
                 MessageKind::Text(t) => t.to_string(),
                 MessageKind::Tool(t) => format!("`{} {}`\n```\n{}\n```", t.name, t.detail, t.output),
                 MessageKind::Diff(d) => format!("`{}` +{} -{}\n```diff\n{}\n```", d.path, d.added, d.removed, d.hunks),
+                MessageKind::Plan(p) => p.markdown(),
             };
             out.push_str(&format!("## {role}\n\n{body}\n\n"));
         }
@@ -55,6 +56,7 @@ impl Workspace {
                     MessageKind::Text(t) => t.to_string(),
                     MessageKind::Tool(t) => format!("`{} {}`\n```\n{}\n```", t.name, t.detail, t.output),
                     MessageKind::Diff(d) => format!("`{}` +{} -{}\n```diff\n{}\n```", d.path, d.added, d.removed, d.hunks),
+                    MessageKind::Plan(p) => p.markdown(),
                 };
                 format!("{role}: {body}")
             })

@@ -157,6 +157,7 @@ impl Workspace {
             MessageKind::Text(t) => t.to_string(),
             MessageKind::Tool(t) => format!("{}: {}\n{}", t.name, t.detail, t.output),
             MessageKind::Diff(d) => format!("{} (+{} -{})\n{}", d.path, d.added, d.removed, d.hunks),
+            MessageKind::Plan(p) => p.markdown(),
         };
         cx.write_to_clipboard(ClipboardItem::new_string(text));
     }

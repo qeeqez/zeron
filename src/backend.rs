@@ -1,5 +1,7 @@
 use gpui_kit::SharedString;
 
+use crate::model::PlanStep;
+
 mod acp;
 mod acp_decode;
 mod acp_rpc;
@@ -192,10 +194,13 @@ pub enum AgentEvent {
     /// Streaming args/output for the tool call at `ix`.
     ToolCallDelta { ix: usize, output: SharedString },
     /// Replace the tool call's output wholesale — for items whose updates
-    /// arrive as full snapshots (the turn plan checklist), not deltas.
+    /// arrive as full snapshots, not deltas.
     ToolCallSet { ix: usize, output: SharedString },
     /// Tool call finished; `ok` flips status to Done/Failed.
     ToolCallEnd { ix: usize, ok: bool },
+    /// The agent's plan checklist — a full snapshot that replaces the plan
+    /// card keyed by `ix` (created on first sight).
+    Plan { ix: usize, steps: Vec<PlanStep> },
     /// A diff card to append.
     Diff { path: SharedString, added: usize, removed: usize, hunks: SharedString },
     /// Token usage for the completed turn.

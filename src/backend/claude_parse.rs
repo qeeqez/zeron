@@ -10,7 +10,11 @@
 use serde_json::Value;
 
 use crate::backend::AgentEvent;
-use crate::backend_parse::item_ix;
+use crate::backend_parse::{item_ix, result_text, todo_steps};
+
+/// Synthetic card ix for `TodoWrite` checklists — every todo write updates
+/// the one plan card rather than opening a card per tool call.
+const PLAN_ID: &str = "__claude_plan__";
 
 /// Per-turn decoder: tracks which blocks streamed so the `assistant`
 /// snapshot doesn't re-emit them, and which tool cards are still open.
@@ -25,6 +29,9 @@ pub(crate) struct ClaudeDecoder {
     /// Live stream blocks by content index — `content_block_stop` needs the
     /// card ix for thinking/tool blocks.
     blocks: std::collections::HashMap<i64, Block>,
+    /// tool_use ids of `TodoWrite` calls — their `tool_result` carries no
+    /// card output, so `user` skips them.
+    todos: std::collections::HashSet<String>,
     /// Latest token counts — `message_start`/`message_delta` carry partial
     /// usage, `result` carries the final totals.
     last_usage: (u64, u64),
@@ -53,6 +60,7 @@ impl ClaudeDecoder {
             pending: std::collections::HashSet::new(),
             text_streamed: std::collections::HashSet::new(),
             blocks: std::collections::HashMap::new(),
+            todos: std::collections::HashSet::new(),
             last_usage: (0, 0),
         }
     }
@@ -108,8 +116,14 @@ impl ClaudeDecoder {
             },
             Some("tool_use") => {
                 let id = block["id"].as_str().unwrap_or("").to_string();
-                let card = item_ix(&serde_json::json!({"id": id}));
                 self.blocks.insert(ix, Block::Tool);
+                // `TodoWrite` renders as the plan checklist, not a tool
+                // card — the input only exists at the `assistant` snapshot.
+                if block["name"].as_str() == Some("TodoWrite") {
+                    self.todos.insert(id);
+                    return vec![];
+                }
+                let card = item_ix(&serde_json::json!({"id": id}));
                 self.started.insert(id.clone());
                 self.pending.insert(id);
                 let name = block["name"].as_str().unwrap_or("tool");
@@ -198,10 +212,20 @@ impl ClaudeDecoder {
     /// `tool_use` block in the `assistant` snapshot. When the stream
     /// already opened the card, the input summary goes to the card's
     /// output — `ToolCallStart.detail` was empty at `content_block_start`
-    /// because the input only existed as partial JSON then.
+    /// because the input only existed as partial JSON then. `TodoWrite`
+    /// becomes the plan checklist instead of a tool card.
     fn tool_use(&mut self, block: &Value) -> Vec<AgentEvent> {
         let id = block["id"].as_str().unwrap_or("").to_string();
         let name = block["name"].as_str().unwrap_or("tool");
+        if name == "TodoWrite" {
+            self.todos.insert(id);
+            let steps = todo_steps(&block["input"]);
+            return if steps.is_empty() {
+                vec![]
+            } else {
+                vec![AgentEvent::Plan { ix: item_ix(&serde_json::json!({"id": PLAN_ID})), steps }]
+            };
+        }
         let detail = tool_detail(name, &block["input"]);
         let card = item_ix(&serde_json::json!({"id": id}));
         if !self.started.insert(id.clone()) {
@@ -225,6 +249,11 @@ impl ClaudeDecoder {
                 continue;
             }
             let id = block["tool_use_id"].as_str().unwrap_or("").to_string();
+            // `TodoWrite` results carry no card output — the plan card
+            // already shows the checklist.
+            if self.todos.remove(&id) {
+                continue;
+            }
             self.pending.remove(&id);
             let card = item_ix(&serde_json::json!({"id": id}));
             if self.started.insert(id) {
@@ -293,22 +322,4 @@ fn tool_detail(name: &str, input: &Value) -> String {
         _ => "",
     };
     input[key].as_str().unwrap_or("").to_string()
-}
-
-/// `tool_result.content` is a string or an array of content blocks —
-/// flatten to displayable text.
-fn result_text(content: &Value) -> String {
-    if let Some(s) = content.as_str() {
-        return s.to_string();
-    }
-    let Some(blocks) = content.as_array() else { return String::new() };
-    blocks
-        .iter()
-        .filter_map(|b| match b["type"].as_str() {
-            Some("text") => Some(b["text"].as_str().unwrap_or("").to_string()),
-            Some("image") => Some("[image]".to_string()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }

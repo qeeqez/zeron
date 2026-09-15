@@ -117,23 +117,53 @@ fn reasoning_streams_into_thinking_card() {
 }
 
 #[test]
-fn plan_updates_replace_output() {
+fn plan_updates_replace_checklist() {
     let mut d = TurnDecoder::new();
     let evs = events(
         &mut d,
         r#"{"method":"turn/plan/updated","params":{"threadId":"t","turnId":"u","explanation":null,"plan":[{"step":"scan","status":"inProgress"},{"step":"edit","status":"pending"}]}}"#,
     );
-    assert_eq!(evs.len(), 2);
-    assert!(matches!(&evs[0], AgentEvent::ToolCallStart { name, .. } if name == "plan"));
-    assert!(matches!(&evs[1], AgentEvent::ToolCallSet { output, .. } if output.contains("scan")));
+    assert_eq!(evs.len(), 1);
+    let AgentEvent::Plan { steps, .. } = &evs[0] else { panic!("expected Plan") };
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0].label.as_str(), "scan");
+    assert_eq!(steps[0].status, crate::model::PlanStatus::InProgress);
+    assert_eq!(steps[1].status, crate::model::PlanStatus::Pending);
 
-    // Second update: no new card, output replaced wholesale.
+    // Second update: same card ix, steps replaced wholesale.
     let evs = events(
         &mut d,
         r#"{"method":"turn/plan/updated","params":{"threadId":"t","turnId":"u","explanation":null,"plan":[{"step":"scan","status":"completed"},{"step":"edit","status":"inProgress"}]}}"#,
     );
     assert_eq!(evs.len(), 1);
-    assert!(matches!(&evs[0], AgentEvent::ToolCallSet { output, .. } if output.contains("edit") && !output.contains("inProgress\n")));
+    let AgentEvent::Plan { steps, .. } = &evs[0] else { panic!("expected Plan") };
+    assert_eq!(steps[0].status, crate::model::PlanStatus::Done);
+    assert_eq!(steps[1].status, crate::model::PlanStatus::InProgress);
+}
+
+#[test]
+fn plan_item_completed_decodes_checklist_text() {
+    let mut d = TurnDecoder::new();
+    // A `plan` item whose text is a markdown checklist becomes Plan steps.
+    let evs = events(
+        &mut d,
+        r#"{"method":"item/completed","params":{"item":{"type":"plan","id":"p1","text":"- [x] scan repo\n- [ ] edit files"},"threadId":"t","turnId":"u"}}"#,
+    );
+    assert_eq!(evs.len(), 1);
+    let AgentEvent::Plan { steps, .. } = &evs[0] else { panic!("expected Plan") };
+    assert_eq!(steps[0].status, crate::model::PlanStatus::Done);
+    assert_eq!(steps[1].status, crate::model::PlanStatus::Pending);
+
+    // Prose plans keep the old text card — opened and closed in one shot.
+    let mut d = TurnDecoder::new();
+    let evs = events(
+        &mut d,
+        r#"{"method":"item/completed","params":{"item":{"type":"plan","id":"p2","text":"Approach:\nDo the thing."},"threadId":"t","turnId":"u"}}"#,
+    );
+    assert_eq!(evs.len(), 3);
+    assert!(matches!(&evs[0], AgentEvent::ToolCallStart { name, .. } if name == "plan"));
+    assert!(matches!(&evs[1], AgentEvent::ToolCallSet { output, .. } if output.contains("Approach")));
+    assert!(matches!(&evs[2], AgentEvent::ToolCallEnd { ok: true, .. }));
 }
 
 #[test]

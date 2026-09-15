@@ -5,10 +5,11 @@ use crate::workspace::Workspace;
 
 /// The text a chat-search query matches against for one message.
 pub(crate) fn msg_matches(m: &ChatMessage, query: &str) -> bool {
-    let haystacks: &[&str] = match &m.kind {
-        MessageKind::Text(t) => &[t.as_str()],
-        MessageKind::Tool(t) => &[t.name.as_str(), t.detail.as_str(), t.output.as_str()],
-        MessageKind::Diff(d) => &[d.path.as_str(), d.hunks.as_str()],
+    let haystacks: Vec<&str> = match &m.kind {
+        MessageKind::Text(t) => vec![t.as_str()],
+        MessageKind::Tool(t) => vec![t.name.as_str(), t.detail.as_str(), t.output.as_str()],
+        MessageKind::Diff(d) => vec![d.path.as_str(), d.hunks.as_str()],
+        MessageKind::Plan(p) => p.steps.iter().map(|s| s.label.as_str()).collect(),
     };
     haystacks.iter().any(|h| h.to_lowercase().contains(query))
 }

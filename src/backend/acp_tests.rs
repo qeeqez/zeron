@@ -112,13 +112,19 @@ fn plan_replaces_checklist() {
         {"content": "step two", "status": "in_progress", "priority": "medium"},
         {"content": "step three", "status": "pending", "priority": "low"},
     ]}));
-    assert!(matches!(&e[0], AgentEvent::ToolCallStart { name, .. } if name == "plan"));
-    assert!(matches!(&e[1], AgentEvent::ToolCallSet { output, .. } if output == "☑ step one\n◐ step two\n☐ step three"));
+    assert_eq!(e.len(), 1);
+    let AgentEvent::Plan { steps, .. } = &e[0] else { panic!("expected Plan") };
+    assert_eq!(steps.len(), 3);
+    assert_eq!(steps[0].status, crate::model::PlanStatus::Done);
+    assert_eq!(steps[1].status, crate::model::PlanStatus::InProgress);
+    assert_eq!(steps[2].status, crate::model::PlanStatus::Pending);
 
-    // A second plan update reuses the card — no second ToolCallStart.
+    // A second plan update reuses the card — another Plan snapshot.
     let e = d.update(&json!({"sessionUpdate": "plan", "entries": [{"content": "only", "status": "pending", "priority": "low"}]}));
     assert_eq!(e.len(), 1);
-    assert!(matches!(&e[0], AgentEvent::ToolCallSet { output, .. } if output == "☐ only"));
+    let AgentEvent::Plan { steps, .. } = &e[0] else { panic!("expected Plan") };
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].label.as_str(), "only");
 }
 
 #[test]
@@ -134,8 +140,8 @@ fn close_open_ends_unfinished_cards() {
     d.update(&json!({"sessionUpdate": "tool_call", "toolCallId": "t1", "title": "x", "status": "in_progress"}));
     d.update(&json!({"sessionUpdate": "plan", "entries": [{"content": "s", "status": "pending", "priority": "low"}]}));
     let e = d.close_open();
-    // Plan card + still-running tool both close.
-    assert_eq!(e.iter().filter(|e| matches!(e, AgentEvent::ToolCallEnd { .. })).count(), 2);
+    // The still-running tool closes; the plan card needs no close.
+    assert_eq!(e.iter().filter(|e| matches!(e, AgentEvent::ToolCallEnd { .. })).count(), 1);
 }
 
 // ---- full pump over canned NDJSON ----

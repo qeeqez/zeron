@@ -140,6 +140,46 @@ fn result_closes_tool_cards_left_open() {
 }
 
 #[test]
+fn todo_write_becomes_plan_card() {
+    let mut d = ClaudeDecoder::new();
+    // Streamed tool_use opens no card — TodoWrite renders as the checklist.
+    let evs = events(
+        &mut d,
+        r#"{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_t","name":"TodoWrite","input":{}}}}"#,
+    );
+    assert!(evs.is_empty(), "TodoWrite must not open a tool card");
+
+    // The assistant snapshot carries the todos — one Plan event.
+    let evs = events(
+        &mut d,
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_t","name":"TodoWrite","input":{"todos":[{"content":"scan repo","status":"completed","activeForm":"Scanning"},{"content":"edit files","status":"in_progress","activeForm":"Editing files"},{"content":"run tests","status":"pending","activeForm":"Running tests"}]}}]}}"#,
+    );
+    let Some(AgentEvent::Plan { steps, .. }) = evs.iter().find(|e| matches!(e, AgentEvent::Plan { .. })) else { panic!("Plan event") };
+    assert_eq!(steps.len(), 3);
+    assert_eq!(steps[0].status, crate::model::PlanStatus::Done);
+    assert_eq!(steps[0].label.as_str(), "scan repo");
+    // In-progress steps show the present-tense activeForm label.
+    assert_eq!(steps[1].status, crate::model::PlanStatus::InProgress);
+    assert_eq!(steps[1].label.as_str(), "Editing files");
+    assert_eq!(steps[2].status, crate::model::PlanStatus::Pending);
+
+    // The tool_result for TodoWrite emits nothing — no card to close.
+    let evs = events(
+        &mut d,
+        r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_t","content":"todos updated"}]}}"#,
+    );
+    assert!(evs.is_empty(), "TodoWrite result must not emit card events");
+
+    // A second TodoWrite updates the same plan card.
+    let evs = events(
+        &mut d,
+        r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_t2","name":"TodoWrite","input":{"todos":[{"content":"scan repo","status":"completed"},{"content":"edit files","status":"completed"},{"content":"run tests","status":"in_progress"}]}}]}}"#,
+    );
+    let Some(AgentEvent::Plan { steps, .. }) = evs.iter().find(|e| matches!(e, AgentEvent::Plan { .. })) else { panic!("Plan event") };
+    assert_eq!(steps[2].status, crate::model::PlanStatus::InProgress);
+}
+
+#[test]
 fn backend_for_builds_claude() {
     let p = crate::providers::ProviderInstance::new(crate::providers::ProviderKind::ClaudeCli, "Claude".into());
     assert_eq!(crate::backend::backend_for(&p).name(), "claude-cli");

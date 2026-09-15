@@ -95,23 +95,16 @@ impl Workspace {
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         match ev {
             AgentEvent::TextStart => {
-                Rc::make_mut(&mut chat.messages).push(ChatMessage {
-                    role: Role::Assistant,
-                    kind: MessageKind::Text("".into()),
-                    rating: None,
-                    usage: None,
-                    attachments: vec![],
-                    at: SystemTime::now(),
-                });
+                push_message(chat, MessageKind::Text("".into()));
                 if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
             },
             AgentEvent::TextDelta(text) => self.apply_text_delta(chat_id, &text, cx),
             AgentEvent::ToolCallStart { ix, name, detail } => {
-                Rc::make_mut(&mut chat.messages).push(ChatMessage {
-                    role: Role::Assistant,
-                    kind: MessageKind::Tool(ToolCall {
+                push_message(
+                    chat,
+                    MessageKind::Tool(ToolCall {
                         tool_ix: ix,
                         name,
                         detail,
@@ -119,11 +112,7 @@ impl Workspace {
                         status: ToolStatus::Running,
                         expanded: false,
                     }),
-                    rating: None,
-                    usage: None,
-                    attachments: vec![],
-                    at: SystemTime::now(),
-                });
+                );
                 if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
@@ -166,18 +155,12 @@ impl Workspace {
                 }
             },
             AgentEvent::Diff { path, added, removed, hunks } => {
-                Rc::make_mut(&mut chat.messages).push(ChatMessage {
-                    role: Role::Assistant,
-                    kind: MessageKind::Diff(crate::model::DiffCard { path, added, removed, hunks, expanded: false }),
-                    rating: None,
-                    usage: None,
-                    attachments: vec![],
-                    at: SystemTime::now(),
-                });
+                push_message(chat, MessageKind::Diff(crate::model::DiffCard { path, added, removed, hunks, expanded: false }));
                 if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
             },
+            AgentEvent::Plan { ix, steps } => self.apply_plan(chat_id, ix, steps, cx),
             AgentEvent::Usage { input, output } => {
                 // Prefer the text reply; fall back to any assistant message.
                 let ix = chat
@@ -192,14 +175,7 @@ impl Workspace {
             AgentEvent::Done => {},
             AgentEvent::Error(msg) => {
                 chat.failed_flag = true;
-                Rc::make_mut(&mut chat.messages).push(ChatMessage {
-                    role: Role::Assistant,
-                    kind: MessageKind::Text(format!("**Error:** {msg}").into()),
-                    rating: None,
-                    usage: None,
-                    attachments: vec![],
-                    at: SystemTime::now(),
-                });
+                push_message(chat, MessageKind::Text(format!("**Error:** {msg}").into()));
                 if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
@@ -269,6 +245,46 @@ fn pump_stream(stream: crate::backend::ReplyStream, tx: std::sync::mpsc::Sender<
     while let Ok(e) = stream.events.recv() {
         if tx.send(e).is_err() {
             break;
+        }
+    }
+}
+
+/// Append an assistant message carrying `kind` to the chat.
+fn push_message(chat: &mut crate::model::Chat, kind: MessageKind) {
+    Rc::make_mut(&mut chat.messages).push(ChatMessage {
+        role: Role::Assistant,
+        kind,
+        rating: None,
+        usage: None,
+        attachments: vec![],
+        at: SystemTime::now(),
+    });
+}
+
+impl Workspace {
+    /// Apply a plan snapshot: replace the card's steps in place, or append
+    /// a new plan card on first sight.
+    fn apply_plan(&mut self, chat_id: u64, ix: usize, steps: Vec<crate::model::PlanStep>, cx: &mut Context<Self>) {
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
+        let query = if self.chat_search_open {
+            self.chat_search.read(cx).value().to_string().to_lowercase()
+        } else {
+            String::new()
+        };
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
+        if let Some(pos) = chat.messages.iter().rposition(|m| matches!(&m.kind, MessageKind::Plan(p) if p.plan_ix == ix)) {
+            if let MessageKind::Plan(p) = &mut Rc::make_mut(&mut chat.messages)[pos].kind {
+                p.steps = steps;
+            }
+            if is_active {
+                let sp = self.filtered_pos(pos, cx);
+                self.scroller.update(cx, |s, cx| s.remeasure_items(sp..sp + 1, cx));
+            }
+            return;
+        }
+        push_message(chat, MessageKind::Plan(crate::model::PlanCard { plan_ix: ix, steps }));
+        if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
+            self.scroller.update(cx, |s, cx| s.append(1, cx));
         }
     }
 }

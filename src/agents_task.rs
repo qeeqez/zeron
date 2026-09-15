@@ -107,8 +107,10 @@ fn drain_stream(stream: &mut crate::backend::ReplyStream) -> (Vec<AgentEvent>, b
 fn apply_task_event(agent: &mut Agent, ev: &AgentEvent) -> Option<AgentStatus> {
     match ev {
         AgentEvent::ToolCallStart { ix, name, detail } => {
-            agent.steps_done += 1;
-            agent.steps_total = agent.steps_done;
+            if !agent.has_plan {
+                agent.steps_done += 1;
+                agent.steps_total = agent.steps_done;
+            }
             agent.step = format!("{name} {detail}").into();
             agent.tools.push(ToolCall {
                 tool_ix: *ix,
@@ -153,6 +155,20 @@ fn apply_task_event(agent: &mut Agent, ev: &AgentEvent) -> Option<AgentStatus> {
             Some(AgentStatus::Failed)
         },
         AgentEvent::TextStart | AgentEvent::TextDelta(_) => None,
+        // The plan checklist announces real progress — the row's counters
+        // track it and the step label shows the in-flight step.
+        AgentEvent::Plan { steps, .. } => {
+            let done = steps.iter().filter(|s| s.status == crate::model::PlanStatus::Done).count();
+            let current = steps.iter().find(|s| s.status == crate::model::PlanStatus::InProgress);
+            agent.has_plan = true;
+            agent.steps_done = done;
+            agent.steps_total = steps.len();
+            agent.step = match current {
+                Some(s) => s.label.clone(),
+                None => format!("plan {done}/{}", steps.len()).into(),
+            };
+            None
+        },
     }
 }
 

@@ -1,10 +1,11 @@
 //! ACP `session/update` → `AgentEvent` decoder. Tracks open text,
-//! thought, tool, and plan cards so streamed updates route to the right
+//! thought, and tool cards so streamed updates route to the right
 //! message and terminal statuses close cards exactly once.
 
 use serde_json::Value;
 
 use super::AgentEvent;
+use crate::backend_parse::plan_steps;
 
 /// Synthetic ids for cards that have no toolCallId of their own.
 const PLAN_ID: &str = "__acp_plan__";
@@ -21,8 +22,6 @@ pub(super) struct AcpDecoder {
     message: Option<String>,
     /// messageId of the in-flight thought stream (the "thinking" card).
     thought: Option<String>,
-    /// Whether the synthetic plan card is open.
-    plan_open: bool,
 }
 
 impl AcpDecoder {
@@ -32,7 +31,6 @@ impl AcpDecoder {
             ended: std::collections::HashSet::new(),
             message: None,
             thought: None,
-            plan_open: false,
         }
     }
 
@@ -163,28 +161,14 @@ impl AcpDecoder {
     }
 
     /// `plan`: the whole checklist arrives each time — replace the card.
+    /// Plan cards have no spinner, so nothing opens or closes them.
     fn plan(&mut self, u: &Value) -> Vec<AgentEvent> {
         let mut out = vec![];
         self.close_thought_into(&mut out);
-        let Some(entries) = u["entries"].as_array() else { return out };
-        let ix = ix_of(PLAN_ID);
-        if !self.plan_open {
-            self.plan_open = true;
-            out.push(AgentEvent::ToolCallStart { ix, name: "plan".into(), detail: "".into() });
+        let steps = plan_steps(&u["entries"], "content", "status");
+        if !steps.is_empty() {
+            out.push(AgentEvent::Plan { ix: ix_of(PLAN_ID), steps });
         }
-        let text = entries
-            .iter()
-            .map(|e| {
-                let mark = match e["status"].as_str() {
-                    Some("completed") => "☑",
-                    Some("in_progress") => "◐",
-                    _ => "☐",
-                };
-                format!("{mark} {}", e["content"].as_str().unwrap_or(""))
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        out.push(AgentEvent::ToolCallSet { ix, output: text.into() });
         out
     }
 
@@ -214,13 +198,10 @@ impl AcpDecoder {
     }
 
     /// Turn end: close any cards still open so nothing spins forever.
+    /// Plan cards need no close — they render their last snapshot.
     pub(super) fn close_open(&mut self) -> Vec<AgentEvent> {
         let mut out = vec![];
         self.close_thought_into(&mut out);
-        if self.plan_open {
-            self.plan_open = false;
-            out.push(AgentEvent::ToolCallEnd { ix: ix_of(PLAN_ID), ok: true });
-        }
         let open: Vec<String> = self.started.difference(&self.ended).cloned().collect();
         self.started.clear();
         for id in open {

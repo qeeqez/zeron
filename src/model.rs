@@ -50,6 +50,45 @@ pub struct ToolCall {
     pub expanded: bool,
 }
 
+/// One checklist step's progress — mirrors codex's `update_plan` statuses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum PlanStatus {
+    Pending,
+    InProgress,
+    Done,
+}
+
+/// One step of the agent's plan checklist.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PlanStep {
+    /// Position in the checklist — backends don't carry stable step ids.
+    pub id: usize,
+    pub label: SharedString,
+    pub status: PlanStatus,
+}
+
+/// The agent's live plan checklist — replaced wholesale on each update.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct PlanCard {
+    /// Backend-assigned index, same routing role as `ToolCall::tool_ix`.
+    pub plan_ix: usize,
+    pub steps: Vec<PlanStep>,
+}
+
+impl PlanCard {
+    /// Checklist as a markdown task list — used by copy and export.
+    pub fn markdown(&self) -> String {
+        self.steps
+            .iter()
+            .map(|s| {
+                let mark = if s.status == PlanStatus::Done { "x" } else { " " };
+                format!("- [{mark}] {}", s.label)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct DiffCard {
     pub path: SharedString,
@@ -64,6 +103,7 @@ pub enum MessageKind {
     Text(SharedString),
     Tool(ToolCall),
     Diff(DiffCard),
+    Plan(PlanCard),
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -229,6 +269,9 @@ pub struct Agent {
     pub expanded_tools: std::collections::HashSet<usize>,
     pub steps_done: usize,
     pub steps_total: usize,
+    /// The backend announced a plan — `steps_done`/`steps_total` track the
+    /// checklist, so tool calls no longer drive the counters.
+    pub has_plan: bool,
     pub elapsed_secs: u64,
     pub log: Vec<SharedString>,
     pub expanded: bool,
@@ -248,6 +291,7 @@ impl Agent {
             expanded_tools: std::collections::HashSet::new(),
             steps_done: 0,
             steps_total,
+            has_plan: false,
             elapsed_secs: 0,
             log: Vec::new(),
             expanded: false,

@@ -6,8 +6,8 @@ use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext};
 
-use crate::backend::{AgentBackend, ReplyStream};
-use crate::model::{ChatMessage, MessageKind, Role};
+use crate::backend::{AgentBackend, AgentEvent, ReplyStream};
+use crate::model::{ChatMessage, MessageKind, PlanStatus, Role};
 use crate::workspace::Workspace;
 
 /// Mount a `Workspace` in a headless window with `HOME` redirected to a
@@ -135,5 +135,82 @@ fn retry_resends_last_user_message() {
         let msgs = &ws.read(cx).chats[0].messages;
         assert_eq!(msgs.len(), 1, "stale assistant reply should be popped");
         assert!(matches!(msgs[0].role, Role::User));
+    });
+}
+
+/// A backend that streams two plan snapshots, then finishes — the card
+/// must update in place as each `Plan` event lands.
+struct PlanBackend;
+
+impl AgentBackend for PlanBackend {
+    fn name(&self) -> &'static str {
+        "plan"
+    }
+
+    fn send(&self, _prompt: &str, _model: &str, _mode: &str, _ctx: &crate::backend::TurnContext) -> ReplyStream {
+        let (tx, events) = std::sync::mpsc::channel();
+        let step = |id: usize, label: &str, status: PlanStatus| crate::model::PlanStep { id, label: label.into(), status };
+        for e in [
+            AgentEvent::Plan {
+                ix: 7,
+                steps: vec![step(0, "scan repo", PlanStatus::InProgress), step(1, "edit files", PlanStatus::Pending)],
+            },
+            AgentEvent::Plan {
+                ix: 7,
+                steps: vec![step(0, "scan repo", PlanStatus::Done), step(1, "edit files", PlanStatus::InProgress)],
+            },
+            AgentEvent::Done,
+        ] {
+            let _ = tx.send(e);
+        }
+        ReplyStream {
+            events,
+            child: None,
+            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+}
+
+/// A streamed plan renders as a checklist card whose steps update in place
+/// as later `Plan` snapshots arrive.
+#[test]
+fn plan_card_renders_checklist_and_updates() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    cx.update(|window, cx| {
+        ws.update(cx, |this, cx| {
+            this.backend = std::sync::Arc::new(PlanBackend);
+            this.composer.update(cx, |composer, cx| composer.set_value("go", window, cx));
+            this.send(window, cx);
+        });
+    });
+    for _ in 0..8 {
+        cx.executor().advance_clock(std::time::Duration::from_millis(50));
+        cx.run_until_parked();
+    }
+    // One plan message, holding the second snapshot.
+    ws.read_with(cx, |ws, _| {
+        let plans: Vec<_> = ws.chats[0]
+            .messages
+            .iter()
+            .filter_map(|m| match &m.kind {
+                MessageKind::Plan(p) => Some(p),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(plans.len(), 1, "both Plan events must land on one card");
+        assert_eq!(plans[0].steps[0].status, PlanStatus::Done);
+        assert_eq!(plans[0].steps[1].status, PlanStatus::InProgress);
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.find(("plan", 1usize)).visible(), "plan card header should render");
+        // Step rows expose checkbox state: done → checked, in-progress
+        // → indeterminate, pending → unchecked.
+        let done = window.find("plan-step-1-0");
+        assert_eq!(done.checked(), Some(true), "done step must read checked");
+        let wip = window.find("plan-step-1-1");
+        assert_eq!(wip.indeterminate(), Some(true), "in-progress step must read indeterminate");
+        assert_eq!(wip.label(), Some("edit files"));
     });
 }

@@ -48,24 +48,24 @@ fn turn_completed_variants() {
 }
 
 #[test]
-fn plan_card_closes_when_turn_completes() {
-    // `turn/plan/updated` opens a synthetic Running card; the turn ends
-    // without an item/completed for it, so `turn/completed` must emit the
-    // card's ToolCallEnd or it spins forever.
+fn plan_card_keeps_last_snapshot_when_turn_completes() {
+    // `turn/plan/updated` emits a Plan snapshot; the turn ends without an
+    // item/completed for it. The checklist has no spinner, so completion
+    // emits only Done — no ToolCallEnd.
     let mut d = TurnDecoder::new();
     let evs = events(
         &mut d,
         r#"{"method":"turn/plan/updated","params":{"threadId":"t","turnId":"u","explanation":null,"plan":[{"step":"scan","status":"inProgress"}]}}"#,
     );
-    assert!(matches!(&evs[0], AgentEvent::ToolCallStart { name, .. } if name == "plan"));
+    assert!(matches!(&evs[0], AgentEvent::Plan { .. }));
 
     let dec =
         d.line(r#"{"method":"turn/completed","params":{"threadId":"t","turn":{"id":"u","status":"completed","error":null,"items":[]}}}"#);
     assert!(dec.turn_over);
-    assert!(matches!(&dec.events[0], AgentEvent::ToolCallEnd { ok: true, .. }));
-    assert!(matches!(&dec.events[1], AgentEvent::Done));
+    assert_eq!(dec.events.len(), 1);
+    assert!(matches!(&dec.events[0], AgentEvent::Done));
 
-    // Interrupted turn: the card still closes — as failed, not spinning.
+    // Interrupted turn: same — the card just keeps its last snapshot.
     let mut d = TurnDecoder::new();
     events(
         &mut d,
@@ -73,10 +73,10 @@ fn plan_card_closes_when_turn_completes() {
     );
     let dec =
         d.line(r#"{"method":"turn/completed","params":{"threadId":"t","turn":{"id":"u","status":"interrupted","error":null,"items":[]}}}"#);
-    assert!(matches!(&dec.events[0], AgentEvent::ToolCallEnd { ok: false, .. }));
-    assert!(matches!(&dec.events[1], AgentEvent::Done));
+    assert_eq!(dec.events.len(), 1);
+    assert!(matches!(&dec.events[0], AgentEvent::Done));
 
-    // A turn that never showed a plan emits no ToolCallEnd.
+    // A turn that never showed a plan still emits only Done.
     let mut d = TurnDecoder::new();
     let dec =
         d.line(r#"{"method":"turn/completed","params":{"threadId":"t","turn":{"id":"u","status":"completed","error":null,"items":[]}}}"#);

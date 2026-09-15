@@ -3,7 +3,7 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::model::{ChatMessage, DiffCard, MessageKind, ToolCall, ToolStatus};
+use crate::model::{ChatMessage, DiffCard, MessageKind, PlanCard, PlanStatus, ToolCall, ToolStatus};
 use crate::workspace::Workspace;
 
 fn toggle_expanded(ws: Entity<Workspace>, ix: usize) -> impl Fn(&ClickEvent, &mut Window, &mut App) {
@@ -13,7 +13,7 @@ fn toggle_expanded(ws: Entity<Workspace>, ix: usize) -> impl Fn(&ClickEvent, &mu
             match &mut msg.kind {
                 MessageKind::Tool(tool) => tool.expanded = !tool.expanded,
                 MessageKind::Diff(diff) => diff.expanded = !diff.expanded,
-                MessageKind::Text(_) => {},
+                MessageKind::Text(_) | MessageKind::Plan(_) => {},
             }
             // Height changed — the virtual scroller must re-measure or the
             // expanded body renders clipped. Under an open search the
@@ -110,6 +110,66 @@ pub fn render_diff(ix: usize, diff: &DiffCard, ws: Entity<Workspace>, cx: &mut A
         card = card.child(detail_block(&diff.hunks, cx));
     }
     card
+}
+
+/// The agent's plan checklist — one row per step, live-updating as `Plan`
+/// events stream in. Done steps strike through, the in-progress step is
+/// highlighted, pending steps stay dim.
+pub fn render_plan(ix: usize, plan: &PlanCard, cx: &mut App) -> impl IntoElement {
+    let done = plan.steps.iter().filter(|s| s.status == PlanStatus::Done).count();
+    let header = div()
+        .id(("plan", ix))
+        .test_support()
+        .flex()
+        .items_center()
+        .gap_2()
+        .px_3()
+        .py_2()
+        .text_sm()
+        .child(IconName::ListTodo)
+        .child("Plan")
+        .child(div().flex_1())
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(format!("{done}/{}", plan.steps.len())),
+        );
+    let steps: Vec<AnyElement> = plan.steps.iter().map(|s| plan_step(ix, s, cx).into_any_element()).collect();
+    card_frame(cx).child(header).children(steps)
+}
+
+/// One checklist row: a status checkbox icon plus the step label. The row
+/// carries `Role::CheckBox` + `aria_toggled` so tests and a11y clients see
+/// done/in-progress/pending as checked/mixed/unchecked.
+fn plan_step(ix: usize, step: &crate::model::PlanStep, cx: &mut App) -> impl IntoElement {
+    use gpui_kit::accesskit::Toggled;
+    let (icon, color, toggled) = match step.status {
+        PlanStatus::Done => (IconName::SquareCheck, cx.theme().success, Toggled::True),
+        PlanStatus::InProgress => (IconName::LoaderCircle, cx.theme().info, Toggled::Mixed),
+        PlanStatus::Pending => (IconName::Square, cx.theme().muted_foreground, Toggled::False),
+    };
+    div()
+        .id(format!("plan-step-{ix}-{}", step.id))
+        .test_support()
+        .role(gpui_kit::Role::CheckBox)
+        .aria_toggled(toggled)
+        .aria_label(step.label.clone())
+        .flex()
+        .items_center()
+        .gap_2()
+        .px_3()
+        .py_1()
+        .border_t_1()
+        .border_color(cx.theme().border)
+        .child(div().text_color(color).child(icon))
+        .child(
+            div()
+                .text_sm()
+                .when(step.status == PlanStatus::Done, |d| d.line_through().text_color(cx.theme().muted_foreground))
+                .when(step.status == PlanStatus::InProgress, |d| d.font_weight(FontWeight::SEMIBOLD))
+                .child(step.label.clone()),
+        )
 }
 
 #[derive(Clone, Copy)]

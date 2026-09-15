@@ -1,6 +1,7 @@
 //! Parse `codex exec --json` JSONL lines into `AgentEvent`s.
 
 use crate::backend::AgentEvent;
+use crate::model::{PlanStatus, PlanStep};
 
 /// Map one `codex exec --json` JSONL line to zero or more `AgentEvent`s.
 pub fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
@@ -14,6 +15,14 @@ pub fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
             detail: item["command"].as_str().unwrap_or("").into(),
         }],
         "item.started" if item["type"].as_str() == Some("agent_message") => vec![AgentEvent::TextStart],
+        // `todo_list` items carry the whole checklist on every event —
+        // started, updated and completed all map to a Plan snapshot.
+        "item.started" | "item.updated" | "item.completed" if item["type"].as_str() == Some("todo_list") => {
+            vec![AgentEvent::Plan {
+                ix: item_ix(item),
+                steps: plan_steps(&item["items"], "text", "completed"),
+            }]
+        },
 
         "item.completed" => match item["type"].as_str() {
             Some("command_execution") => {
@@ -170,4 +179,102 @@ fn diff_for_path(path: &str) -> Option<AgentEvent> {
         }
     }
     Some(AgentEvent::Diff { path: path.into(), added, removed, hunks: hunks.into() })
+}
+
+/// Map a backend's step-status word to `PlanStatus`. Covers codex's
+/// camelCase (`inProgress`), ACP's snake_case (`in_progress`) and claude's
+/// `TodoWrite` names; unknown values read as pending.
+pub(crate) fn plan_status(status: Option<&str>) -> PlanStatus {
+    match status {
+        Some("completed") | Some("done") => PlanStatus::Done,
+        Some("inProgress") | Some("in_progress") => PlanStatus::InProgress,
+        _ => PlanStatus::Pending,
+    }
+}
+
+/// Steps from a JSON array — `label`/`status` name the per-entry fields.
+/// `status` may be a status word or a `completed: bool` flag.
+pub(crate) fn plan_steps(items: &serde_json::Value, label: &str, status: &str) -> Vec<PlanStep> {
+    items
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .map(|(id, e)| PlanStep {
+            id,
+            label: e[label].as_str().unwrap_or("").into(),
+            status: match e[status].as_bool() {
+                Some(true) => PlanStatus::Done,
+                _ => plan_status(e[status].as_str()),
+            },
+        })
+        .collect()
+}
+
+/// Steps parsed from a markdown checklist (`- [ ]`, `- [x]`, `* [ ]`,
+/// `1. [x]`). Returns `None` when no line carries a checkbox — prose plans
+/// aren't checklists.
+pub(crate) fn plan_steps_from_text(text: &str) -> Option<Vec<PlanStep>> {
+    let mut steps = Vec::new();
+    for line in text.lines() {
+        // Strip the bullet: `-`, `*`, or an ordered `N.` marker.
+        let t = line.trim_start();
+        let t = t
+            .strip_prefix(['-', '*'])
+            .or_else(|| {
+                t.split_once(". ")
+                    .filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+                    .map(|(_, r)| r)
+            })
+            .map(str::trim_start)
+            .unwrap_or(t);
+        let (done, rest) = if let Some(r) = t.strip_prefix("[ ]") {
+            (false, r)
+        } else if let Some(r) = t.strip_prefix("[x]").or_else(|| t.strip_prefix("[X]")) {
+            (true, r)
+        } else {
+            continue;
+        };
+        let label = rest.trim();
+        if !label.is_empty() {
+            steps.push(PlanStep {
+                id: steps.len(),
+                label: label.into(),
+                status: if done { PlanStatus::Done } else { PlanStatus::Pending },
+            });
+        }
+    }
+    (!steps.is_empty()).then_some(steps)
+}
+
+/// `tool_result.content` is a string or an array of content blocks —
+/// flatten to displayable text.
+pub(crate) fn result_text(content: &serde_json::Value) -> String {
+    if let Some(s) = content.as_str() {
+        return s.to_string();
+    }
+    let Some(blocks) = content.as_array() else { return String::new() };
+    blocks
+        .iter()
+        .filter_map(|b| match b["type"].as_str() {
+            Some("text") => Some(b["text"].as_str().unwrap_or("").to_string()),
+            Some("image") => Some("[image]".to_string()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// `TodoWrite` input → plan steps. `activeForm` is the present-tense label
+/// claude shows while a step runs — prefer it for in-progress rows.
+pub(crate) fn todo_steps(input: &serde_json::Value) -> Vec<PlanStep> {
+    let mut steps = plan_steps(&input["todos"], "content", "status");
+    for (step, todo) in steps.iter_mut().zip(input["todos"].as_array().into_iter().flatten()) {
+        if step.status == PlanStatus::InProgress
+            && let Some(active) = todo["activeForm"].as_str().filter(|a| !a.is_empty())
+        {
+            step.label = active.into();
+        }
+    }
+    steps
 }

@@ -220,6 +220,7 @@ impl Workspace {
                 MessageKind::Text(t) => t.len(),
                 MessageKind::Tool(t) => t.output.len(),
                 MessageKind::Diff(d) => d.hunks.len(),
+                MessageKind::Plan(p) => p.steps.iter().map(|s| s.label.len()).sum(),
             })
             .sum::<usize>()
             / 4

@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use super::rpc::request_reply;
 use crate::backend::AgentEvent;
-use crate::backend_parse::{file_change_events, item_id, item_ix, mcp_result_text, reasoning_text};
+use crate::backend_parse::{file_change_events, item_id, item_ix, mcp_result_text, plan_steps, plan_steps_from_text, reasoning_text};
 
 /// Item id of the synthetic plan card — `turn/plan/updated` has no item
 /// id of its own, so the checklist lives under this key.
@@ -105,7 +105,9 @@ impl TurnDecoder {
             Some("collabAgentToolCall") => self.tool_start(item, "agent", item["tool"].as_str().unwrap_or("")),
             Some("webSearch") => self.tool_start(item, "web_search", item["query"].as_str().unwrap_or("")),
             Some("fileChange") => self.tool_start(item, "file_change", ""),
-            Some("plan") => self.tool_start(item, "plan", ""),
+            // `plan` items carry the proposed plan as markdown — the card
+            // opens on `item/completed` once the text is known.
+            Some("plan") => vec![],
             _ => vec![],
         }
     }
@@ -157,12 +159,28 @@ impl TurnDecoder {
                 out.push(AgentEvent::ToolCallEnd { ix, ok: item["status"].as_str() == Some("completed") });
                 out
             },
-            Some("plan") => {
-                let text = item["text"].as_str().unwrap_or("");
-                if text.is_empty() { vec![] } else { vec![AgentEvent::ToolCallSet { ix, output: text.into() }] }
-            },
+            Some("plan") => self.plan_item_completed(item),
             _ => vec![],
         }
+    }
+
+    /// A completed `plan` item: markdown checklists become `Plan` steps;
+    /// prose plans keep the old text card (open + fill + close in one go —
+    /// `item/started` doesn't open a card for plan items).
+    fn plan_item_completed(&mut self, item: &Value) -> Vec<AgentEvent> {
+        let text = item["text"].as_str().unwrap_or("");
+        if let Some(steps) = plan_steps_from_text(text) {
+            return vec![AgentEvent::Plan { ix: item_ix(item), steps }];
+        }
+        if text.is_empty() {
+            return vec![];
+        }
+        let ix = item_ix(item);
+        vec![
+            AgentEvent::ToolCallStart { ix, name: "plan".into(), detail: "".into() },
+            AgentEvent::ToolCallSet { ix, output: text.into() },
+            AgentEvent::ToolCallEnd { ix, ok: true },
+        ]
     }
 
     /// A content delta for an item: text for agent messages, output for
@@ -198,28 +216,13 @@ impl TurnDecoder {
     }
 
     /// `turn/plan/updated` carries the whole checklist — replace the plan
-    /// card's content rather than appending.
+    /// card's steps rather than appending.
     fn plan_updated(&mut self, params: &Value) -> Vec<AgentEvent> {
-        let Some(steps) = params["plan"].as_array() else { return vec![] };
-        let ix = item_ix(&self.plan_item);
-        let mut out = vec![];
-        if self.started.insert(PLAN_ID.to_string()) {
-            out.push(AgentEvent::ToolCallStart { ix, name: "plan".into(), detail: "".into() });
+        let steps = plan_steps(&params["plan"], "step", "status");
+        if steps.is_empty() {
+            return vec![];
         }
-        let text = steps
-            .iter()
-            .map(|s| {
-                let mark = match s["status"].as_str() {
-                    Some("completed") => "☑",
-                    Some("inProgress") => "◐",
-                    _ => "☐",
-                };
-                format!("{mark} {}", s["step"].as_str().unwrap_or(""))
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        out.push(AgentEvent::ToolCallSet { ix, output: text.into() });
-        out
+        vec![AgentEvent::Plan { ix: item_ix(&self.plan_item), steps }]
     }
 
     /// Live token usage for the in-flight turn (`last` is this turn's
@@ -248,15 +251,10 @@ impl TurnDecoder {
 
     /// `turn/completed` ends the turn. `failed` surfaces the turn error
     /// (unless one was already emitted); `interrupted` is a clean stop —
-    /// the user cancelled, so no error bubble. A live plan card gets its
-    /// `ToolCallEnd` here — `turn/plan/updated` has no item/completed, so
-    /// without this the checklist card spins forever.
+    /// the user cancelled, so no error bubble. Plan cards keep their last
+    /// snapshot — the checklist has no spinner to settle.
     fn turn_completed(&mut self, turn: &Value) -> Vec<AgentEvent> {
-        let ok = turn["status"].as_str() == Some("completed");
         let mut out = vec![];
-        if self.started.remove(PLAN_ID) {
-            out.push(AgentEvent::ToolCallEnd { ix: item_ix(&self.plan_item), ok });
-        }
         match turn["status"].as_str() {
             Some("failed") if !self.errored => {
                 let err = &turn["error"];

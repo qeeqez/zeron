@@ -7,7 +7,7 @@ use gpui_kit::*;
 
 use crate::model::{MessageKind, Role};
 
-use crate::views::cards::{MsgCtx, render_diff, render_tool_call};
+use crate::views::cards::{MsgCtx, render_diff, render_plan, render_tool_call};
 use crate::views::markdown::MarkdownState;
 use crate::workspace::Workspace;
 
@@ -17,6 +17,7 @@ pub fn render_message(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, c
         MessageKind::Text(_) => render_text(mc, ws, window, cx),
         MessageKind::Tool(tool) => render_tool_call(ix, tool, ws.clone(), cx).into_any_element(),
         MessageKind::Diff(diff) => render_diff(ix, diff, ws.clone(), cx).into_any_element(),
+        MessageKind::Plan(plan) => render_plan(ix, plan, cx).into_any_element(),
     }
 }
 
