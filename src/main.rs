@@ -33,6 +33,9 @@ mod changes_tests;
 #[cfg(test)]
 mod changes_ui_tests;
 mod chat_delete;
+mod chat_edit;
+#[cfg(test)]
+mod chat_edit_tests;
 mod chat_find;
 #[cfg(test)]
 mod chat_find_tests;

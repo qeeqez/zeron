@@ -1,5 +1,6 @@
-//! Per-message operations: rate, edit, recall, copy, retry — plus the
+//! Per-message operations: rate, recall, copy, retry — plus the
 //! queued-message edit path (a queued item reopens in the composer).
+//! Edit-and-resend of a sent user message lives in `crate::chat_edit`.
 
 use std::rc::Rc;
 
@@ -21,39 +22,6 @@ impl Workspace {
         self.save();
     }
 
-    /// Load message `ix` into the composer and truncate the chat after it,
-    /// so re-sending replaces the original turn. Stops any in-flight reply
-    /// first — its events would otherwise append to the truncated chat.
-    pub fn edit_message(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if self.chats[self.active].running {
-            self.stop_reply(cx);
-        }
-        let chat = &mut self.chats[self.active];
-        let Some(text) = chat.messages.get(ix).and_then(|m| match &m.kind {
-            MessageKind::Text(t) if m.role == Role::User => Some(t.to_string()),
-            _ => None,
-        }) else {
-            return;
-        };
-        Rc::make_mut(&mut chat.messages).truncate(ix);
-        // Truncating drops the turn that earned `last_turn` — don't let the
-        // new tail message inherit its duration label.
-        chat.last_turn = None;
-        self.recall_ix = None;
-        self.search_match_ix = 0;
-        // Stash the in-progress composer text — recall_next past the newest
-        // restores it instead of clearing.
-        self.recall_saved = Some(self.composer.read(cx).value().to_string());
-        self.composer.update(cx, |s, cx| {
-            s.set_value(text, window, cx);
-            s.focus(window, cx);
-        });
-        let count = self.filtered_count(cx);
-        self.scroller.update(cx, |s, cx| s.reset(count, cx));
-        cx.notify();
-        self.save();
-    }
-
     /// Cmd+Up: load the last user message into the composer (no truncation).
     /// Seeds the recall cycle so Cmd+Shift+Up continues from here.
     pub fn recall_last(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -66,7 +34,7 @@ impl Workspace {
         };
         // Stash the in-progress composer text — recall_next past the newest
         // restores it instead of clearing. Kept if a stash already exists
-        // (e.g. edit_message saved one).
+        // (e.g. a recall cycle that already saved one).
         if self.recall_saved.is_none() {
             self.recall_saved = Some(self.composer.read(cx).value().to_string());
         }

@@ -18,6 +18,8 @@ mod markdown;
 #[cfg(test)]
 mod markdown_tests;
 mod message;
+mod message_edit;
+mod message_footer;
 #[cfg(test)]
 mod message_tests;
 mod model_picker;

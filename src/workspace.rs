@@ -92,6 +92,9 @@ pub struct Workspace {
     /// Composer text stashed when a recall cycle starts — restored when the
     /// cycle steps past the newest message.
     pub recall_saved: Option<String>,
+    /// A user message open in the inline editor — commit truncates the
+    /// transcript after it and resends (see `crate::chat_edit`).
+    pub editing: Option<crate::chat_edit::EditMessage>,
     pub chat_search: Entity<InputState>,
     /// In-chat find bar state (Cmd-F) — highlights + navigates matches
     /// without filtering the transcript (see `crate::chat_find`).
@@ -290,6 +293,7 @@ impl Workspace {
             chat_search_open: false,
             search_match_ix: 0,
             recall_saved: None,
+            editing: None,
             close_confirmed: std::cell::Cell::new(false),
             settings_open: false,
             settings_panel,

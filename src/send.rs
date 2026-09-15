@@ -92,6 +92,9 @@ impl Workspace {
     /// the caller already cleared the live composer list. Caller guarantees
     /// the chat is idle and clears the composer.
     pub(crate) fn send_text(&mut self, item: Queued, window: &mut Window, cx: &mut Context<Self>) {
+        // A new send abandons a pending message edit — the inline editor
+        // unmounts and the transcript stays as it was.
+        self.editing = None;
         let prompt = build_prompt(&item.text, &item.attachments);
         self.push_user_message(item, window, cx);
         let chat = &mut self.chats[self.active];
@@ -164,6 +167,11 @@ impl Workspace {
             return Drain::Done;
         }
         if self.chats[self.active].running {
+            return Drain::Wait;
+        }
+        // A pending edit forks the transcript on commit — a queued send
+        // landing first would be truncated away, so it waits.
+        if self.editing.as_ref().is_some_and(|e| e.chat_id == chat_id) {
             return Drain::Wait;
         }
         let Some(item) = self.send_queue.pop(chat_id) else { return Drain::Done };
