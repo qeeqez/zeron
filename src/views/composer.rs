@@ -8,7 +8,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::send::SLASH_COMMANDS;
-use crate::views::{apply_pick, attachment_chips, mention_item, queued_item, slash_item};
+use crate::views::{ModelPickerSpec, apply_pick, attachment_chips, mention_item, model_picker, queued_item, slash_item};
 use crate::workspace::Workspace;
 
 const MODES: [&str; 3] = ["Agent", "Plan", "Ask"];
@@ -39,15 +39,11 @@ impl Workspace {
             if empty { btn.disabled(true) } else { btn }
         };
 
-        let model_picker = picker(PickerSpec {
-            id: "model",
-            current: self.model.clone(),
-            options: &crate::model::MODELS,
+        let model_picker = model_picker(ModelPickerSpec {
+            current_provider: self.provider,
+            current_model: self.model.clone(),
+            providers: self.enabled_providers().into_iter().map(|p| (*p, self.picker_options(p.id))).collect(),
             ws: ws.clone(),
-            set: |this, v| {
-                this.model = v.into();
-                this.save_settings();
-            },
         });
         let mode_picker = picker(PickerSpec {
             id: "mode",

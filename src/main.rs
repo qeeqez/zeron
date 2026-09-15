@@ -39,6 +39,9 @@ mod git;
 mod git_tests;
 mod lifecycle;
 mod model;
+mod model_catalog;
+#[cfg(test)]
+mod model_picker_tests;
 mod notify;
 #[cfg(test)]
 mod notify_tests;
@@ -66,10 +69,10 @@ mod views;
 mod window;
 #[cfg(test)]
 mod window_chrome_tests;
-#[cfg(test)]
-mod workspace_tests;
 mod workspace;
 mod workspace_settings;
+#[cfg(test)]
+mod workspace_tests;
 
 use gpui_kit::*;
 

@@ -4,7 +4,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::input::InputState;
 use gpui_kit::component::select::{SearchableVec, SelectState};
 use gpui_kit::component::slider::SliderState;
 use gpui_kit::component::theme::ActiveTheme;
@@ -39,6 +39,7 @@ pub fn section_body(section: Section, s: &SettingsView, cx: &App) -> impl IntoEl
     let body = match section {
         Section::General => general_section(s, cx).into_any_element(),
         Section::Appearance => crate::views::settings_appearance::appearance_section(s, cx).into_any_element(),
+        Section::Providers => crate::views::settings_providers::providers_section(s, cx).into_any_element(),
         Section::Shortcuts => shortcuts_section(cx).into_any_element(),
         Section::Voice => placeholder_section("Voice input and dictation are not configured yet.", cx),
         Section::Profile => placeholder_section("Signed in as a local account — no profile to manage.", cx),
@@ -71,36 +72,6 @@ fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
         .child(toggle_row(("toggle-notify", "Notify on reply complete"), s.notify, ws.clone(), |this, _w, _cx| {
             this.notify_on_done = !this.notify_on_done;
         }))
-        .child(group_label("Backend", cx))
-        .child(
-            div().flex().items_center().gap_2().text_xs().child(s.backend).child(div().flex_1()).child(
-                div()
-                    .id("toggle-backend")
-                    .test_support()
-                    .cursor_pointer()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("cycle")
-                    .on_click({
-                        let ws = ws.clone();
-                        move |_, _, cx| {
-                            ws.update(cx, |this, cx| {
-                                this.toggle_backend(cx);
-                            });
-                        }
-                    }),
-            ),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .text_xs()
-                .child(div().text_color(cx.theme().muted_foreground).child("HTTP endpoint"))
-                .child(Input::new(&s.url_input).appearance(true))
-                .child(div().text_color(cx.theme().muted_foreground).child("API key env var"))
-                .child(Input::new(&s.key_input).appearance(true)),
-        )
         .child(group_label("Agent access", cx))
         .child(div().flex().items_center().gap_2().text_xs().children(AccessMode::ALL.into_iter().map(|mode| {
             let btn = Button::new(SharedString::from(mode.name())).label(mode.label()).on_click({

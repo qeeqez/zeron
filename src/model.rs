@@ -2,8 +2,87 @@ use std::time::{Instant, SystemTime};
 
 use gpui_kit::{SharedString, Task};
 
-/// Model ids offered in the picker and `/model`.
-pub const MODELS: [&str; 4] = ["default", "gpt-5-codex", "gpt-5", "gpt-5-mini"];
+/// Codex model ids the picker falls back to when the app-server catalog
+/// can't be fetched (codex missing, offline, error). `default` is always
+/// synthesized by the picker — it is not part of any catalog.
+pub const CODEX_FALLBACK: [&str; 3] = ["gpt-5-codex", "gpt-5", "gpt-5-mini"];
+
+/// One selectable model in a provider's catalog — backends return these
+/// from `AgentBackend::models` for the provider→model picker.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModelInfo {
+    /// Value passed to `send`'s `model` arg.
+    pub id: SharedString,
+    /// Display name in the picker.
+    pub label: SharedString,
+    /// One-line provider description; may be empty.
+    pub description: SharedString,
+}
+
+/// A model provider — one per `AgentBackend` implementation. `id` is the
+/// persisted selector and must match the backend's `provider_id()`.
+#[derive(Clone, Copy)]
+pub struct ProviderInfo {
+    pub id: &'static str,
+    pub label: &'static str,
+    /// One-line description shown in the Providers settings section.
+    pub tagline: &'static str,
+    /// Refresh the picker's catalog from the provider itself; `None` for
+    /// providers whose `models()` list is already complete.
+    pub fetch: Option<ModelFetch>,
+}
+
+/// A provider catalog refresh — runs on a background thread, returns the
+/// real model list or an error the picker ignores (cache/statics remain).
+pub type ModelFetch = fn() -> Result<Vec<ModelInfo>, String>;
+
+/// Every provider the picker and settings know about, in display order.
+/// `codex-cli` first — it's the default backend.
+pub const PROVIDERS: &[ProviderInfo] = &[
+    ProviderInfo {
+        id: "codex-cli",
+        label: "Codex",
+        tagline: "codex app-server over stdio",
+        fetch: Some(crate::backend::fetch_codex_models),
+    },
+    ProviderInfo {
+        id: "claude-cli",
+        label: "Claude",
+        tagline: "claude CLI over stdio",
+        fetch: None,
+    },
+    ProviderInfo {
+        id: "acp",
+        label: "ACP",
+        tagline: "Agent Client Protocol agent",
+        fetch: None,
+    },
+    ProviderInfo {
+        id: "http",
+        label: "HTTP",
+        tagline: "custom NDJSON endpoint",
+        fetch: None,
+    },
+    ProviderInfo {
+        id: "sim",
+        label: "Sim",
+        tagline: "built-in simulator (no backend)",
+        fetch: None,
+    },
+];
+
+/// Codex's static catalog — used until `model/list` lands and whenever the
+/// fetch fails.
+pub fn codex_fallback_models() -> Vec<ModelInfo> {
+    CODEX_FALLBACK
+        .iter()
+        .map(|id| ModelInfo {
+            id: (*id).into(),
+            label: (*id).into(),
+            description: SharedString::default(),
+        })
+        .collect()
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ToolStatus {

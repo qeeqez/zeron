@@ -41,7 +41,7 @@ impl Workspace {
             contrast: self.contrast,
             sidebar_frosted: self.sidebar_frosted,
             notify_on_done: self.notify_on_done,
-            backend: self.backend.name().into(),
+            backend: self.provider.into(),
             http_url: self.http_url.clone(),
             http_key_env: self.http_key_env.clone(),
             use_codex_cli: None,
@@ -50,6 +50,7 @@ impl Workspace {
             sidebar_collapsed: self.sidebar_collapsed,
             active_chat: 0,
             theme,
+            disabled_providers: self.disabled_providers.clone(),
         });
     }
 

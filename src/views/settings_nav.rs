@@ -110,17 +110,26 @@ pub enum Section {
     Appearance,
     Voice,
     Profile,
+    Providers,
     Shortcuts,
     McpServers,
 }
 
 impl Section {
-    pub(crate) const ALL: [Section; 6] = [Self::General, Self::Appearance, Self::Voice, Self::Profile, Self::Shortcuts, Self::McpServers];
+    pub(crate) const ALL: [Section; 7] = [
+        Self::General,
+        Self::Appearance,
+        Self::Voice,
+        Self::Profile,
+        Self::Providers,
+        Self::Shortcuts,
+        Self::McpServers,
+    ];
     /// (group header, sections) pairs for the rail — matches the Codex
     /// settings sidebar grouping.
     pub(crate) const GROUPS: [(&'static str, &'static [Section]); 3] = [
         ("Personal", &[Self::General, Self::Appearance, Self::Voice, Self::Profile]),
-        ("Coding", &[Self::Shortcuts]),
+        ("Coding", &[Self::Providers, Self::Shortcuts]),
         ("Integrations", &[Self::McpServers]),
     ];
     pub fn name(self) -> &'static str {
@@ -131,6 +140,7 @@ impl Section {
             Self::Profile => "profile",
             Self::Shortcuts => "shortcuts",
             Self::McpServers => "mcp",
+            Self::Providers => "providers",
         }
     }
 
@@ -141,6 +151,7 @@ impl Section {
             Self::Voice => "Voice",
             Self::Profile => "Profile",
             Self::Shortcuts => "Shortcuts",
+            Self::Providers => "Providers",
             Self::McpServers => "MCP Servers",
         }
     }
@@ -153,6 +164,7 @@ impl Section {
             Self::Profile => IconName::CircleUser,
             Self::Shortcuts => IconName::Keyboard,
             Self::McpServers => IconName::PlugZap,
+            Self::Providers => IconName::Layers,
         }
     }
 }

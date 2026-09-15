@@ -3,6 +3,7 @@ use gpui_kit::SharedString;
 mod appserver;
 mod codex;
 mod http;
+mod models;
 mod rpc;
 
 #[cfg(test)]
@@ -12,6 +13,7 @@ mod appserver_turn_tests;
 
 pub use codex::CodexCliBackend;
 pub use http::HttpBackend;
+pub use models::fetch_codex_models;
 
 /// How much filesystem access an Agent-mode turn gets. Plan/Ask turns are
 /// always read-only regardless of this setting.
@@ -161,6 +163,16 @@ impl ReplyStream {
 pub trait AgentBackend: Send + Sync {
     /// Human-readable name for the status bar.
     fn name(&self) -> &'static str;
+    /// Stable provider id for the model picker's provider grouping —
+    /// defaults to `name()` since most backends are their own provider.
+    fn provider_id(&self) -> &'static str {
+        self.name()
+    }
+    /// Models this provider offers; empty means "default" only. Backends
+    /// that learn their catalog at runtime return what they've seen.
+    fn models(&self) -> Vec<crate::model::ModelInfo> {
+        Vec::new()
+    }
     /// Start a reply turn. The returned stream yields events until
     /// `Done`/`Error` or cancellation (drop the stream to cancel).
     fn send(&self, prompt: &str, model: &str, mode: &str) -> ReplyStream;
@@ -209,12 +221,20 @@ pub(crate) fn kill_slot(slot: &parking_lot::Mutex<Option<std::process::Child>>) 
     }
 }
 
-/// Build the selected backend. `http` falls back to codex-cli when no
-/// endpoint is configured — an empty URL would fail every send anyway.
-pub fn make_backend(s: &crate::persist::Settings) -> std::sync::Arc<dyn AgentBackend> {
-    match s.backend_name() {
+/// Build a backend by provider id without a full `Settings` — the model
+/// picker constructs providers just to enumerate `models()`. Unknown ids
+/// fall back to codex-cli.
+pub fn backend_for(provider_id: &str, http_url: &str, http_key_env: &str) -> std::sync::Arc<dyn AgentBackend> {
+    match provider_id {
         "sim" => std::sync::Arc::new(SimBackend),
-        "http" if !s.http_url.is_empty() => std::sync::Arc::new(HttpBackend::new(s.http_url.clone(), s.http_key_env.clone())),
+        "http" if !http_url.is_empty() => std::sync::Arc::new(HttpBackend::new(http_url.to_string(), http_key_env.to_string())),
         _ => std::sync::Arc::new(CodexCliBackend::new()),
     }
+}
+
+/// Build the backend for the configured provider. Provider-specific
+/// settings (acp's command, http's endpoint) are honored here — sibling
+/// backends hook their configured construction into this match.
+pub fn make_backend(s: &crate::persist::Settings) -> std::sync::Arc<dyn AgentBackend> {
+    backend_for(s.backend_name(), &s.http_url, &s.http_key_env)
 }

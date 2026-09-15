@@ -189,20 +189,6 @@ impl Workspace {
 }
 
 impl Workspace {
-    /// Cycle sim → codex-cli → http (http only when an endpoint is set).
-    pub fn toggle_backend(&mut self, cx: &mut Context<Self>) {
-        self.backend = match self.backend.name() {
-            "sim" => std::sync::Arc::new(crate::backend::CodexCliBackend::new()),
-            "codex-cli" if !self.http_url.is_empty() => {
-                std::sync::Arc::new(crate::backend::HttpBackend::new(self.http_url.clone(), self.http_key_env.clone()))
-            },
-            "codex-cli" => std::sync::Arc::new(crate::backend::SimBackend),
-            _ => std::sync::Arc::new(crate::backend::SimBackend),
-        };
-        self.save_settings();
-        cx.notify();
-    }
-
     pub fn toggle_pin(&mut self, index: usize, cx: &mut Context<Self>) {
         if let Some(chat) = self.chats.get_mut(index) {
             chat.pinned = !chat.pinned;

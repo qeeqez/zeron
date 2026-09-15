@@ -44,6 +44,41 @@ pub(crate) fn turn_start_req(id: i64, thread_id: &str, prompt: &str) -> Value {
     })
 }
 
+/// `model/list` — one page of the provider's catalog. `cursor` is the
+/// previous page's `nextCursor`; `None` requests the first page.
+pub(crate) fn model_list_req(id: i64, cursor: Option<&Value>) -> Value {
+    let mut params = json!({"includeHidden": false, "limit": 100});
+    if let Some(c) = cursor {
+        params["cursor"] = c.clone();
+    }
+    json!({"method": "model/list", "id": id, "params": params})
+}
+
+/// Parse one `model/list` result into `(models, next_cursor)`. Hidden
+/// entries are dropped — the picker never offers them.
+pub(crate) fn parse_model_page(result: &Value) -> (Vec<crate::model::ModelInfo>, Option<Value>) {
+    let models = result["data"]
+        .as_array()
+        .map(|data| {
+            data.iter()
+                .filter(|m| !m["hidden"].as_bool().unwrap_or(false))
+                .filter_map(|m| {
+                    let id = m["id"].as_str()?;
+                    if id.is_empty() {
+                        return None;
+                    }
+                    Some(crate::model::ModelInfo {
+                        id: id.into(),
+                        label: m["displayName"].as_str().unwrap_or(id).into(),
+                        description: m["description"].as_str().unwrap_or("").into(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    (models, result["nextCursor"].as_str().map(|s| json!(s)))
+}
+
 /// JSON-RPC response for a server-initiated request. There's no approval
 /// UI, so approvals are declined and everything else gets a generic error —
 /// matching `codex exec`'s non-interactive behavior.
@@ -93,5 +128,43 @@ mod tests {
         let req = initialize_req(1);
         assert_eq!(req["method"], json!("initialize"));
         assert_eq!(req["params"]["capabilities"]["experimentalApi"], json!(false));
+    }
+
+    #[test]
+    fn model_list_omits_cursor_on_first_page() {
+        let req = model_list_req(2, None);
+        assert_eq!(req["method"], json!("model/list"));
+        assert_eq!(req["params"]["includeHidden"], json!(false));
+        assert!(req["params"].get("cursor").is_none());
+        let paged = model_list_req(3, Some(&json!("abc")));
+        assert_eq!(paged["params"]["cursor"], json!("abc"));
+    }
+
+    #[test]
+    fn parse_model_page_drops_hidden_and_reads_cursor() {
+        let result = json!({
+            "data": [
+                {"id": "gpt-6", "displayName": "GPT-6", "description": "capable", "hidden": false},
+                {"id": "gpt-6-mini", "hidden": true},
+                {"id": "gpt-5", "hidden": false},
+                {"id": "", "hidden": false},
+            ],
+            "nextCursor": "page-2",
+        });
+        let (models, cursor) = parse_model_page(&result);
+        let ids: Vec<&str> = models.iter().map(|m| m.id.as_ref()).collect();
+        assert_eq!(ids, ["gpt-6", "gpt-5"]);
+        assert_eq!(models[0].label.as_ref(), "GPT-6");
+        assert_eq!(models[0].description.as_ref(), "capable");
+        // Missing displayName falls back to the id.
+        assert_eq!(models[1].label.as_ref(), "gpt-5");
+        assert_eq!(cursor, Some(json!("page-2")));
+    }
+
+    #[test]
+    fn parse_model_page_last_page_has_no_cursor() {
+        let (models, cursor) = parse_model_page(&json!({"data": [], "nextCursor": null}));
+        assert!(models.is_empty());
+        assert_eq!(cursor, None);
     }
 }

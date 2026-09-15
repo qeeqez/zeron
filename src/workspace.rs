@@ -43,6 +43,15 @@ pub struct Workspace {
     pub search: Entity<InputState>,
     pub scroller: Entity<MessageScrollerState>,
     pub model: SharedString,
+    /// Selected provider id — an entry in `crate::model::PROVIDERS`. The
+    /// backend is rebuilt from it on change; persisted as `Settings.backend`.
+    pub provider: &'static str,
+    /// Per-provider model lists for the picker — seeded from each
+    /// backend's `models()`, overlaid by the cache, refreshed by
+    /// `ProviderInfo::fetch`. Never contains the synthetic `default`.
+    pub model_catalog: std::collections::HashMap<String, Vec<crate::model::ModelInfo>>,
+    /// Provider ids hidden from the picker — persisted in settings.
+    pub disabled_providers: Vec<String>,
     pub mode: SharedString,
     /// Filesystem access granted to Agent-mode turns — Plan/Ask are always
     /// read-only. Published to `crate::backend` on change so the backend
@@ -96,7 +105,7 @@ pub struct Workspace {
     pub project: crate::project::Project,
 
     pub backend: std::sync::Arc<dyn crate::backend::AgentBackend>,
-    /// HTTP transport config — kept on the workspace so `toggle_backend`
+    /// HTTP transport config — kept on the workspace so provider switches
     /// can rebuild `HttpBackend` without re-reading settings.json.
     pub http_url: String,
     pub http_key_env: String,
@@ -165,8 +174,15 @@ impl Workspace {
         })
         .detach();
 
-        let settings = crate::persist::load_settings();
+        let mut settings = crate::persist::load_settings();
         project.migrate_legacy_chats(settings.active_chat);
+        let disabled_providers = settings.disabled_providers.clone();
+        let provider = crate::model_catalog::pick_provider(settings.backend_name(), &disabled_providers);
+        let model_catalog = crate::model_catalog::seed_catalog(&settings);
+        // Point the loaded settings at the resolved provider so
+        // `make_backend` builds what the picker shows.
+        settings.backend = provider.to_string();
+        settings.use_codex_cli = None;
         // Built eagerly — creating it inside open_settings would re-enter the
         // workspace borrow (the click listener already holds it).
         let ws = cx.entity();
@@ -188,11 +204,18 @@ impl Workspace {
             composer,
             search,
             scroller,
-            model: if crate::model::MODELS.contains(&settings.model.as_str()) {
+            model: if settings.model == "default"
+                || model_catalog
+                    .get(provider)
+                    .is_some_and(|ms| ms.iter().any(|m| m.id.as_ref() == settings.model.as_str()))
+            {
                 settings.model.clone().into()
             } else {
                 "default".into()
             },
+            provider,
+            model_catalog,
+            disabled_providers,
             task_input,
             mode: if ["Agent", "Plan", "Ask"].contains(&settings.mode.as_str()) {
                 settings.mode.clone().into()
@@ -238,8 +261,11 @@ impl Workspace {
         }
         this.apply_theme(window, cx);
         // "system" follows the OS — re-resolve when the appearance flips.
-        window.observe_window_appearance(move |window, cx| ws.update(cx, |this, cx| this.apply_theme(window, cx))).detach();
+        window
+            .observe_window_appearance(move |window, cx| ws.update(cx, |this, cx| this.apply_theme(window, cx)))
+            .detach();
         this.start_background(cx);
+        this.refresh_model_catalogs(cx);
         this
     }
 

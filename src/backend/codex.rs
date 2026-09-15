@@ -26,6 +26,12 @@ impl AgentBackend for CodexCliBackend {
         "codex-cli"
     }
 
+    /// Static catalog — the live list comes from `model/list` via
+    /// `fetch_codex_models` and lands on the workspace's catalog.
+    fn models(&self) -> Vec<crate::model::ModelInfo> {
+        crate::model::codex_fallback_models()
+    }
+
     fn send(&self, prompt: &str, model: &str, mode: &str) -> ReplyStream {
         let (tx, rx) = std::sync::mpsc::channel();
         // Each turn owns its child slot — concurrent chats can't clobber it.

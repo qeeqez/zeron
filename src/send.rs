@@ -228,14 +228,20 @@ impl Workspace {
             "export" => self.export_active(cx),
             "rename" => self.rename_active(window, cx),
             "model" => {
+                // `provider/model` selects across providers; a bare id
+                // stays on the active provider.
+                let (provider, model_id) = arg.split_once('/').unwrap_or((self.provider, arg));
+                let provider = provider.to_string();
+                let known: Vec<String> = self.picker_options(&provider).iter().map(|m| m.id.to_string()).collect();
                 if arg.is_empty() {
-                    self.push_note(format!("Current model: **{}** — pick one of: {}", self.model, crate::model::MODELS.join(", ")), cx);
-                } else if crate::model::MODELS.contains(&arg) {
-                    self.model = arg.into();
-                    self.save_settings();
-                    self.push_note(format!("Model set to **{arg}**"), cx);
+                    self.push_note(
+                        format!("Current model: **{} · {}** — pick one of: {}", self.provider, self.model, known.join(", ")),
+                        cx,
+                    );
+                } else if self.select_model(&provider, model_id, cx) {
+                    self.push_note(format!("Model set to **{provider} · {model_id}**"), cx);
                 } else {
-                    self.push_note(format!("Unknown model `{arg}` — pick one of: {}", crate::model::MODELS.join(", ")), cx);
+                    self.push_note(format!("Unknown model `{arg}` — pick one of: {} (or `provider/model`)", known.join(", ")), cx);
                 }
             },
             "compact" => {
