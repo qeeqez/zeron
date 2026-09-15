@@ -109,9 +109,109 @@ fn window_has_running_turn(handle: AnyWindowHandle, cx: &mut App) -> bool {
 /// dock-icon reopen all land here.
 pub fn open_new_window(cx: &mut App) {
     cx.spawn(async move |cx| {
-        let _ = crate::root::open_workspace_window(cx);
+        let _ = open_workspace_window(cx);
     })
     .detach();
+}
+
+/// File > Open Project…, the palette row, and the empty-state/switcher
+/// buttons: the native folder picker, then `open_project` on the chosen
+/// folder. A global action, so the menu item also works with no window open.
+pub fn prompt_open_project(cx: &mut App) {
+    let rx = cx.prompt_for_paths(PathPromptOptions {
+        files: false,
+        directories: true,
+        multiple: false,
+        prompt: Some("Open Project".into()),
+    });
+    cx.spawn(async move |cx| {
+        let Ok(Ok(Some(paths))) = rx.await else { return };
+        let Some(path) = paths.into_iter().next() else { return };
+        cx.update(|cx| open_project(&path, cx));
+    })
+    .detach();
+}
+
+/// Open `path` as a project: focus its window when one is already bound to
+/// it — two windows on one project would race the same chat files — else
+/// open a fresh workspace window on it.
+pub fn open_project(path: &std::path::Path, cx: &mut App) {
+    let project = crate::project::Project::open(path);
+    crate::recent_projects::record(project.root());
+    // Deferred: callers are click handlers inside a window update, and a
+    // window mid-dispatch can't be re-entered — the scan would miss the
+    // dispatching window itself (same reason `request_quit` defers).
+    cx.defer(move |cx| {
+        if let Some(handle) = project_window(project.root(), cx) {
+            let _ = handle.update(cx, |_, window, _| window.activate_window());
+            return;
+        }
+        cx.spawn(async move |cx| {
+            let _ = open_workspace_window_for(project, cx);
+        })
+        .detach();
+    });
+}
+
+/// Open a workspace window on the launch project (used at launch, File > New
+/// Window, and dock reopen). Returns the handle so callers can follow up —
+/// e.g. About opens its dialog in the window it just created.
+pub fn open_workspace_window(cx: &mut gpui_kit::AsyncApp) -> gpui_kit::Result<gpui_kit::WindowHandle<Root>> {
+    open_workspace_window_for(crate::project::Project::launch(), cx)
+}
+
+/// Open a workspace window bound to `project` — one window per project, so
+/// each keeps its own chats and cwd-scoped work.
+pub fn open_workspace_window_for(
+    project: crate::project::Project, cx: &mut gpui_kit::AsyncApp,
+) -> gpui_kit::Result<gpui_kit::WindowHandle<Root>> {
+    crate::recent_projects::record(project.root());
+    let handle = cx.open_window(
+        WindowOptions {
+            window_min_size: Some(Size { width: px(800.), height: px(600.) }),
+            window_bounds: crate::window::saved_window_bounds(),
+            window_background: crate::appearance::window_background_appearance(crate::persist::load_settings().sidebar_frosted),
+            // The app draws its own TitleBar and moves the window via
+            // start_window_move, so AppKit must not treat the strip as a system
+            // window-move region (which would swallow the toggle's clicks).
+            app_owns_titlebar_drag: true,
+            titlebar: Some(gpui_kit::TitlebarOptions {
+                title: Some("Rixl Code".into()),
+                appears_transparent: true,
+                traffic_light_position: Some(gpui_kit::point(px(9.), px(9.))),
+            }),
+            ..Default::default()
+        },
+        move |window, cx| {
+            let view = cx.new(|cx| Workspace::for_project(project.clone(), window, cx));
+            let ws = view.clone();
+            let frosted = ws.read(cx).sidebar_frosted;
+            let handle = window.window_handle();
+            window.on_window_should_close(cx, move |window, cx| crate::window::confirm_close(&ws, handle, window, cx));
+            cx.new(|cx| {
+                let mut root = Root::new(view, window, cx);
+                // Frosted sidebar needs the window's blurred background to
+                // show through — Root's opaque theme fill would hide it.
+                root.style().background = crate::appearance::frosted_root_background(frosted);
+                root
+            })
+        },
+    )?;
+    Ok(handle)
+}
+
+/// The open workspace window bound to `root`, if any.
+fn project_window(root: &std::path::Path, cx: &mut App) -> Option<AnyWindowHandle> {
+    cx.windows().into_iter().find(|handle| {
+        handle
+            .update(cx, |view, _, cx| {
+                view.downcast::<Root>()
+                    .ok()
+                    .and_then(|root| root.read(cx).view().clone().downcast::<Workspace>().ok())
+                    .is_some_and(|ws| ws.read(cx).project.root() == root)
+            })
+            .unwrap_or(false)
+    })
 }
 
 /// The app's About panel, shown in the active window. With no windows open
@@ -125,7 +225,7 @@ pub fn show_about(cx: &mut App) {
             return;
         }
         cx.spawn(async move |cx| {
-            let Ok(handle) = crate::root::open_workspace_window(cx) else { return };
+            let Ok(handle) = open_workspace_window(cx) else { return };
             let _ = handle.update(cx, |_, window, cx| show_about_dialog(window, cx));
         })
         .detach();

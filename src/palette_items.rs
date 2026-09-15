@@ -69,103 +69,6 @@ impl Workspace {
     }
 }
 
-/// The command table — Codex's palette mixes app commands with chat jumps.
-/// Order is the empty-query display order; a query re-sorts by fuzzy score.
-fn command_specs() -> Vec<CommandSpec> {
-    vec![
-        CommandSpec {
-            label: "New Chat",
-            icon: IconName::Plus,
-            keywords: &["create", "thread"],
-            effect: Effect::Dispatch(Box::new(crate::NewChat)),
-        },
-        CommandSpec {
-            label: "Rename Chat",
-            icon: IconName::Pencil,
-            keywords: &["title"],
-            effect: Effect::Run(Workspace::rename_active),
-        },
-        CommandSpec {
-            label: "Delete Chat",
-            icon: IconName::Delete,
-            keywords: &["remove"],
-            effect: Effect::Dispatch(Box::new(crate::DeleteChat)),
-        },
-        CommandSpec {
-            label: "Search in Chat",
-            icon: IconName::Search,
-            keywords: &["find"],
-            effect: Effect::Run(Workspace::open_chat_search),
-        },
-        CommandSpec {
-            label: "Search All Chats",
-            icon: IconName::TextSearch,
-            keywords: &["find", "messages", "global"],
-            effect: Effect::Run(Workspace::open_global_search),
-        },
-        CommandSpec {
-            label: "Copy Transcript",
-            icon: IconName::Copy,
-            keywords: &["clipboard"],
-            effect: Effect::Dispatch(Box::new(crate::CopyTranscript)),
-        },
-        CommandSpec {
-            label: "Export Transcript…",
-            icon: IconName::Share,
-            keywords: &["markdown", "save"],
-            effect: Effect::Run(|this, _window, cx| this.export_active(cx)),
-        },
-        CommandSpec {
-            label: "Toggle Sidebar",
-            icon: IconName::PanelLeft,
-            keywords: &[],
-            effect: Effect::Dispatch(Box::new(crate::ToggleSidebar)),
-        },
-        CommandSpec {
-            label: "Toggle Agents Panel",
-            icon: IconName::Bot,
-            keywords: &["tasks"],
-            effect: Effect::Dispatch(Box::new(crate::ToggleAgents)),
-        },
-        CommandSpec {
-            label: "Toggle Changes Panel",
-            icon: IconName::FileDiff,
-            keywords: &["git", "diff"],
-            effect: Effect::Dispatch(Box::new(crate::ToggleChanges)),
-        },
-        CommandSpec {
-            label: "Open Settings",
-            icon: IconName::Settings,
-            keywords: &["preferences"],
-            effect: Effect::Dispatch(Box::new(crate::OpenSettings)),
-        },
-        CommandSpec {
-            label: "Reveal Chats Folder",
-            icon: IconName::FolderOpen,
-            keywords: &["finder"],
-            effect: Effect::Dispatch(Box::new(crate::RevealChats)),
-        },
-        CommandSpec {
-            label: "Keyboard Shortcuts",
-            icon: IconName::Keyboard,
-            keywords: &["help", "keys"],
-            effect: Effect::Run(Workspace::shortcuts_help),
-        },
-        CommandSpec {
-            label: "Switch to Light Theme",
-            icon: IconName::Sun,
-            keywords: &["appearance"],
-            effect: Effect::Dispatch(Box::new(crate::ThemeLight)),
-        },
-        CommandSpec {
-            label: "Switch to Dark Theme",
-            icon: IconName::Moon,
-            keywords: &["appearance"],
-            effect: Effect::Dispatch(Box::new(crate::ThemeDark)),
-        },
-    ]
-}
-
 /// Best fuzzy score across a command's label and keywords.
 fn rank_command(spec: &CommandSpec, query: &str) -> Option<i32> {
     std::iter::once(spec.label)
@@ -179,7 +82,7 @@ fn rank_command(spec: &CommandSpec, query: &str) -> Option<i32> {
 /// each group; an empty query lists everything in table/sidebar order.
 pub(crate) fn build_entries(chats: &[ChatSnapshot], query: &str) -> Vec<Entry> {
     let query = query.trim();
-    let specs = command_specs();
+    let specs = crate::palette_commands::command_specs();
     let mut commands: Vec<(usize, i32)> = specs
         .iter()
         .enumerate()

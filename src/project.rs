@@ -1,12 +1,16 @@
-//! Project scope — the folder the app was opened on. Real Codex keys
-//! sessions to the project: each directory gets its own chat history under
-//! `~/.rixl/rixlcode/projects/<slug>-<hash>/` instead of one global list.
+//! Project scope — the folder a workspace window runs against. Real Codex
+//! keys sessions to the project: each directory gets its own chat history
+//! under `~/.rixl/rixlcode/projects/<slug>-<hash>/` instead of one global
+//! list.
 //!
-//! The project is resolved once at launch: the first positional argument
-//! that names an existing directory (`rixlcode ~/repo`, `rixlcode .`), else
-//! the process cwd. `launch` also re-roots the process so the backend
+//! The launch project is resolved once: the first positional argument that
+//! names an existing directory (`rixlcode ~/repo`, `rixlcode .`), else the
+//! process cwd, and `enter` re-roots the process so the backend
 //! (`codex exec` inherits cwd), `git` and the @-mention scan all run
-//! against the same tree.
+//! against the same tree. Later windows can bind other folders via
+//! `Project::open` + `lifecycle::open_workspace_window_for` — turns carry the
+//! project root in `TurnContext`, so only process-cwd work stays on the
+//! launch folder.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -44,6 +48,8 @@ impl Project {
     /// `Workspace` (New Window) must reuse the cached project — resolving
     /// again would interpret a relative dir arg against the new cwd and
     /// land in a nested folder (`rixlcode repo` inside `repo` → `repo/repo`).
+    /// Windows on other folders don't go through here — see
+    /// `lifecycle::open_project`.
     pub fn launch() -> Self {
         static LAUNCH: LazyLock<Project> = LazyLock::new(Project::resolve_launch);
         LAUNCH.clone()

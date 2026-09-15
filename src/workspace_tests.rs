@@ -12,6 +12,15 @@ use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext};
 
 use crate::workspace::Workspace;
 
+impl Workspace {
+    /// The launch project's workspace — `Project::launch` resolves the
+    /// folder once per process (see `crate::project`). Test-only: real
+    /// windows come from `lifecycle::open_workspace_window_for`.
+    pub fn new(window: &mut gpui_kit::Window, cx: &mut gpui_kit::Context<Self>) -> Self {
+        Self::for_project(crate::project::Project::launch(), window, cx)
+    }
+}
+
 /// Mount a `Workspace` in a headless window with `HOME` redirected to a temp
 /// dir so settings/chats reads+writes stay off the real profile.
 fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {

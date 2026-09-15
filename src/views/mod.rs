@@ -24,6 +24,7 @@ mod message_footer;
 mod message_tests;
 mod model_picker;
 pub(crate) mod nav_row;
+mod project_switcher;
 pub mod settings;
 pub mod settings_appearance;
 pub mod settings_default_model;

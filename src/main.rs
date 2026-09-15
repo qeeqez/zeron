@@ -70,6 +70,7 @@ mod global_search_tests;
 mod lifecycle;
 mod mcp;
 mod mcp_config;
+mod menus;
 mod model;
 mod model_catalog;
 #[cfg(test)]
@@ -81,6 +82,7 @@ mod open_in;
 #[cfg(test)]
 mod open_in_tests;
 mod palette;
+mod palette_commands;
 mod palette_fuzzy;
 mod palette_items;
 #[cfg(test)]
@@ -93,10 +95,13 @@ mod persist_tests;
 mod project;
 #[cfg(test)]
 mod project_tests;
+#[cfg(test)]
+mod project_ui_tests;
 mod provider_ops;
 #[cfg(test)]
 mod provider_tests;
 mod providers;
+mod recent_projects;
 mod resume;
 #[cfg(test)]
 mod resume_tests;
@@ -145,6 +150,7 @@ mod window;
 #[cfg(test)]
 mod window_chrome_tests;
 mod workspace;
+mod workspace_new;
 mod workspace_settings;
 #[cfg(test)]
 mod workspace_tests;
@@ -158,72 +164,8 @@ actions!([
     NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleSnapshots, ToggleExplorer, OpenPalette, ThemeLight, ThemeDark,
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, SearchAllChats,
     FindInChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow,
-    AboutApp, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront, ToggleDictation,
+    OpenProject, AboutApp, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront, ToggleDictation,
 ]);
-
-/// The macOS menu bar. Menu actions dispatch to the active window (or the
-/// global listeners installed in `main` when no window is open); key
-/// equivalents come from `workspace_keys` via the keymap. A menu named
-/// "Window" is registered with AppKit as the system window menu.
-fn app_menus() -> Vec<Menu> {
-    use gpui_kit::component::input;
-    [
-        Menu::new("Rixl Code").items([
-            MenuItem::action("About Rixl Code", AboutApp),
-            MenuItem::separator(),
-            MenuItem::action("Settings…", OpenSettings),
-            MenuItem::separator(),
-            MenuItem::os_submenu("Services", SystemMenuType::Services),
-            MenuItem::separator(),
-            MenuItem::action("Hide Rixl Code", HideApp),
-            MenuItem::action("Hide Others", HideOthers),
-            MenuItem::separator(),
-            MenuItem::action("Quit Rixl Code", QuitApp),
-        ]),
-        Menu::new("File").items([
-            MenuItem::action("New Chat", NewChat),
-            MenuItem::action("New Window", NewWindow),
-            MenuItem::separator(),
-            MenuItem::action("Reveal Chats Folder", RevealChats),
-            MenuItem::separator(),
-            MenuItem::action("Close Window", CloseWindow),
-        ]),
-        Menu::new("Edit").items([
-            MenuItem::action("Undo", input::Undo),
-            MenuItem::action("Redo", input::Redo),
-            MenuItem::separator(),
-            MenuItem::os_action("Cut", input::Cut, OsAction::Cut),
-            MenuItem::os_action("Copy", input::Copy, OsAction::Copy),
-            MenuItem::os_action("Paste", input::Paste, OsAction::Paste),
-            MenuItem::os_action("Select All", input::SelectAll, OsAction::SelectAll),
-            MenuItem::separator(),
-            MenuItem::action("Copy Transcript", CopyTranscript),
-            MenuItem::action("Find in Chat", FindInChat),
-            MenuItem::action("Search All Chats", SearchAllChats),
-            MenuItem::separator(),
-            MenuItem::action("Emoji & Symbols", EmojiPalette),
-        ]),
-        Menu::new("View").items([
-            MenuItem::action("Toggle Sidebar", ToggleSidebar),
-            MenuItem::action("Toggle Agents", ToggleAgents),
-            MenuItem::action("Toggle Changes", ToggleChanges),
-            MenuItem::action("Toggle Snapshots", ToggleSnapshots),
-            MenuItem::action("Toggle Explorer", ToggleExplorer),
-            MenuItem::separator(),
-            MenuItem::action("Command Palette", OpenPalette),
-            MenuItem::action("Keyboard Shortcuts", ShortcutsHelp),
-            MenuItem::separator(),
-            MenuItem::action("Enter Full Screen", EnterFullscreen),
-        ]),
-        Menu::new("Window").items([
-            MenuItem::action("Minimize", MinimizeWindow),
-            MenuItem::action("Zoom", ZoomWindow),
-            MenuItem::separator(),
-            MenuItem::action("Bring All to Front", BringAllToFront),
-        ]),
-    ]
-    .into()
-}
 
 /// Workspace-context key bindings. Menu items pick their key equivalents up
 /// from these, so a shortcut added here shows in the menu bar for free. The
@@ -247,6 +189,7 @@ fn workspace_keys() -> Vec<KeyBinding> {
 fn install_app_actions(cx: &mut App) {
     cx.on_action(|_: &QuitApp, cx| lifecycle::request_quit(cx));
     cx.on_action(|_: &NewWindow, cx| lifecycle::open_new_window(cx));
+    cx.on_action(|_: &OpenProject, cx| lifecycle::prompt_open_project(cx));
     cx.on_action(|_: &AboutApp, cx| lifecycle::show_about(cx));
     cx.on_action(|_: &HideApp, cx| cx.hide());
     cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
@@ -268,12 +211,12 @@ fn main() {
         // explicit identity (Linux/Windows); a no-op on macOS, where the
         // bundle provides it.
         cx.set_app_identity("com.rixl.rixlcode", "Rixl Code");
-        cx.set_menus(app_menus());
+        cx.set_menus(menus::app_menus());
         cx.set_dock_menu(vec![MenuItem::action("New Window", NewWindow)]);
         cx.bind_keys(workspace_keys());
         install_app_actions(cx);
         cx.spawn(async move |cx| {
-            root::open_workspace_window(cx).expect("failed to open window");
+            lifecycle::open_workspace_window(cx).expect("failed to open window");
         })
         .detach();
     });

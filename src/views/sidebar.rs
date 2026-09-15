@@ -53,6 +53,9 @@ impl Workspace {
             .gap_2()
             // Title row + search sit below the window's drag strip.
             .child(div().flex().items_center().gap_2().text_sm().font_bold().child(IconName::Bot).child("Rixl Code"))
+            // The project this window runs against — clicking opens the
+            // switcher (recent folders + the native picker).
+            .child(crate::views::project_switcher::project_button(self.project.name(), cx))
             // Chats/Files tab strip — the explorer lives in the same column
             // as the chat list, like Codex's sidebar.
             .child(

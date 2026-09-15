@@ -1,4 +1,4 @@
-//! The `Render` impl for `Workspace` plus the window-open helper.
+//! The `Render` impl for `Workspace` — window-opening lives in `lifecycle`.
 
 use crate::workspace::Workspace;
 use crate::{
@@ -250,41 +250,3 @@ macro_rules! chat_ix {
     ($($t:ident => $n:literal),*) => { $(impl ChatIx for $t { const IX: usize = $n; })* };
 }
 chat_ix!(Chat1 => 0, Chat2 => 1, Chat3 => 2, Chat4 => 3, Chat5 => 4, Chat6 => 5, Chat7 => 6, Chat8 => 7, Chat9 => 8);
-
-/// Open a workspace window (used at launch, File > New Window, and dock
-/// reopen). Returns the handle so callers can follow up — e.g. About opens
-/// its dialog in the window it just created.
-pub fn open_workspace_window(cx: &mut gpui_kit::AsyncApp) -> gpui_kit::Result<gpui_kit::WindowHandle<Root>> {
-    let handle = cx.open_window(
-        WindowOptions {
-            window_min_size: Some(Size { width: px(800.), height: px(600.) }),
-            window_bounds: crate::window::saved_window_bounds(),
-            window_background: crate::appearance::window_background_appearance(crate::persist::load_settings().sidebar_frosted),
-            // The app draws its own TitleBar and moves the window via
-            // start_window_move, so AppKit must not treat the strip as a system
-            // window-move region (which would swallow the toggle's clicks).
-            app_owns_titlebar_drag: true,
-            titlebar: Some(gpui_kit::TitlebarOptions {
-                title: Some("Rixl Code".into()),
-                appears_transparent: true,
-                traffic_light_position: Some(gpui_kit::point(px(9.), px(9.))),
-            }),
-            ..Default::default()
-        },
-        |window, cx| {
-            let view = cx.new(|cx| Workspace::new(window, cx));
-            let ws = view.clone();
-            let frosted = ws.read(cx).sidebar_frosted;
-            let handle = window.window_handle();
-            window.on_window_should_close(cx, move |window, cx| crate::window::confirm_close(&ws, handle, window, cx));
-            cx.new(|cx| {
-                let mut root = Root::new(view, window, cx);
-                // Frosted sidebar needs the window's blurred background to
-                // show through — Root's opaque theme fill would hide it.
-                root.style().background = crate::appearance::frosted_root_background(frosted);
-                root
-            })
-        },
-    )?;
-    Ok(handle)
-}

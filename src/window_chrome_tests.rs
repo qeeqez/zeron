@@ -41,7 +41,7 @@ fn menu_action(menu: &gpui_kit::OwnedMenu, name: &str) -> Option<TypeId> {
 #[test]
 fn menu_bar_matches_native_macos_shape() {
     let app = TestAppContext::single();
-    app.update(|cx| cx.set_menus(crate::app_menus()));
+    app.update(|cx| cx.set_menus(crate::menus::app_menus()));
     let menus = app.read(|cx| cx.get_menus().expect("menus should be installed"));
     let names: Vec<&str> = menus.iter().map(|m| m.name.as_ref()).collect();
     assert_eq!(names, ["Rixl Code", "File", "Edit", "View", "Window"], "menu bar should match the native macOS shape");

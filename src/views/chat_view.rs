@@ -188,7 +188,7 @@ impl Workspace {
             })
             .when(self.find.open, |d| d.child(self.find_bar(cx)))
             .child(div().flex_1().min_h_0().child(if empty {
-                render_empty_state(ws_empty.clone(), cx).into_any_element()
+                render_empty_state(ws_empty.clone(), self.project.root(), cx).into_any_element()
             } else {
                 list.into_any_element()
             }))
