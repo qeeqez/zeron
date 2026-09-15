@@ -9,6 +9,9 @@ mod composer;
 mod composer_helpers;
 mod diff;
 mod empty;
+pub(crate) mod explorer;
+#[cfg(test)]
+mod explorer_tests;
 mod markdown;
 #[cfg(test)]
 mod markdown_tests;
@@ -30,7 +33,7 @@ mod settings_provider_wizard_steps;
 pub mod settings_providers;
 pub mod settings_sections;
 
-mod sidebar;
+pub(crate) mod sidebar;
 mod sidebar_row;
 
 pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_item, slash_item, usage_indicator};

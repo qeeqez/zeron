@@ -60,3 +60,58 @@ fn walk_files(root: &std::path::Path) -> Vec<SharedString> {
     out.sort();
     out
 }
+
+/// A directory in the explorer tree: nested `dirs` first (sorted), then
+/// `files` (sorted full project-relative paths). `path` is the
+/// project-relative dir path — "" for the root.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DirNode {
+    pub name: SharedString,
+    pub path: SharedString,
+    pub dirs: Vec<DirNode>,
+    pub files: Vec<SharedString>,
+}
+
+/// Group a flat project-relative file list (`scan_project_files`) into the
+/// directory tree the explorer renders. Empty segments are skipped, so a
+/// stray `a//b` or leading `/` can't create nameless dirs.
+pub fn build_file_tree(files: &[SharedString]) -> DirNode {
+    let mut root = DirNode::default();
+    for file in files {
+        let mut parts = file.split('/').filter(|s| !s.is_empty()).peekable();
+        let mut node = &mut root;
+        let mut dir_path = String::new();
+        while let Some(part) = parts.next() {
+            if parts.peek().is_none() {
+                node.files.push(file.clone());
+                break;
+            }
+            if !dir_path.is_empty() {
+                dir_path.push('/');
+            }
+            dir_path.push_str(part);
+            let ix = match node.dirs.iter().position(|d| d.name == part) {
+                Some(ix) => ix,
+                None => {
+                    node.dirs.push(DirNode {
+                        name: SharedString::from(part.to_string()),
+                        path: SharedString::from(dir_path.clone()),
+                        ..DirNode::default()
+                    });
+                    node.dirs.len() - 1
+                },
+            };
+            node = &mut node.dirs[ix];
+        }
+    }
+    sort_dirs(&mut root);
+    root
+}
+
+fn sort_dirs(node: &mut DirNode) {
+    node.dirs.sort_by(|a, b| a.name.cmp(&b.name));
+    node.files.sort();
+    for dir in &mut node.dirs {
+        sort_dirs(dir);
+    }
+}

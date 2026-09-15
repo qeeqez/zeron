@@ -123,10 +123,10 @@ mod worktree_tests;
 use gpui_kit::*;
 
 actions!([
-    NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5,
-    Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey,
-    ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow, AboutApp, HideApp, HideOthers, MinimizeWindow, ZoomWindow,
-    EnterFullscreen, BringAllToFront,
+    NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleExplorer, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2,
+    Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, CopyTranscript, EmojiPalette,
+    RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow, AboutApp, HideApp, HideOthers, MinimizeWindow,
+    ZoomWindow, EnterFullscreen, BringAllToFront,
 ]);
 
 /// The macOS menu bar. Menu actions dispatch to the active window (or the
@@ -173,6 +173,7 @@ fn app_menus() -> Vec<Menu> {
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
             MenuItem::action("Toggle Agents", ToggleAgents),
             MenuItem::action("Toggle Changes", ToggleChanges),
+            MenuItem::action("Toggle Explorer", ToggleExplorer),
             MenuItem::separator(),
             MenuItem::action("Command Palette", OpenPalette),
             MenuItem::separator(),
@@ -207,6 +208,7 @@ fn workspace_keys() -> Vec<KeyBinding> {
         KeyBinding::new("cmd-shift-backspace", DeleteChat, Some("workspace")),
         KeyBinding::new("cmd-shift-down", RecallNext, Some("workspace")),
         KeyBinding::new("cmd-j", ToggleAgents, Some("workspace")),
+        KeyBinding::new("cmd-shift-e", ToggleExplorer, Some("workspace")),
         KeyBinding::new("cmd-shift-j", ToggleChanges, Some("workspace")),
         KeyBinding::new("cmd-b", ToggleSidebar, Some("workspace")),
         KeyBinding::new("cmd-k", OpenPalette, Some("workspace")),

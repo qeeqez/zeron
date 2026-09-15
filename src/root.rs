@@ -4,7 +4,7 @@ use crate::workspace::Workspace;
 use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EnterFullscreen,
     EscapeKey, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats, SearchChat,
-    ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleSidebar, ZoomWindow,
+    ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleExplorer, ToggleSidebar, ZoomWindow,
 };
 use gpui_kit::component::Root;
 
@@ -56,6 +56,12 @@ impl Render for Workspace {
                 let ws = cx.entity();
                 move |_: &ToggleChanges, _, cx| {
                     ws.update(cx, |this, cx| this.toggle_changes_panel(cx));
+                }
+            })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &ToggleExplorer, _, cx| {
+                    ws.update(cx, |this, cx| this.toggle_explorer(cx));
                 }
             })
             .on_action(move |_: &OpenPalette, window, cx| {

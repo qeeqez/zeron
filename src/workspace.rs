@@ -21,6 +21,11 @@ pub struct Workspace {
     pub active: usize,
     pub sidebar_collapsed: bool,
     pub agents: Vec<Agent>,
+    /// Which list the sidebar shows — chats or the file explorer.
+    pub sidebar_tab: crate::views::sidebar::SidebarTab,
+    /// File explorer state — expanded dirs, last-clicked file (see
+    /// `crate::views::explorer::ExplorerState`).
+    pub explorer: crate::views::explorer::ExplorerState,
     /// Monotonic id source for agents — survives `clear_finished_agents`.
     pub next_agent_id: u64,
     /// Monotonic id source for chats — survives deletions.
@@ -218,6 +223,8 @@ impl Workspace {
             chats: Vec::new(),
             active: 0,
             sidebar_collapsed: settings.sidebar_collapsed,
+            sidebar_tab: crate::views::sidebar::SidebarTab::Chats,
+            explorer: crate::views::explorer::ExplorerState::default(),
             sidebar_width: settings.sidebar_width.clamp(180.0, 480.0),
             agents: Vec::new(),
             next_agent_id: 0,

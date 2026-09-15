@@ -9,9 +9,43 @@ use gpui_kit::*;
 
 use crate::workspace::Workspace;
 
+/// Which list the sidebar shows — the chat list or the file explorer.
+/// Settings replaces the whole column regardless of the tab.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum SidebarTab {
+    #[default]
+    Chats,
+    Files,
+}
+
+impl SidebarTab {
+    /// Element id of the tab's header button.
+    fn id(self) -> &'static str {
+        match self {
+            Self::Chats => "tab-chats",
+            Self::Files => "tab-files",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Chats => "Chats",
+            Self::Files => "Files",
+        }
+    }
+
+    fn icon(self) -> IconName {
+        match self {
+            Self::Chats => IconName::MessageSquare,
+            Self::Files => IconName::FolderTree,
+        }
+    }
+}
+
 impl Workspace {
     pub fn render_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let collapsed = self.sidebar_collapsed;
+        let tab = self.sidebar_tab;
         let header = div()
             .w_full()
             .flex()
@@ -19,25 +53,17 @@ impl Workspace {
             .gap_2()
             // Title row + search sit below the window's drag strip.
             .child(div().flex().items_center().gap_2().text_sm().font_bold().child(IconName::Bot).child("Rixl Code"))
+            // Chats/Files tab strip — the explorer lives in the same column
+            // as the chat list, like Codex's sidebar.
             .child(
                 div()
                     .flex()
-                    .items_center()
                     .gap_1()
-                    .child(div().flex_1().child(Input::new(&self.search).prefix(IconName::Search).appearance(true)))
-                    .when(!self.search.read(cx).value().is_empty(), |d| {
-                        d.child(
-                            div()
-                                .id("search-clear")
-                                .cursor_pointer()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(IconName::X)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.search.update(cx, |s, cx| s.set_value("", window, cx));
-                                })),
-                        )
-                    }),
-            );
+                    .child(tab_button(SidebarTab::Chats, tab, cx))
+                    .child(tab_button(SidebarTab::Files, tab, cx)),
+            )
+            // The chat search only makes sense on the Chats tab.
+            .when(tab == SidebarTab::Chats, |d| d.child(self.search_row(cx)));
 
         let new_chat = crate::views::nav_row::NavRow::new("new-chat", "New chat")
             .icon(IconName::Plus)
@@ -149,8 +175,9 @@ impl Workspace {
             .child(crate::window::titlebar_drag(div().id("sidebar-titlebar").h(px(crate::window::TOP_BAR_H)).w_full()).test_support())
             .child(
                 div().flex_1().min_h_0().child(
-                    // One shared sidebar column: when settings is open it
-                    // shows the settings nav; otherwise the chat list.
+                    // One shared sidebar column: settings swaps in its nav;
+                    // otherwise the tab strip picks the chat list or the
+                    // file explorer.
                     if self.settings_open {
                         crate::views::settings_nav::settings_nav(
                             crate::views::settings_nav::SettingsNav {
@@ -163,26 +190,33 @@ impl Workspace {
                         )
                             .into_any_element()
                     } else {
-                        // The component paints its own opaque `tokens.sidebar`
-                        // — clear it so the wrap's fill (translucent when
-                        // frosted) shows through.
-                        //
-                        // `collapsible(None)`, not `Offcanvas`: collapse is
-                        // handled by unmounting the sidebar in `render`, and
-                        // Offcanvas wraps the column in a 200ms width
-                        // transition that restarts on every mouse-move of a
-                        // resize drag — the edge chases the cursor and the
-                        // view reads as shifting left/right.
-                        Sidebar::new("sidebar")
-                            .w(px(self.sidebar_width))
-                            .collapsible(SidebarCollapsible::None)
-                            .collapsed(collapsed)
-                            .bg(transparent_black())
-                            .header(header)
-                            .child(actions)
-                            .children(groups)
-                            .footer(footer)
-                            .into_any_element()
+                        match tab {
+                            SidebarTab::Chats => {
+                                // The component paints its own opaque `tokens.sidebar`
+                                // — clear it so the wrap's fill (translucent when
+                                // frosted) shows through.
+                                //
+                                // `collapsible(None)`, not `Offcanvas`: collapse is
+                                // handled by unmounting the sidebar in `render`, and
+                                // Offcanvas wraps the column in a 200ms width
+                                // transition that restarts on every mouse-move of a
+                                // resize drag — the edge chases the cursor and the
+                                // view reads as shifting left/right.
+                                Sidebar::new("sidebar")
+                                    .w(px(self.sidebar_width))
+                                    .collapsible(SidebarCollapsible::None)
+                                    .collapsed(collapsed)
+                                    .bg(transparent_black())
+                                    .header(header)
+                                    .child(actions)
+                                    .children(groups)
+                                    .footer(footer)
+                                    .into_any_element()
+                            }
+                            SidebarTab::Files => self
+                                .render_explorer(header.into_any_element(), footer.into_any_element(), cx)
+                                .into_any_element(),
+                        }
                     },
                 ),
             )
@@ -211,4 +245,54 @@ impl Workspace {
                 )
             })
     }
+
+    /// Switch the sidebar between the chat list and the file explorer.
+    pub fn set_sidebar_tab(&mut self, tab: SidebarTab, cx: &mut Context<Self>) {
+        self.sidebar_tab = tab;
+        cx.notify();
+    }
+
+    /// The chat-list search field — only mounted on the Chats tab.
+    fn search_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .child(div().flex_1().child(Input::new(&self.search).prefix(IconName::Search).appearance(true)))
+            .when(!self.search.read(cx).value().is_empty(), |d| {
+                d.child(
+                    div()
+                        .id("search-clear")
+                        .cursor_pointer()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(IconName::X)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.search.update(cx, |s, cx| s.set_value("", window, cx));
+                        })),
+                )
+            })
+    }
+}
+
+/// One Chats/Files tab button in the sidebar header — a segmented pair that
+/// mirrors the settings nav's accent-on-active styling.
+fn tab_button(tab: SidebarTab, current: SidebarTab, cx: &mut Context<Workspace>) -> impl IntoElement {
+    let active = tab == current;
+    div()
+        .id(tab.id())
+        .test_support()
+        .flex_1()
+        .flex()
+        .items_center()
+        .justify_center()
+        .gap_1()
+        .py_1()
+        .rounded_md()
+        .text_xs()
+        .cursor_pointer()
+        .when(active, |d| d.font_medium().bg(cx.theme().accent))
+        .when(!active, |d| d.text_color(cx.theme().muted_foreground).hover(|d| d.bg(cx.theme().muted)))
+        .child(tab.icon())
+        .child(tab.label())
+        .on_click(cx.listener(move |this, _, _, cx| this.set_sidebar_tab(tab, cx)))
 }
