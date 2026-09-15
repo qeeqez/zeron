@@ -99,7 +99,7 @@ impl Workspace {
     /// First non-empty line of the last assistant text, capped at 80 chars —
     /// the notification body doubles as a reply preview so the user can tell
     /// what finished without opening the chat.
-    fn reply_preview(chat: &Chat) -> Option<String> {
+    pub(crate) fn reply_preview(chat: &Chat) -> Option<String> {
         let line = Self::last_assistant_text(chat)?.lines().find(|l| !l.trim().is_empty())?.trim();
         let mut preview: String = line.chars().take(81).collect();
         if preview.chars().count() > 80 {
@@ -121,7 +121,7 @@ impl Workspace {
     /// as `**Error:** …`, so strip the marker for a clean headline. A
     /// failed turn whose last text is a partial reply still reads better
     /// than a bare "Reply failed".
-    fn error_detail(chat: &Chat) -> Option<String> {
+    pub(crate) fn error_detail(chat: &Chat) -> Option<String> {
         let line = Self::last_assistant_text(chat)?.trim_start_matches("**Error:**").lines().next()?.trim();
         (!line.is_empty()).then(|| line.to_string())
     }

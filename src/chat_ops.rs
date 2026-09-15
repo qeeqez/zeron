@@ -157,6 +157,7 @@ impl Workspace {
         if !is_active {
             chat.unread = true;
         }
+        self.record_turn_finished(chat_id);
         cx.notify();
         self.save();
     }

@@ -1,3 +1,4 @@
+pub(crate) mod activity;
 mod agents_card;
 mod agents_panel;
 mod approval;

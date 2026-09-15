@@ -194,6 +194,13 @@ pub fn confirm_close(ws: &Entity<Workspace>, handle: AnyWindowHandle, window: &m
     false
 }
 
+/// Cmd+W: run the close gate (draft save + running-reply prompt), then close.
+pub fn close_window(ws: &Entity<Workspace>, handle: AnyWindowHandle, window: &mut Window, cx: &mut App) {
+    if confirm_close(ws, handle, window, cx) {
+        window.remove_window();
+    }
+}
+
 /// Persist the current window bounds into settings.
 fn save_window_bounds(window: &Window) {
     if let gpui_kit::WindowBounds::Windowed(b) = window.window_bounds() {

@@ -90,7 +90,7 @@ impl Render for Workspace {
             .on_action({
                 let ws = cx.entity();
                 let handle = window.window_handle();
-                move |_: &CloseWindow, window, cx| close_window(&ws, handle, window, cx)
+                move |_: &CloseWindow, window, cx| crate::window::close_window(&ws, handle, window, cx)
             })
             .on_action({
                 let ws = cx.entity();
@@ -204,6 +204,9 @@ impl Render for Workspace {
                     crate::window::sidebar_toggle(self.sidebar_collapsed, cx),
                 ),
             )
+            // Activity center: bell + dropdown as one overlay layer so the
+            // panel floats above the sidebar and chat pane.
+            .child(crate::views::activity::activity_overlay(self, cx))
             // Cmd-/ cheat sheet — a centered modal over a dimmed backdrop,
             // above the sidebar toggle and settings overlay, below dialogs.
             .when(self.shortcuts_open, |d| d.child(crate::views::shortcuts::shortcuts_overlay(cx)))
@@ -240,14 +243,6 @@ fn end_sidebar_drag(this: &mut Workspace, _: &MouseUpEvent, _: &mut Window, cx: 
         cx.notify();
     }
 }
-
-/// Cmd+W: run the close gate (draft save + running-reply prompt), then close.
-fn close_window(ws: &Entity<Workspace>, handle: AnyWindowHandle, window: &mut Window, cx: &mut App) {
-    if crate::window::confirm_close(ws, handle, window, cx) {
-        window.remove_window();
-    }
-}
-
 trait ChatIx {
     const IX: usize;
 }

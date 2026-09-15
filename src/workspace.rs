@@ -29,6 +29,11 @@ pub struct Workspace {
     pub changes_panel_open: bool,
     /// Snapshots panel + retention policy (see `crate::snapshots`).
     pub snapshots: crate::snapshots::SnapshotsState,
+    /// The activity-center dropdown is open — see `crate::activity`.
+    pub activity_open: bool,
+    /// Recent turn/approval/error events behind the titlebar bell —
+    /// persisted per project (see `crate::activity`).
+    pub activity: crate::activity::ActivityFeed,
     /// Working-tree git changes shown in the Changes panel — refreshed on
     /// open and via the panel's refresh button.
     pub changes: Vec<crate::git::FileChange>,
@@ -238,9 +243,11 @@ impl Workspace {
             next_agent_id: 0,
             next_chat_id: 0,
             send_queue: SendQueue::default(),
+            changes_panel_open: false,
+            activity_open: false,
+            activity: crate::activity::ActivityFeed::load(project.dir()),
             resizing_sidebar: false,
             agents_panel_open: false,
-            changes_panel_open: false,
             snapshots: crate::snapshots::SnapshotsState::default(),
             changes: Vec::new(),
             changes_generation: 0,

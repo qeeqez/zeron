@@ -183,7 +183,7 @@ impl Workspace {
                     kind: MessageKind::Approval(crate::backend::ApprovalCard {
                         request_ix: ix,
                         kind,
-                        detail,
+                        detail: detail.clone(),
                         decision: None,
                         respond: Some(respond),
                     }),
@@ -195,6 +195,7 @@ impl Workspace {
                 if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
+                self.record_approval(chat_id, kind, &detail);
             },
             AgentEvent::Diff { path, added, removed, hunks } => {
                 push_message(chat, MessageKind::Diff(crate::model::DiffCard { path, added, removed, hunks, expanded: false }));

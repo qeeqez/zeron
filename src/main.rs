@@ -1,5 +1,8 @@
 #![recursion_limit = "1024"]
 
+mod activity;
+#[cfg(test)]
+mod activity_tests;
 mod agents;
 mod agents_task;
 #[cfg(test)]
