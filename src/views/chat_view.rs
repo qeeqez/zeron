@@ -4,6 +4,7 @@ use crate::model::ChatMessage;
 use crate::views::cards::MsgCtx;
 use crate::views::render_empty_state;
 use crate::views::render_message;
+use crate::{EscapeKey, FindInChat, workspace::Workspace};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::Input;
@@ -12,7 +13,6 @@ use gpui_kit::component::message_scroller::MessageScroller;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use crate::{EscapeKey, FindInChat, workspace::Workspace};
 
 fn chat_menu(
     menu: gpui_kit::component::menu::PopupMenu, ws: &Entity<Workspace>, pinned: bool, word_wrap: bool,
@@ -22,6 +22,7 @@ fn chat_menu(
     let ws_export = ws.clone();
     let ws_copy = ws.clone();
     let ws_wrap = ws.clone();
+    let ws_snap = ws.clone();
     menu.item(
         PopupMenuItem::new(if pinned { "Unpin" } else { "Pin" })
             .icon(IconName::Star)
@@ -37,6 +38,9 @@ fn chat_menu(
     }))
     .item(PopupMenuItem::new("Copy transcript").icon(IconName::Copy).on_click(move |_, _, cx| {
         ws_copy.update(cx, |this, cx| this.copy_transcript(cx));
+    }))
+    .item(PopupMenuItem::new("Snapshots").icon(IconName::Camera).on_click(move |_, _, cx| {
+        ws_snap.update(cx, |this, cx| this.toggle_snapshots_panel(cx));
     }))
     .item(PopupMenuItem::new("Word wrap").icon(IconName::Check).checked(word_wrap).on_click(move |_, _, cx| {
         ws_wrap.update(cx, |this, cx| {
@@ -224,4 +228,3 @@ impl Workspace {
             .child(self.render_composer(cx))
     }
 }
-

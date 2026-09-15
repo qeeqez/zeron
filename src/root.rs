@@ -4,7 +4,7 @@ use crate::workspace::Workspace;
 use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EnterFullscreen,
     EscapeKey, FindInChat, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats, SearchChat,
-    ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleExplorer, ToggleSidebar, ZoomWindow,
+    ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleExplorer, ToggleSidebar, ToggleSnapshots, ZoomWindow,
 };
 use gpui_kit::component::Root;
 
@@ -57,6 +57,12 @@ impl Render for Workspace {
                 let ws = cx.entity();
                 move |_: &ToggleChanges, _, cx| {
                     ws.update(cx, |this, cx| this.toggle_changes_panel(cx));
+                }
+            })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &ToggleSnapshots, _, cx| {
+                    ws.update(cx, |this, cx| this.toggle_snapshots_panel(cx));
                 }
             })
             .on_action({
@@ -162,28 +168,10 @@ impl Render for Workspace {
                     cx.notify();
                 }
             }))
-            .on_mouse_up(
-                MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    if this.resizing_sidebar {
-                        this.resizing_sidebar = false;
-                        this.save_settings();
-                        cx.notify();
-                    }
-                }),
-            )
+            .on_mouse_up(MouseButton::Left, cx.listener(end_sidebar_drag))
             // Mouse-up outside the window still ends the drag — otherwise the
             // next hover resizes without a press.
-            .on_mouse_up_out(
-                MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    if this.resizing_sidebar {
-                        this.resizing_sidebar = false;
-                        this.save_settings();
-                        cx.notify();
-                    }
-                }),
-            )
+            .on_mouse_up_out(MouseButton::Left, cx.listener(end_sidebar_drag))
             // Sidebar (full-height) + content pane. Each draws a top drag
             // strip of the same height so they read as one continuous
             // titlebar row; the traffic lights + toggle overlay the leading
@@ -196,7 +184,8 @@ impl Render for Workspace {
                     .when(!self.sidebar_collapsed, |d| d.child(self.render_sidebar(window, cx)))
                     .child(self.render_chat(window, cx))
                     .when(self.agents_panel_open, |d| d.child(self.render_agents_panel(window, cx)))
-                    .when(self.changes_panel_open, |d| d.child(self.render_changes_panel(window, cx))),
+                    .when(self.changes_panel_open, |d| d.child(self.render_changes_panel(window, cx)))
+                    .when(self.snapshots.open, |d| d.child(self.render_snapshots_panel(window, cx))),
             )
             // Settings is an overlay that starts at the sidebar's right edge —
             // the sidebar + toggle stay visible and functional, and the chat
@@ -235,6 +224,17 @@ fn chat_switch<A: Action + ChatIx>(cx: &mut Context<Workspace>) -> impl Fn(&A, &
                 this.select_chat(ix, window, cx);
             }
         });
+    }
+}
+
+/// A mouse-up anywhere ends a sidebar resize drag — bound to both
+/// `on_mouse_up` and `on_mouse_up_out` so a release outside the window
+/// still clears `resizing_sidebar` (the next hover would resize otherwise).
+fn end_sidebar_drag(this: &mut Workspace, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Workspace>) {
+    if this.resizing_sidebar {
+        this.resizing_sidebar = false;
+        this.save_settings();
+        cx.notify();
     }
 }
 

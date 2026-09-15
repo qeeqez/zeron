@@ -81,6 +81,7 @@ pub static SHORTCUT_SPECS: &[ShortcutSpec] = &[
     spec!("cmd-b", ToggleSidebar, "Toggle sidebar", General),
     spec!("cmd-j", ToggleAgents, "Toggle agents panel", General),
     spec!("cmd-shift-j", ToggleChanges, "Toggle changes panel", General),
+    spec!("cmd-shift-s", ToggleSnapshots, "Toggle snapshots panel", General),
     spec!("cmd-shift-e", ToggleExplorer, "Toggle file explorer", General),
     spec!("enter", "Send message", Composer),
     spec!("shift-enter", "New line", Composer),

@@ -41,6 +41,8 @@ impl Default for Settings {
             active_chat: 0,
             theme: "system".into(),
             mcp_servers: Vec::new(),
+            snapshot_retention_days: None,
+            snapshot_cap_mb: None,
         }
     }
 }

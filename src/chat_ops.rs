@@ -276,6 +276,16 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Toggle the Changes panel; opening refreshes the change list so the
+    /// first render never shows stale rows.
+    pub fn toggle_changes_panel(&mut self, cx: &mut Context<Self>) {
+        self.changes_panel_open = !self.changes_panel_open;
+        if self.changes_panel_open {
+            self.refresh_changes(cx);
+        }
+        cx.notify();
+    }
+
     pub fn running_agents(&self) -> usize {
         self.agents.iter().filter(|a| a.status == crate::model::AgentStatus::Running).count()
     }

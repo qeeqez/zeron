@@ -287,6 +287,11 @@ pub struct Settings {
     /// to ACP `session/new`.
     #[serde(default = "Vec::new")]
     pub mcp_servers: Vec<crate::mcp::McpServer>,
+    /// Snapshot retention: days before auto-prune (`None` = default 30,
+    /// `Some(0)` = forever) and total size cap in MiB (`None`/`Some(0)` =
+    /// no cap). See `crate::snapshots`.
+    pub snapshot_retention_days: Option<u32>,
+    pub snapshot_cap_mb: Option<u32>,
 }
 
 fn settings_path() -> PathBuf {

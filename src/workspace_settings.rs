@@ -64,6 +64,8 @@ impl Workspace {
             // MCP servers live on the settings panel, not this window —
             // keep the file's list so an unrelated save can't drop them.
             mcp_servers: prev.mcp_servers,
+            snapshot_retention_days: Some(self.snapshots.retention_days),
+            snapshot_cap_mb: Some(self.snapshots.cap_mb),
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
             theme,

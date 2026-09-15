@@ -27,6 +27,8 @@ pub struct Workspace {
     pub send_queue: SendQueue,
     pub agents_panel_open: bool,
     pub changes_panel_open: bool,
+    /// Snapshots panel + retention policy (see `crate::snapshots`).
+    pub snapshots: crate::snapshots::SnapshotsState,
     /// Working-tree git changes shown in the Changes panel — refreshed on
     /// open and via the panel's refresh button.
     pub changes: Vec<crate::git::FileChange>,
@@ -236,6 +238,7 @@ impl Workspace {
             resizing_sidebar: false,
             agents_panel_open: false,
             changes_panel_open: false,
+            snapshots: crate::snapshots::SnapshotsState::default(),
             changes: Vec::new(),
             changes_generation: 0,
             composer,
@@ -300,6 +303,8 @@ impl Workspace {
             resume_open: false,
             auth: crate::auth::AuthBook::seeded(),
         };
+        this.snapshots.retention_days = settings.snapshot_retention_days.unwrap_or(crate::snapshots::DEFAULT_RETENTION_DAYS);
+        this.snapshots.cap_mb = settings.snapshot_cap_mb.unwrap_or(0);
         let loaded = crate::persist::load_chats(&this.project.chats_dir(), &mut this.next_chat_id, !crate::lifecycle::any_turn_running(cx));
         if loaded.is_empty() {
             this.new_chat(cx);
@@ -318,16 +323,8 @@ impl Workspace {
         this.start_background(cx);
         this.refresh_model_catalogs(cx);
         this.refresh_auth(cx);
+        // Launch-time retention pass — prunes aged/over-cap snapshots.
+        this.refresh_snapshots(cx);
         this
-    }
-
-    /// Toggle the Changes panel; opening refreshes the change list so the
-    /// first render never shows stale rows.
-    pub fn toggle_changes_panel(&mut self, cx: &mut Context<Self>) {
-        self.changes_panel_open = !self.changes_panel_open;
-        if self.changes_panel_open {
-            self.refresh_changes(cx);
-        }
-        cx.notify();
     }
 }

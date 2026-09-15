@@ -109,6 +109,10 @@ mod sidebar_resize_tests;
 mod sidebar_ui_tests;
 mod simulate;
 mod slash;
+mod snapshot_store;
+mod snapshots;
+#[cfg(test)]
+mod snapshots_tests;
 mod speech;
 mod steer;
 #[cfg(test)]
@@ -136,10 +140,10 @@ mod worktree_tests;
 use gpui_kit::*;
 
 actions!([
-    NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleExplorer, OpenPalette, ThemeLight, ThemeDark, Chat1, Chat2,
-    Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, FindInChat, CopyTranscript,
-    EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow, AboutApp, HideApp, HideOthers,
-    MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront,
+    NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleSnapshots, ToggleExplorer, OpenPalette, ThemeLight, ThemeDark,
+    Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, FindInChat,
+    CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow, AboutApp, HideApp,
+    HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront,
 ]);
 
 /// The macOS menu bar. Menu actions dispatch to the active window (or the
@@ -187,6 +191,7 @@ fn app_menus() -> Vec<Menu> {
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
             MenuItem::action("Toggle Agents", ToggleAgents),
             MenuItem::action("Toggle Changes", ToggleChanges),
+            MenuItem::action("Toggle Snapshots", ToggleSnapshots),
             MenuItem::action("Toggle Explorer", ToggleExplorer),
             MenuItem::separator(),
             MenuItem::action("Command Palette", OpenPalette),
@@ -209,8 +214,7 @@ fn app_menus() -> Vec<Menu> {
 /// list comes from `shortcuts::SHORTCUT_SPECS` — the same table the Cmd-/
 /// overlay renders, so the cheat sheet can't drift from the real keymap.
 fn workspace_keys() -> Vec<KeyBinding> {
-    let mut keys: Vec<KeyBinding> =
-        shortcuts::SHORTCUT_SPECS.iter().filter_map(|spec| spec.bind.map(|bind| bind(spec.keys))).collect();
+    let mut keys: Vec<KeyBinding> = shortcuts::SHORTCUT_SPECS.iter().filter_map(|spec| spec.bind.map(|bind| bind(spec.keys))).collect();
     // Inputs bind cmd-f to their own Search action and swallow it when not
     // `searchable`, which would shadow the workspace binding whenever the
     // composer or find input is focused. Registering later in the same
