@@ -177,6 +177,7 @@ mod tests {
         assert_eq!(s.legacy_model, "gpt-5");
         assert_eq!(s.font_size, 14);
         assert!(s.notify_on_done);
+        assert!(s.notify_sound);
         // Thread defaults are unset until the user picks them.
         assert!(s.default_model.provider_instance_id.is_empty());
         assert!(s.default_permissions.is_empty());
@@ -191,6 +192,7 @@ mod tests {
         assert_eq!(back.selected_model, s.selected_model);
         assert_eq!(back.font_size, s.font_size);
         assert_eq!(back.default_model, s.default_model);
+        assert_eq!(back.notify_sound, s.notify_sound);
     }
 
     #[test]

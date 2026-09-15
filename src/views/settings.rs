@@ -173,6 +173,7 @@ impl Render for SettingsPanel {
         let s = ws.read(cx);
         let view = crate::views::settings_sections::SettingsView {
             notify: s.notify_on_done,
+            notify_sound: s.notify_sound,
             font_size: s.font_size,
             code_font_size: s.code_font_size,
             sidebar_frosted: s.sidebar_frosted,

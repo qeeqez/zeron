@@ -11,11 +11,24 @@ use crate::workspace::Workspace;
 pub(crate) struct DoneNotice {
     /// Chat title — the toast/system headline.
     title: SharedString,
-    /// "Reply complete", or the failure's first line.
+    /// A preview of the reply's first line, or the failure's first line.
     body: String,
     failed: bool,
     /// Post to the OS notification center — only while unfocused.
     system: bool,
+}
+
+/// Times the done sound played — the test platform's `play_system_bell` is
+/// a silent no-op, so tests count calls here instead of listening for audio.
+#[cfg(test)]
+pub(crate) static SOUND_PLAYS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// The turn-finished chime: gpui's system bell (NSBeep on macOS) — a
+/// synchronous platform call that never blocks the UI thread.
+fn play_done_sound(window: &Window) {
+    #[cfg(test)]
+    SOUND_PLAYS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    window.play_system_bell();
 }
 
 /// Marker type for the per-chat notification id — a repeat push for the
@@ -24,12 +37,17 @@ pub(crate) struct DoneNotice {
 struct ReplyDone;
 
 impl Workspace {
-    /// In-app toast plus — when the window is inactive — a system
-    /// notification and dock bounce. No-op unless `notify_on_done` is set.
-    /// Clicking either surface activates the window and opens the chat.
-    /// The platform layer is a safe no-op where notifications are
-    /// unsupported or the app isn't bundled, so this never panics.
+    /// System bell (gated by `notify_sound`), an in-app toast, plus — when
+    /// the window is inactive — a system notification and dock bounce. The
+    /// toast/system surfaces need `notify_on_done`; the sound is its own
+    /// toggle so a reply can chime without a popup. Clicking either surface
+    /// activates the window and opens the chat. The platform layer is a
+    /// safe no-op where notifications are unsupported or the app isn't
+    /// bundled, so this never panics.
     pub(crate) fn notify_done(&mut self, chat_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        if self.notify_sound {
+            play_done_sound(window);
+        }
         if !self.notify_on_done {
             return;
         }
@@ -68,7 +86,7 @@ impl Workspace {
         let body = if chat.failed_flag {
             Self::error_detail(chat).map_or_else(|| "Reply failed".to_string(), |line| format!("Reply failed — {line}"))
         } else {
-            "Reply complete".to_string()
+            Self::reply_preview(chat).unwrap_or_else(|| "Reply complete".to_string())
         };
         DoneNotice {
             title: chat.title.clone(),
@@ -78,18 +96,34 @@ impl Workspace {
         }
     }
 
+    /// First non-empty line of the last assistant text, capped at 80 chars —
+    /// the notification body doubles as a reply preview so the user can tell
+    /// what finished without opening the chat.
+    fn reply_preview(chat: &Chat) -> Option<String> {
+        let line = Self::last_assistant_text(chat)?.lines().find(|l| !l.trim().is_empty())?.trim();
+        let mut preview: String = line.chars().take(81).collect();
+        if preview.chars().count() > 80 {
+            preview.truncate(preview.char_indices().nth(80).map_or(preview.len(), |(i, _)| i));
+            preview.push('…');
+        }
+        Some(preview)
+    }
+
+    /// The last assistant Text message's content, if any.
+    fn last_assistant_text(chat: &Chat) -> Option<&str> {
+        chat.messages.iter().rev().filter(|m| m.role == Role::Assistant).find_map(|m| match &m.kind {
+            MessageKind::Text(t) => Some(t.as_ref()),
+            _ => None,
+        })
+    }
+
     /// First line of the last assistant text — the backend writes failures
     /// as `**Error:** …`, so strip the marker for a clean headline. A
     /// failed turn whose last text is a partial reply still reads better
     /// than a bare "Reply failed".
     fn error_detail(chat: &Chat) -> Option<String> {
-        chat.messages.iter().rev().filter(|m| m.role == Role::Assistant).find_map(|m| match &m.kind {
-            MessageKind::Text(t) => {
-                let line = t.trim_start_matches("**Error:**").lines().next()?.trim();
-                (!line.is_empty()).then(|| line.to_string())
-            },
-            _ => None,
-        })
+        let line = Self::last_assistant_text(chat)?.trim_start_matches("**Error:**").lines().next()?.trim();
+        (!line.is_empty()).then(|| line.to_string())
     }
 }
 
@@ -161,5 +195,22 @@ mod tests {
         chat.failed_flag = true;
         let notice = Workspace::done_notice(&chat, false);
         assert_eq!(notice.body, "Reply failed");
+    }
+
+    #[test]
+    fn success_notice_previews_the_reply() {
+        let mut chat = chat("Build fix");
+        assistant_text(&mut chat, "Fixed the borrow error\nand two more lines");
+        let notice = Workspace::done_notice(&chat, false);
+        assert_eq!(notice.body, "Fixed the borrow error");
+    }
+
+    #[test]
+    fn preview_skips_blank_lines_and_truncates() {
+        let mut chat = chat("Build fix");
+        assistant_text(&mut chat, &format!("\n  \n{}", "x".repeat(120)));
+        let notice = Workspace::done_notice(&chat, false);
+        assert_eq!(notice.body.chars().count(), 81, "80 chars + ellipsis");
+        assert!(notice.body.ends_with('…'));
     }
 }

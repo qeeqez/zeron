@@ -89,6 +89,8 @@ pub struct Workspace {
     /// `on_window_should_close`, so the confirmed path sets this to skip it.
     pub close_confirmed: std::cell::Cell<bool>,
     pub notify_on_done: bool,
+    /// System bell when a turn finishes — independent of `notify_on_done`.
+    pub notify_sound: bool,
     pub word_wrap: bool,
     pub font_size: u8,
     /// Interface font family; empty = system default.
@@ -248,6 +250,7 @@ impl Workspace {
             settings_open: false,
             settings_panel,
             notify_on_done: settings.notify_on_done,
+            notify_sound: settings.notify_sound,
             backend,
             word_wrap: settings.word_wrap,
             font_size: settings.font_size.clamp(crate::appearance::FONT_SIZE_MIN, crate::appearance::FONT_SIZE_MAX),

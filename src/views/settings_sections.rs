@@ -20,6 +20,8 @@ use crate::workspace::Workspace;
 /// Snapshot of workspace state + owned inputs the section bodies render from.
 pub struct SettingsView {
     pub notify: bool,
+    /// "Notification sound" switch — `Workspace::notify_sound`.
+    pub notify_sound: bool,
     pub font_size: u8,
     pub code_font_size: u8,
     pub sidebar_frosted: bool,

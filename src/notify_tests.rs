@@ -123,7 +123,7 @@ fn notifies_when_reply_finishes_unfocused(cx: &mut TestAppContext) {
     let notes = cx.delivered_system_notifications();
     assert_eq!(notes.len(), 1, "expected one reply-complete notification, got {notes:?}");
     assert_eq!(notes[0].title, "hi", "system notification headline is the chat title");
-    assert!(notes[0].body.contains("Reply complete"), "body was {:?}", notes[0].body);
+    assert!(notes[0].body.contains("done"), "body should preview the reply, got {:?}", notes[0].body);
     assert_eq!(toast_count(cx), 1, "an in-app toast should accompany the system notification");
 }
 
@@ -213,4 +213,45 @@ fn clicking_toast_opens_the_chat(cx: &mut TestAppContext) {
     });
     cx.run_until_parked();
     assert_eq!(workspace.read_with(cx, |ws, _| ws.active), 0, "clicking the toast should select its chat");
+}
+
+#[gpui_kit::test]
+fn plays_sound_when_reply_finishes(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    // `notify_sound` defaults on; the test platform's bell is silent, so the
+    // observable signal is the SOUND_PLAYS counter.
+    let before = crate::notify::SOUND_PLAYS.load(std::sync::atomic::Ordering::Relaxed);
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), cx);
+    let plays = crate::notify::SOUND_PLAYS.load(std::sync::atomic::Ordering::Relaxed) - before;
+    assert_eq!(plays, 1, "a finished turn should chime once");
+}
+
+#[gpui_kit::test]
+fn no_sound_when_disabled(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    cx.update(|_window, cx| {
+        workspace.update(cx, |ws, _cx| ws.notify_sound = false);
+    });
+    let before = crate::notify::SOUND_PLAYS.load(std::sync::atomic::Ordering::Relaxed);
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), cx);
+    assert_eq!(crate::notify::SOUND_PLAYS.load(std::sync::atomic::Ordering::Relaxed), before, "notify_sound off must silence the chime");
+}
+
+#[gpui_kit::test]
+fn sound_switch_persists(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    cx.update(|window, cx| workspace.update(cx, |ws, cx| ws.open_settings(window, cx)));
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.find("settings-section-general").visible());
+        let toggle = window.find("toggle-notify-sound");
+        assert_eq!(toggle.checked(), Some(true), "switch should mirror the default-on flag");
+        window.click("toggle-notify-sound", cx);
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(!workspace.read(cx).notify_sound, "switch click should clear the flag");
+        assert!(!crate::persist::load_settings().notify_sound, "switch click should persist");
+        assert_eq!(window.find("toggle-notify-sound").checked(), Some(false));
+    });
 }

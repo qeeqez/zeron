@@ -58,6 +58,7 @@ impl Workspace {
             contrast: self.contrast,
             sidebar_frosted: self.sidebar_frosted,
             notify_on_done: self.notify_on_done,
+            notify_sound: self.notify_sound,
             window_bounds: prev.window_bounds,
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,

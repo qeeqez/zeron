@@ -207,6 +207,9 @@ pub struct Settings {
     /// `crate::worktree::WorkspaceMode`.
     pub default_workspace: String,
     pub notify_on_done: bool,
+    /// System bell on turn completion — a separate toggle from the
+    /// toast/system notification, so the sound can play without a popup.
+    pub notify_sound: bool,
     pub word_wrap: bool,
     /// Legacy field: the pre-instances backend selector ("codex-cli" |
     /// "claude-cli" | "sim" | "http" | "acp"). Read for migration, never

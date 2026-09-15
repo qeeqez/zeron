@@ -19,6 +19,7 @@ impl Default for Settings {
             default_permissions: String::new(),
             default_workspace: String::new(),
             notify_on_done: true,
+            notify_sound: true,
             word_wrap: true,
             legacy_backend: String::new(),
             legacy_model: String::new(),

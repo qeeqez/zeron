@@ -57,6 +57,9 @@ pub(crate) fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
         .child(toggle_row(("toggle-notify", "Notify on reply complete"), s.notify, ws.clone(), |this, next, _w, _cx| {
             this.notify_on_done = next;
         }))
+        .child(toggle_row(("toggle-notify-sound", "Notification sound"), s.notify_sound, ws.clone(), |this, next, _w, _cx| {
+            this.notify_sound = next;
+        }))
         .child(group_label("Agent access", cx))
         .child(div().flex().items_center().gap_2().text_xs().children(AccessMode::ALL.into_iter().map(|mode| {
             let btn = Button::new(SharedString::from(mode.name())).label(mode.label()).on_click({
