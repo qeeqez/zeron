@@ -182,6 +182,9 @@ pub struct Chat {
     /// by resuming a past codex session. Empty = each send starts a fresh
     /// thread.
     pub thread_id: String,
+    /// Token/context usage folded from the turn's `AgentEvent::Usage`
+    /// stream — drives the composer meter. Runtime state, not persisted.
+    pub usage: crate::usage::ChatUsage,
 }
 
 impl Chat {
@@ -209,6 +212,7 @@ impl Chat {
             workdir: String::new(),
             worktree: false,
             thread_id: String::new(),
+            usage: crate::usage::ChatUsage::default(),
         }
     }
 

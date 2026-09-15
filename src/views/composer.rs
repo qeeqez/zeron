@@ -8,7 +8,9 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::slash::SLASH_COMMANDS;
-use crate::views::{ModelPickerSpec, PickerProvider, apply_pick, attachment_chips, mention_item, model_picker, queued_item, slash_item};
+use crate::views::{
+    ModelPickerSpec, PickerProvider, apply_pick, attachment_chips, mention_item, model_picker, queued_item, slash_item, usage_indicator,
+};
 use crate::workspace::Workspace;
 
 const MODES: [&str; 3] = ["Agent", "Plan", "Ask"];
@@ -203,7 +205,8 @@ impl Workspace {
                                     .text_xs()
                                     .text_color(cx.theme().muted_foreground)
                                     .child(format!("{} chars", self.composer.read(cx).value().len())),
-                            ),
+                            )
+                            .when_some(usage_indicator(&self.chats[self.active].usage, cx), |d, meter| d.child(meter)),
                     ),
             )
     }

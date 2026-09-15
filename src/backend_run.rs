@@ -57,6 +57,8 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
         chat.reply_task = Some(task);
         chat.child = child;
+        // A fresh turn starts the meter's per-turn counter over.
+        chat.usage.begin_turn();
     }
 }
 impl Workspace {
@@ -162,6 +164,15 @@ impl Workspace {
             },
             AgentEvent::Plan { ix, steps } => self.apply_plan(chat_id, ix, steps, cx),
             AgentEvent::Usage { input, output } => {
+                // acp's `usage_update` reports context occupancy (used of
+                // size), not turn tokens — it feeds the meter's fill, not
+                // the counters. Token backends carry input/output.
+                let report = if self.backend.name() == "acp" {
+                    crate::usage::UsageReport::occupancy(input, output)
+                } else {
+                    crate::usage::UsageReport::tokens(input, output)
+                };
+                chat.usage.record(report);
                 // Prefer the text reply; fall back to any assistant message.
                 let ix = chat
                     .messages

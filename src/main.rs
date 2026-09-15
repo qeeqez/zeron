@@ -86,6 +86,9 @@ mod thread_defaults;
 mod thread_defaults_tests;
 #[cfg(test)]
 mod ui_tests;
+mod usage;
+#[cfg(test)]
+mod usage_tests;
 mod views;
 mod window;
 #[cfg(test)]

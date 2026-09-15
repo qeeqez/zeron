@@ -8,6 +8,36 @@ use gpui_kit::*;
 use crate::model::Chat;
 use crate::send_queue::Queued;
 use crate::workspace::Workspace;
+/// Compact context/token meter for the composer footer: `+{turn} ·
+/// {used} / {limit}` plus a subtle fill bar when the backend reports a
+/// window size, else just the cumulative token count. `None` until the
+/// first usage report — an untouched thread shows nothing.
+pub fn usage_indicator(usage: &crate::usage::ChatUsage, cx: &App) -> Option<impl IntoElement> {
+    let label = usage.label()?;
+    let fill = usage.fill();
+    Some(
+        div()
+            .id("usage-meter")
+            .test_support()
+            .aria_label(label.clone())
+            .flex()
+            .items_center()
+            .gap_1p5()
+            .text_xs()
+            .text_color(cx.theme().muted_foreground)
+            .when_some(fill, |d, fill| {
+                d.child(
+                    div()
+                        .w(px(48.))
+                        .h(px(4.))
+                        .rounded_sm()
+                        .bg(cx.theme().border)
+                        .child(div().h_full().rounded_sm().w(px(48. * fill)).bg(cx.theme().muted_foreground)),
+                )
+            })
+            .child(label),
+    )
+}
 
 pub fn slash_item(cmd: &str, desc: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
     let ws = ws.clone();
