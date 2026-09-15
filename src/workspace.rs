@@ -75,6 +75,8 @@ pub struct Workspace {
     /// Where new threads run: project checkout or a per-thread worktree.
     pub default_workspace: crate::worktree::WorkspaceMode,
     pub palette: Entity<CommandState>,
+    /// Cmd-Shift-F cross-chat search dialog's state (see `crate::global_search`).
+    pub global_search: Entity<CommandState>,
     pub rename: Entity<InputState>,
     /// Chat id being renamed — stable across deletions, unlike a vec index.
     pub renaming: Option<u64>,
@@ -178,7 +180,6 @@ impl Workspace {
         .detach();
 
         let palette = cx.new(|cx| CommandState::new(window, cx));
-        let rename = cx.new(|cx| InputState::new(window, cx).placeholder("Chat title"));
         let chat_search = cx.new(|cx| InputState::new(window, cx).placeholder("Search in chat"));
         cx.subscribe_in(&chat_search, window, |this, _s, event: &InputEvent, _window, cx| match event {
             InputEvent::Change => {
@@ -191,7 +192,7 @@ impl Workspace {
             _ => {},
         })
         .detach();
-        let chat_find = crate::chat_find::new_find_input(window, cx);
+        let global_search = cx.new(|cx| CommandState::new(window, cx));
         let task_input = cx.new(|cx| InputState::new(window, cx).placeholder("New task…"));
         cx.subscribe_in(&task_input, window, |this, s, event: &InputEvent, window, cx| {
             if matches!(event, InputEvent::PressEnter { .. }) {
@@ -269,13 +270,14 @@ impl Workspace {
             default_permissions: (!settings.default_permissions.is_empty())
                 .then(|| crate::backend::AccessMode::from_name(&settings.default_permissions)),
             default_workspace: crate::worktree::WorkspaceMode::from_name(&settings.default_workspace),
-            rename,
+            rename: cx.new(|cx| InputState::new(window, cx).placeholder("Chat title")),
             renaming: None,
             rename_mode: RenameMode::Inline,
             recall_ix: None,
             palette,
+            global_search,
             chat_search,
-            find: crate::chat_find::FindBar::new(chat_find),
+            find: crate::chat_find::FindBar::new(crate::chat_find::new_find_input(window, cx)),
             chat_search_open: false,
             search_match_ix: 0,
             recall_saved: None,

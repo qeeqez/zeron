@@ -58,6 +58,9 @@ mod git;
 mod git_parse;
 #[cfg(test)]
 mod git_tests;
+mod global_search;
+#[cfg(test)]
+mod global_search_tests;
 mod lifecycle;
 mod mcp;
 mod mcp_config;
@@ -142,7 +145,8 @@ use gpui_kit::*;
 
 actions!([
     NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleSnapshots, ToggleExplorer, OpenPalette, ThemeLight, ThemeDark,
-    Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, FindInChat,
+    Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, SearchAllChats,
+    FindInChat,
     CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow, AboutApp, HideApp,
     HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront,
 ]);
@@ -185,6 +189,7 @@ fn app_menus() -> Vec<Menu> {
             MenuItem::separator(),
             MenuItem::action("Copy Transcript", CopyTranscript),
             MenuItem::action("Find in Chat", FindInChat),
+            MenuItem::action("Search All Chats", SearchAllChats),
             MenuItem::separator(),
             MenuItem::action("Emoji & Symbols", EmojiPalette),
         ]),
@@ -216,11 +221,13 @@ fn app_menus() -> Vec<Menu> {
 /// overlay renders, so the cheat sheet can't drift from the real keymap.
 fn workspace_keys() -> Vec<KeyBinding> {
     let mut keys: Vec<KeyBinding> = shortcuts::SHORTCUT_SPECS.iter().filter_map(|spec| spec.bind.map(|bind| bind(spec.keys))).collect();
-    // Inputs bind cmd-f to their own Search action and swallow it when not
-    // `searchable`, which would shadow the workspace binding whenever the
-    // composer or find input is focused. Registering later in the same
-    // context wins, so this keeps Cmd-F opening the find bar.
+    // Inputs bind cmd-f to their own Search action and cmd-shift-f to
+    // Replace, swallowing both when not `searchable` — either would shadow
+    // the workspace binding whenever the composer or find input is focused.
+    // Registering later in the same context wins, so these keep Cmd-F
+    // opening the find bar and Cmd-Shift-F opening global search.
     keys.push(KeyBinding::new("cmd-f", FindInChat, Some("Input")));
+    keys.push(KeyBinding::new("cmd-shift-f", SearchAllChats, Some("Input")));
     keys
 }
 

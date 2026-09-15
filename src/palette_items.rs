@@ -98,6 +98,12 @@ fn command_specs() -> Vec<CommandSpec> {
             effect: Effect::Run(Workspace::open_chat_search),
         },
         CommandSpec {
+            label: "Search All Chats",
+            icon: IconName::TextSearch,
+            keywords: &["find", "messages", "global"],
+            effect: Effect::Run(Workspace::open_global_search),
+        },
+        CommandSpec {
             label: "Copy Transcript",
             icon: IconName::Copy,
             keywords: &["clipboard"],
@@ -284,7 +290,7 @@ fn chat_item(chat: ChatSnapshot) -> CommandItem {
 }
 
 /// "2h ago"-style age for chat rows.
-fn rel_time(at: std::time::SystemTime) -> SharedString {
+pub(crate) fn rel_time(at: std::time::SystemTime) -> SharedString {
     let secs = at.elapsed().map(|d| d.as_secs()).unwrap_or(0);
     match secs {
         s if s < 60 => "just now".into(),

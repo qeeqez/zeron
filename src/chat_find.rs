@@ -177,6 +177,25 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Open the find bar on `query` and land on message `msg_ix` — the
+    /// global-search jump target. `last_query` is pre-seeded so the
+    /// programmatic `set_value`'s Change event doesn't reset `match_ix`
+    /// back to the first match (see `find_query_changed`).
+    pub(crate) fn jump_to_message(&mut self, query: &str, msg_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.find.open {
+            self.open_chat_find(window, cx);
+        }
+        self.find.last_query = query.to_string();
+        self.find.input.update(cx, |s, cx| s.set_value(query, window, cx));
+        let matches = self.find_matches(cx);
+        self.find.match_ix = matches.iter().position(|&ix| ix == msg_ix).unwrap_or(0);
+        if let Some(&target) = matches.get(self.find.match_ix) {
+            let pos = self.filtered_pos(target, cx);
+            self.scroller.update(cx, |s, cx| s.scroll_to_item(pos, cx));
+        }
+        cx.notify();
+    }
+
     /// Esc while the find bar is open closes it (same path as the bar's ✕ —
     /// query cleared, focus back to the composer); otherwise the key falls
     /// through to the workspace handler (stop reply, close panels).

@@ -3,16 +3,49 @@ use gpui_kit::*;
 use crate::model::{ChatMessage, MessageKind};
 use crate::workspace::Workspace;
 
-/// The text a chat-search query matches against for one message.
-pub(crate) fn msg_matches(m: &ChatMessage, query: &str) -> bool {
-    let haystacks: Vec<&str> = match &m.kind {
+/// The text fields a query matches against for one message — the same
+/// haystacks drive in-chat search, find, global search and its snippets.
+pub(crate) fn haystacks(m: &ChatMessage) -> Vec<&str> {
+    match &m.kind {
         MessageKind::Text(t) => vec![t.as_str()],
         MessageKind::Tool(t) => vec![t.name.as_str(), t.detail.as_str(), t.output.as_str()],
         MessageKind::Diff(d) => vec![d.path.as_str(), d.hunks.as_str()],
         MessageKind::Plan(p) => p.steps.iter().map(|s| s.label.as_str()).collect(),
         MessageKind::Approval(a) => vec![a.kind.label(), a.detail.as_str()],
+    }
+}
+
+/// The text a chat-search query matches against for one message.
+/// `query` must already be lowercase.
+pub(crate) fn msg_matches(m: &ChatMessage, query: &str) -> bool {
+    haystacks(m).iter().any(|h| h.to_lowercase().contains(query))
+}
+
+/// A one-line excerpt of the first field containing `query` (lowercase),
+/// centered on the match — the result row's snippet in global search.
+pub(crate) fn match_snippet(m: &ChatMessage, query: &str) -> String {
+    let Some(hay) = haystacks(m).into_iter().find(|h| h.to_lowercase().contains(query)) else {
+        return String::new();
     };
-    haystacks.iter().any(|h| h.to_lowercase().contains(query))
+    let start = hay.to_lowercase().find(query).unwrap_or(0);
+    // Snap to char boundaries — lowercasing can shift byte offsets.
+    let mut start = start.min(hay.len());
+    while start > 0 && !hay.is_char_boundary(start) {
+        start -= 1;
+    }
+    const CTX: usize = 40;
+    let mut from = start.saturating_sub(CTX);
+    while from > 0 && !hay.is_char_boundary(from) {
+        from -= 1;
+    }
+    let mut to = (start + query.len() + CTX).min(hay.len());
+    while to < hay.len() && !hay.is_char_boundary(to) {
+        to += 1;
+    }
+    let body: String = hay[from..to].split_whitespace().collect::<Vec<_>>().join(" ");
+    let prefix = if from > 0 { "…" } else { "" };
+    let suffix = if to < hay.len() { "…" } else { "" };
+    format!("{prefix}{body}{suffix}")
 }
 
 /// Should a newly pushed last message grow the scroller? False only when a

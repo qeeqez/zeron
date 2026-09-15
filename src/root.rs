@@ -3,8 +3,9 @@
 use crate::workspace::Workspace;
 use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EnterFullscreen,
-    EscapeKey, FindInChat, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats, SearchChat,
-    ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleExplorer, ToggleSidebar, ToggleSnapshots, ZoomWindow,
+    EscapeKey, FindInChat, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats,
+    SearchAllChats, SearchChat, ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleExplorer, ToggleSidebar,
+    ToggleSnapshots, ZoomWindow,
 };
 use gpui_kit::component::Root;
 
@@ -103,24 +104,20 @@ impl Render for Workspace {
                     ws.update(cx, |this, cx| this.open_chat_search(window, cx));
                 }
             })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &SearchAllChats, window, cx| {
+                    ws.update(cx, |this, cx| this.open_global_search(window, cx));
+                }
+            })
             // Reached only when focus is outside the chat column — the
             // column's own FindInChat listener consumes it first.
             .on_action(move |_: &FindInChat, window, cx| ws_find.update(cx, |this, cx| this.open_chat_find(window, cx)))
-            .on_action(|_: &MinimizeWindow, window, _cx| {
-                window.minimize_window();
-            })
-            .on_action(|_: &ZoomWindow, window, _cx| {
-                window.zoom_window();
-            })
-            .on_action(|_: &EnterFullscreen, window, _cx| {
-                window.toggle_fullscreen();
-            })
-            .on_action(|_: &EmojiPalette, window, _cx| {
-                window.show_character_palette();
-            })
-            .on_action(|_: &RevealChats, _window, cx| {
-                cx.reveal_path(&crate::persist::chats_dir());
-            })
+            .on_action(|_: &MinimizeWindow, window, _cx| window.minimize_window())
+            .on_action(|_: &ZoomWindow, window, _cx| window.zoom_window())
+            .on_action(|_: &EnterFullscreen, window, _cx| window.toggle_fullscreen())
+            .on_action(|_: &EmojiPalette, window, _cx| window.show_character_palette())
+            .on_action(|_: &RevealChats, _window, cx| cx.reveal_path(&crate::persist::chats_dir()))
             .on_action({
                 let ws = cx.entity();
                 move |_: &CopyTranscript, _window, cx| {

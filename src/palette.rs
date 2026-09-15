@@ -170,21 +170,7 @@ fn palette_command(
                 .text_color(cx.theme().muted_foreground)
                 .child("No matching commands or chats")
         })
-        .footer(|_, _, cx| {
-            div()
-                .flex()
-                .items_center()
-                .gap_3()
-                .px_3()
-                .py_2()
-                .border_t_1()
-                .border_color(cx.theme().border)
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child("↑↓ navigate")
-                .child("↵ select")
-                .child("esc close")
-        })
+        .footer(|_, _, cx| command_footer("↵ select", cx))
         // The dialog builder re-runs on workspace renders — notifying
         // rebuilds the list for the new query.
         .on_query(move |_, _, cx| {
@@ -220,4 +206,22 @@ impl Workspace {
             None => {},
         }
     }
+}
+
+/// The key-hint strip under a `Command` dialog's list — shared by the
+/// palette and global search so both footers stay identical.
+pub(crate) fn command_footer(confirm: &'static str, cx: &App) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .px_3()
+        .py_2()
+        .border_t_1()
+        .border_color(cx.theme().border)
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child("↑↓ navigate")
+        .child(confirm)
+        .child("esc close")
 }

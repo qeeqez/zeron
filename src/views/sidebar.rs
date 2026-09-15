@@ -68,6 +68,9 @@ impl Workspace {
         let new_chat = crate::views::nav_row::NavRow::new("new-chat", "New chat")
             .icon(IconName::Plus)
             .on_click(cx.listener(|this, _, _, cx| this.new_chat(cx)));
+        let search_all = crate::views::nav_row::NavRow::new("search-all-chats", "Search all chats")
+            .icon(IconName::TextSearch)
+            .on_click(cx.listener(|this, _, window, cx| this.open_global_search(window, cx)));
 
         // Resume past threads — only backends with session support (codex)
         // get the row; others never see the affordance.
@@ -127,7 +130,7 @@ impl Workspace {
             groups.insert(0, SidebarGroup::new(label).children(items));
         }
 
-        let mut actions = SidebarGroup::new("").child(new_chat);
+        let mut actions = SidebarGroup::new("").child(new_chat).child(search_all);
         if let Some(resume) = resume {
             actions = actions.child(resume);
         }
