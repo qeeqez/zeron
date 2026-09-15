@@ -13,7 +13,10 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     let chat_id = this.chats[this.active].id;
     let model = this.model.to_string();
     let mode = this.mode.to_string();
-    let stream = this.backend.send(prompt, &model, &mode);
+    // The thread's workdir (project root or its worktree) and access mode
+    // travel with the turn — a mid-turn settings change can't alter them.
+    let ctx = this.turn_context();
+    let stream = this.backend.send(prompt, &model, &mode, &ctx);
     this.spawn_run_agent(crate::agents::RunAgentSpec { chat_id, name: this.backend.name(), lane: &model }, cx);
     // Share the child slot with the chat so stop/delete can kill a hung
     // process directly — dropping the stream only cancels once the pump

@@ -23,7 +23,7 @@ impl AgentBackend for HttpBackend {
         "http"
     }
 
-    fn send(&self, prompt: &str, model: &str, mode: &str) -> ReplyStream {
+    fn send(&self, prompt: &str, model: &str, mode: &str, _ctx: &super::TurnContext) -> ReplyStream {
         let (tx, rx) = std::sync::mpsc::channel();
         let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let turn = std::sync::Arc::new(HttpTurn {

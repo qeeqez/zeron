@@ -42,7 +42,7 @@ impl AgentBackend for StubBackend {
         "stub"
     }
 
-    fn send(&self, _prompt: &str, _model: &str, _mode: &str) -> ReplyStream {
+    fn send(&self, _prompt: &str, _model: &str, _mode: &str, _ctx: &crate::backend::TurnContext) -> ReplyStream {
         let (tx, events) = std::sync::mpsc::channel();
         for e in [
             AgentEvent::ToolCallStart { ix: 0, name: "bash".into(), detail: "cargo test".into() },

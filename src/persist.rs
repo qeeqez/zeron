@@ -6,20 +6,32 @@ use serde::{Deserialize, Serialize};
 use crate::model::{Chat, ChatMessage, MessageKind, ToolStatus};
 
 #[derive(Serialize, Deserialize)]
-struct StoredChat {
+pub(crate) struct StoredChat {
     v: u32,
     title: String,
     messages: Vec<ChatMessage>,
     /// Missing in early v1 files.
     #[serde(default)]
-    pinned: bool,
+    pub(crate) pinned: bool,
     #[serde(default)]
-    archived: bool,
+    pub(crate) archived: bool,
     #[serde(default)]
-    draft: String,
+    pub(crate) draft: String,
     /// Missing in early v1 files — fall back to now().
     #[serde(default = "std::time::SystemTime::now")]
     created_at: std::time::SystemTime,
+    /// Per-thread provider/model/access/workdir — missing in files written
+    /// before thread defaults existed; empty means "follow the selection".
+    #[serde(default)]
+    provider: String,
+    #[serde(default)]
+    model: String,
+    #[serde(default)]
+    access: String,
+    #[serde(default)]
+    workdir: String,
+    #[serde(default)]
+    worktree: bool,
 }
 
 /// Chats dir for the current project — kept for `RevealChats` in root.rs.
@@ -44,6 +56,11 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             archived: chat.archived,
             draft: chat.draft.clone(),
             created_at: chat.created_at,
+            provider: chat.provider.clone(),
+            model: chat.model.clone(),
+            access: chat.access.map_or_else(String::new, |a| a.name().to_string()),
+            workdir: chat.workdir.clone(),
+            worktree: chat.worktree,
         };
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
@@ -138,9 +155,28 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
             chat.archived = stored.archived;
             chat.draft = stored.draft;
             chat.created_at = stored.created_at;
+            chat.provider = stored.provider;
+            chat.model = stored.model;
+            chat.access = if stored.access.is_empty() {
+                None
+            } else {
+                Some(crate::backend::AccessMode::from_name(&stored.access))
+            };
+            chat.workdir = stored.workdir;
+            chat.worktree = stored.worktree;
             Some(chat)
         })
         .collect()
+}
+
+/// The `default_model` setting — which provider instance + model new
+/// threads start on. Either field may be empty: an empty provider follows
+/// the current selection, an empty model resolves to the provider's first.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DefaultModel {
+    pub provider_instance_id: String,
+    pub model_id: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -158,9 +194,18 @@ pub struct Settings {
     /// provider's first model; there is no synthetic "default" anymore.
     pub selected_model: String,
     pub mode: String,
-    /// Agent-mode filesystem access: "read-only" | "workspace-write" |
-    /// "full-access" — see `crate::backend::AccessMode`.
+    /// Agent-mode filesystem access — an `AccessMode::name` (legacy files
+    /// may carry "read-only"/"workspace-write"; `from_name` maps them).
     pub access: String,
+    /// Provider+model new threads start on; empty fields = the current
+    /// selection. Existing threads keep their own stamped values.
+    pub default_model: DefaultModel,
+    /// Access mode new threads start on — an `AccessMode::name`; empty =
+    /// the current workspace access.
+    pub default_permissions: String,
+    /// Where new threads run: "checkout" | "worktree" — see
+    /// `crate::worktree::WorkspaceMode`.
+    pub default_workspace: String,
     pub notify_on_done: bool,
     pub word_wrap: bool,
     /// Legacy field: the pre-instances backend selector ("codex-cli" |
@@ -273,37 +318,5 @@ pub fn save_model_cache(provider: &str, models: &[crate::model::ModelInfo]) {
     if let Ok(json) = serde_json::to_string_pretty(&cache) {
         let _ = fs::write(&tmp, json);
         let _ = fs::rename(&tmp, &path);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stored_chat_defaults_missing_fields() {
-        // Early v1 files lack pinned/archived/draft/created_at — they must
-        // parse with defaults instead of dropping the chat.
-        let json = r#"{"v":1,"title":"t","messages":[]}"#;
-        let s: StoredChat = serde_json::from_str(json).unwrap();
-        assert!(!s.pinned && !s.archived && s.draft.is_empty());
-    }
-
-    #[test]
-    fn settings_defaults_missing_fields() {
-        // A file with only `model` must not reset the rest.
-        let s: Settings = serde_json::from_str(r#"{"model":"gpt-5"}"#).unwrap();
-        assert_eq!(s.legacy_model, "gpt-5");
-        assert_eq!(s.font_size, 14);
-        assert!(s.notify_on_done);
-    }
-
-    #[test]
-    fn settings_roundtrip() {
-        let s = Settings::default();
-        let json = serde_json::to_string(&s).unwrap();
-        let back: Settings = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.selected_model, s.selected_model);
-        assert_eq!(back.font_size, s.font_size);
     }
 }

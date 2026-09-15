@@ -103,11 +103,11 @@ pub(super) struct Policy {
 
 impl Policy {
     pub(super) fn of(mode: &str, access: AccessMode, cwd: std::path::PathBuf) -> Self {
-        let write = mode == "Agent" && access != AccessMode::ReadOnly;
+        let agent = mode == "Agent";
         Self {
-            auto_allow: write,
-            write_fs: write,
-            workspace_only: access == AccessMode::WorkspaceWrite,
+            auto_allow: agent && access.auto_allows(),
+            write_fs: agent && access.writes(),
+            workspace_only: access.workspace_only(),
             cwd,
         }
     }

@@ -69,6 +69,9 @@ mod sidebar_resize_tests;
 #[cfg(test)]
 mod sidebar_ui_tests;
 mod simulate;
+mod thread_defaults;
+#[cfg(test)]
+mod thread_defaults_tests;
 #[cfg(test)]
 mod ui_tests;
 mod views;
@@ -79,6 +82,9 @@ mod workspace;
 mod workspace_settings;
 #[cfg(test)]
 mod workspace_tests;
+mod worktree;
+#[cfg(test)]
+mod worktree_tests;
 
 use gpui_kit::*;
 

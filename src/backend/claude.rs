@@ -42,14 +42,15 @@ impl AgentBackend for ClaudeCliBackend {
             .collect()
     }
 
-    fn send(&self, prompt: &str, model: &str, mode: &str) -> ReplyStream {
+    fn send(&self, prompt: &str, model: &str, mode: &str, ctx: &super::TurnContext) -> ReplyStream {
         let (tx, rx) = std::sync::mpsc::channel();
         // Each turn owns its child slot — concurrent chats can't clobber it.
         let turn = std::sync::Arc::new(ClaudeTurn {
             prompt: prompt.to_string(),
             model: model.to_string(),
             mode: mode.to_string(),
-            access: super::access_mode(),
+            access: ctx.access,
+            cwd: ctx.cwd.clone(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         });
@@ -72,6 +73,9 @@ struct ClaudeTurn {
     /// Filesystem access for Agent turns — snapshotted at send time so a
     /// mid-turn settings change can't alter a running turn's permissions.
     access: super::AccessMode,
+    /// The thread's working directory — the project root, or its git
+    /// worktree when the thread runs in one.
+    cwd: std::path::PathBuf,
     slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
     /// Set when the UI drops the stream — checked before spawn so a
     /// cancelled turn can't start a fresh child.
@@ -98,7 +102,9 @@ enum ClaudeOutcome {
 
 /// One `claude -p` turn: spawn, write the prompt to stdin, stream NDJSON
 /// lines through the decoder until `result` or EOF, reap, classify.
-fn spawn_claude(turn: &ClaudeTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> ClaudeOutcome {
+/// The `claude -p` command for one turn — extracted so tests can assert
+/// args and the spawn cwd without launching a real process.
+fn build_command(turn: &ClaudeTurn) -> std::process::Command {
     let mut cmd = std::process::Command::new("claude");
     cmd.arg("-p")
         .arg("--output-format")
@@ -107,13 +113,18 @@ fn spawn_claude(turn: &ClaudeTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> 
         .arg("--include-partial-messages")
         .arg("--no-session-persistence")
         .args(permission_args(turn))
-        .current_dir(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")))
+        .current_dir(&turn.cwd)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     if !turn.model.is_empty() {
         cmd.arg("--model").arg(&turn.model);
     }
+    cmd
+}
+
+fn spawn_claude(turn: &ClaudeTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> ClaudeOutcome {
+    let mut cmd = build_command(turn);
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -185,15 +196,22 @@ fn spawn_claude(turn: &ClaudeTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> 
 
 /// Map mode + access to claude's permission flags. Claude has no sandbox
 /// levels like codex's `-s`; the closest mapping:
-/// - Plan/Ask, or Agent with read-only access → `--permission-mode plan`
-///   (claude's read-only planning mode: no writes, no non-readonly tools).
-/// - Agent + workspace-write → `--permission-mode acceptEdits` (file edits
-///   auto-accepted, other actions still gated).
+/// - Plan/Ask → `--permission-mode plan` (read-only planning mode).
+/// - Agent + supervised → `--permission-mode default` (every action asks;
+///   headless `-p` auto-denies, so the turn stays read-only).
+/// - Agent + auto-accept-edits → `--permission-mode acceptEdits` (file
+///   edits auto-accepted, other actions still gated).
+/// - Agent + auto → `--permission-mode acceptEdits` — claude can't confine
+///   shell commands to the workspace, so workspace-write is the closest
+///   "auto" it offers.
 /// - Agent + full-access → `--dangerously-skip-permissions` (no prompts).
 fn permission_args(turn: &ClaudeTurn) -> Vec<&'static str> {
     match (turn.mode == "Agent", turn.access) {
-        (false, _) | (true, super::AccessMode::ReadOnly) => vec!["--permission-mode", "plan"],
-        (true, super::AccessMode::WorkspaceWrite) => vec!["--permission-mode", "acceptEdits"],
+        (false, _) => vec!["--permission-mode", "plan"],
+        (true, super::AccessMode::Supervised) => vec!["--permission-mode", "default"],
+        (true, super::AccessMode::AutoAcceptEdits | super::AccessMode::Auto) => {
+            vec!["--permission-mode", "acceptEdits"]
+        },
         (true, super::AccessMode::FullAccess) => vec!["--dangerously-skip-permissions"],
     }
 }
@@ -208,6 +226,7 @@ mod tests {
             model: "sonnet".into(),
             mode: mode.into(),
             access,
+            cwd: std::path::PathBuf::from("/tmp/thread-wt"),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
@@ -217,13 +236,21 @@ mod tests {
     fn agent_maps_access_to_permission_flags() {
         use super::super::AccessMode;
         let cases = [
-            (AccessMode::ReadOnly, vec!["--permission-mode", "plan"]),
-            (AccessMode::WorkspaceWrite, vec!["--permission-mode", "acceptEdits"]),
+            (AccessMode::Supervised, vec!["--permission-mode", "default"]),
+            (AccessMode::AutoAcceptEdits, vec!["--permission-mode", "acceptEdits"]),
+            (AccessMode::Auto, vec!["--permission-mode", "acceptEdits"]),
             (AccessMode::FullAccess, vec!["--dangerously-skip-permissions"]),
         ];
         for (access, want) in cases {
             assert_eq!(permission_args(&turn("Agent", access)), want);
         }
+    }
+
+    #[test]
+    fn command_spawns_in_the_thread_workdir() {
+        use super::super::AccessMode;
+        let cmd = build_command(&turn("Agent", AccessMode::Auto));
+        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/tmp/thread-wt")));
     }
 
     #[test]

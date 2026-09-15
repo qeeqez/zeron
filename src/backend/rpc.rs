@@ -18,13 +18,14 @@ pub(crate) fn initialize_req(id: i64) -> Value {
 
 /// `thread/start`: one ephemeral thread per turn (no history is kept, so a
 /// fresh thread per send matches the old `codex exec` behavior). `sandbox`
-/// is a `SandboxMode` string; approvals are off — there's no approval UI.
-pub(crate) fn thread_start_req(id: i64, model: &str, sandbox: &str) -> Value {
+/// is a `SandboxMode` string, `approval` the `AskForApproval` policy, and
+/// `cwd` the thread's working directory (project root or its worktree).
+pub(crate) fn thread_start_req(id: i64, model: &str, sandbox: &str, approval: &str, cwd: &std::path::Path) -> Value {
     let mut params = json!({
-        "approvalPolicy": "never",
+        "approvalPolicy": approval,
         "sandbox": sandbox,
         "ephemeral": true,
-        "cwd": std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| "/".into()),
+        "cwd": cwd.to_string_lossy(),
     });
     params["model"] = json!(model);
     json!({"method": "thread/start", "id": id, "params": params})
@@ -99,18 +100,22 @@ mod tests {
 
     #[test]
     fn thread_start_maps_sandbox_and_approval() {
-        let req = thread_start_req(2, "gpt-5", "workspace-write");
+        let cwd = std::path::Path::new("/tmp/thread-wt");
+        let req = thread_start_req(2, "gpt-5", "workspace-write", "on-failure", cwd);
         assert_eq!(req["method"], json!("thread/start"));
         assert_eq!(req["params"]["sandbox"], json!("workspace-write"));
-        // No approval UI exists — the server must never block on one.
-        assert_eq!(req["params"]["approvalPolicy"], json!("never"));
+        assert_eq!(req["params"]["approvalPolicy"], json!("on-failure"));
         assert_eq!(req["params"]["ephemeral"], json!(true));
+        // The thread's working directory goes on the wire — a worktree
+        // thread's server must see the worktree, not the process cwd.
+        assert_eq!(req["params"]["cwd"], json!("/tmp/thread-wt"));
     }
 
     #[test]
     fn thread_start_always_sends_the_model() {
         // No synthetic "default" — the concrete id always goes on the wire.
-        assert_eq!(thread_start_req(2, "gpt-5", "read-only")["params"]["model"], json!("gpt-5"));
+        let cwd = std::path::Path::new("/tmp");
+        assert_eq!(thread_start_req(2, "gpt-5", "read-only", "on-request", cwd)["params"]["model"], json!("gpt-5"));
     }
 
     #[test]

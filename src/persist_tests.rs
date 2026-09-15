@@ -160,4 +160,69 @@ mod tests {
         assert!(!path.exists());
         assert!(path.with_extension("json.bak").exists(), "unreadable file must be preserved");
     }
+
+    #[test]
+    fn stored_chat_defaults_missing_fields() {
+        // Early v1 files lack pinned/archived/draft/created_at — they must
+        // parse with defaults instead of dropping the chat.
+        let json = r#"{"v":1,"title":"t","messages":[]}"#;
+        let s: crate::persist::StoredChat = serde_json::from_str(json).unwrap();
+        assert!(!s.pinned && !s.archived && s.draft.is_empty());
+    }
+
+    #[test]
+    fn settings_defaults_missing_fields() {
+        // A file with only `model` must not reset the rest.
+        let s: crate::persist::Settings = serde_json::from_str(r#"{"model":"gpt-5"}"#).unwrap();
+        assert_eq!(s.legacy_model, "gpt-5");
+        assert_eq!(s.font_size, 14);
+        assert!(s.notify_on_done);
+        // Thread defaults are unset until the user picks them.
+        assert!(s.default_model.provider_instance_id.is_empty());
+        assert!(s.default_permissions.is_empty());
+        assert!(s.default_workspace.is_empty());
+    }
+
+    #[test]
+    fn settings_roundtrip() {
+        let s = crate::persist::Settings::default();
+        let json = serde_json::to_string(&s).unwrap();
+        let back: crate::persist::Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.selected_model, s.selected_model);
+        assert_eq!(back.font_size, s.font_size);
+        assert_eq!(back.default_model, s.default_model);
+    }
+
+    #[test]
+    fn thread_fields_roundtrip_through_disk() {
+        let dir = temp_chats_dir("thread-fields");
+        let mut chat = Chat::new(0, "wt chat");
+        chat.provider = "claude-cli".into();
+        chat.model = "opus".into();
+        chat.access = Some(crate::backend::AccessMode::Supervised);
+        chat.workdir = "/repo/.worktrees/thread-0".into();
+        chat.worktree = true;
+        save_chats(&dir, &[chat]);
+
+        let mut next_id = 0;
+        let loaded = load_chats(&dir, &mut next_id, true);
+        let chat = &loaded[0];
+        assert_eq!(chat.provider, "claude-cli");
+        assert_eq!(chat.model, "opus");
+        assert_eq!(chat.access, Some(crate::backend::AccessMode::Supervised));
+        assert_eq!(chat.workdir, "/repo/.worktrees/thread-0");
+        assert!(chat.worktree);
+    }
+
+    #[test]
+    fn legacy_chat_file_loads_with_empty_thread_fields() {
+        let dir = temp_chats_dir("legacy-fields");
+        std::fs::write(dir.join("0.json"), r#"{"v":1,"title":"old","messages":[]}"#).unwrap();
+        let mut next_id = 0;
+        let loaded = load_chats(&dir, &mut next_id, true);
+        let chat = &loaded[0];
+        assert!(chat.provider.is_empty() && chat.model.is_empty());
+        assert!(chat.access.is_none());
+        assert!(chat.workdir.is_empty() && !chat.worktree);
+    }
 }

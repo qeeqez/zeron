@@ -118,12 +118,29 @@ fn permission_msg() -> Value {
 }
 
 #[test]
+fn policy_maps_each_access_mode() {
+    let sup = wire::Policy::of("Agent", AccessMode::Supervised, "/tmp".into());
+    assert!(!sup.write_fs && !sup.auto_allow);
+
+    // Auto-accept-edits: writes allowed inside the workspace, but
+    // permission prompts still ask (auto_allow off → reject_once).
+    let edits = wire::Policy::of("Agent", AccessMode::AutoAcceptEdits, "/tmp".into());
+    assert!(edits.write_fs && edits.workspace_only && !edits.auto_allow);
+
+    let auto = wire::Policy::of("Agent", AccessMode::Auto, "/tmp".into());
+    assert!(auto.write_fs && auto.workspace_only && auto.auto_allow);
+
+    let full = wire::Policy::of("Agent", AccessMode::FullAccess, "/tmp".into());
+    assert!(full.write_fs && !full.workspace_only && full.auto_allow);
+}
+
+#[test]
 fn permission_follows_turn_policy() {
-    let allow = wire::Policy::of("Agent", AccessMode::WorkspaceWrite, "/tmp".into());
+    let allow = wire::Policy::of("Agent", AccessMode::Auto, "/tmp".into());
     let reply = wire::request_reply("session/request_permission", &permission_msg(), &allow);
     assert_eq!(reply["result"]["outcome"], json!({"outcome": "selected", "optionId": "allow"}));
 
-    let deny = wire::Policy::of("Plan", AccessMode::WorkspaceWrite, "/tmp".into());
+    let deny = wire::Policy::of("Plan", AccessMode::Auto, "/tmp".into());
     let reply = wire::request_reply("session/request_permission", &permission_msg(), &deny);
     assert_eq!(reply["result"]["outcome"], json!({"outcome": "selected", "optionId": "deny"}));
 
@@ -140,7 +157,7 @@ fn fs_read_honors_line_window() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("f.txt");
     std::fs::write(&path, "a\nb\nc\nd\n").unwrap();
-    let policy = wire::Policy::of("Agent", AccessMode::WorkspaceWrite, dir.clone());
+    let policy = wire::Policy::of("Agent", AccessMode::Auto, dir.clone());
     let msg = |params| json!({"id": 7, "method": "fs/read_text_file", "params": params});
 
     let reply = wire::request_reply("fs/read_text_file", &msg(json!({"sessionId": "s", "path": path})), &policy);
@@ -162,11 +179,11 @@ fn fs_write_respects_policy_and_workspace() {
     let msg = |path: &std::path::Path| json!({"id": 8, "method": "fs/write_text_file", "params": {"sessionId": "s", "path": path, "content": "hi"}});
 
     // Read-only turn: writes are refused outright.
-    let ro = wire::Policy::of("Plan", AccessMode::WorkspaceWrite, dir.clone());
+    let ro = wire::Policy::of("Plan", AccessMode::Auto, dir.clone());
     assert!(wire::request_reply("fs/write_text_file", &msg(&target), &ro).get("error").is_some());
 
     // Workspace-write: inside cwd works, outside is refused.
-    let ws = wire::Policy::of("Agent", AccessMode::WorkspaceWrite, dir.clone());
+    let ws = wire::Policy::of("Agent", AccessMode::Auto, dir.clone());
     let reply = wire::request_reply("fs/write_text_file", &msg(&target), &ws);
     assert_eq!(reply["result"], json!({}));
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "hi");

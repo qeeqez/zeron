@@ -123,6 +123,21 @@ pub struct Chat {
     pub unread: bool,
     pub archived: bool,
     pub attachments: Vec<SharedString>,
+    /// Provider instance id this thread sends on — stamped at creation from
+    /// `default_model` (or the live selection) and restored into the
+    /// workspace on select. Empty = legacy chat: follow the selection.
+    pub provider: String,
+    /// Model id within `provider`'s catalog — same lifecycle as `provider`.
+    pub model: String,
+    /// Filesystem access for this thread's turns; `None` = legacy chat,
+    /// follow the workspace setting.
+    pub access: Option<crate::backend::AccessMode>,
+    /// The thread's working directory — the project root, or its git
+    /// worktree when `default_workspace` is Worktree. Empty = project root.
+    pub workdir: String,
+    /// `workdir` is a git worktree owned by this thread — removed when the
+    /// chat is deleted.
+    pub worktree: bool,
 }
 
 impl Chat {
@@ -144,6 +159,11 @@ impl Chat {
             archived: false,
             unread: false,
             draft: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            access: None,
+            workdir: String::new(),
+            worktree: false,
         }
     }
 

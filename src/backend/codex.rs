@@ -32,14 +32,15 @@ impl AgentBackend for CodexCliBackend {
         crate::model::codex_fallback_models()
     }
 
-    fn send(&self, prompt: &str, model: &str, mode: &str) -> ReplyStream {
+    fn send(&self, prompt: &str, model: &str, mode: &str, ctx: &super::TurnContext) -> ReplyStream {
         let (tx, rx) = std::sync::mpsc::channel();
         // Each turn owns its child slot — concurrent chats can't clobber it.
         let turn = std::sync::Arc::new(CodexTurn {
             prompt: prompt.to_string(),
             model: model.to_string(),
             mode: mode.to_string(),
-            access: super::access_mode(),
+            access: ctx.access,
+            cwd: ctx.cwd.clone(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         });
@@ -55,17 +56,36 @@ impl AgentBackend for CodexCliBackend {
 
 /// Everything one codex turn needs — bundled so the spawn helpers stay
 /// under the argument-count lint.
-struct CodexTurn {
+pub(super) struct CodexTurn {
     prompt: String,
     model: String,
     mode: String,
     /// Filesystem access for Agent turns — snapshotted at send time so a
     /// mid-turn settings change can't alter a running turn's sandbox.
     access: super::AccessMode,
+    /// The thread's working directory — the project root, or its git
+    /// worktree when the thread runs in one.
+    cwd: std::path::PathBuf,
     slot: std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>,
     /// Set when the UI drops the stream — checked before each retry so a
     /// cancelled turn can't spawn a fresh child.
     cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[cfg(test)]
+impl CodexTurn {
+    /// A turn for mapping/command tests — never spawned.
+    pub(super) fn for_test(mode: &str, access: super::AccessMode) -> Self {
+        Self {
+            prompt: "hi".into(),
+            model: "gpt-5".into(),
+            mode: mode.into(),
+            access,
+            cwd: std::path::PathBuf::from("/tmp/thread-wt"),
+            slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
 }
 
 fn run_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) {
@@ -109,13 +129,20 @@ enum Phase {
 
 /// One `codex app-server` attempt: spawn, handshake, stream notifications
 /// until `turn/completed` or EOF, reap, classify.
-fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (CodexOutcome, bool) {
+/// The `codex app-server` command for one turn — extracted so tests can
+/// assert the spawn cwd without launching a real process.
+pub(super) fn build_command(turn: &CodexTurn) -> std::process::Command {
     let mut cmd = std::process::Command::new("codex");
     cmd.arg("app-server")
-        .current_dir(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")))
+        .current_dir(&turn.cwd)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    cmd
+}
+
+fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> (CodexOutcome, bool) {
+    let mut cmd = build_command(turn);
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -215,7 +242,7 @@ fn advance_phase(phase: &mut Phase, turn: &CodexTurn, msg: &Value, stdin: &mut d
         (Phase::Init, 1) => {
             // `initialized` notification, then start an ephemeral thread.
             writeln!(stdin, "{}", json!({"method": "initialized", "params": {}}))
-                .and_then(|()| writeln!(stdin, "{}", thread_start_req(2, &turn.model, sandbox_of(turn))))
+                .and_then(|()| writeln!(stdin, "{}", thread_start_req(2, &turn.model, sandbox_of(turn), approval_of(turn), &turn.cwd)))
                 .map_err(|e| format!("codex stdin: {e}"))?;
             *phase = Phase::Thread;
             Ok(true)
@@ -244,45 +271,12 @@ fn advance_phase(phase: &mut Phase, turn: &CodexTurn, msg: &Value, stdin: &mut d
 
 /// Sandbox for `thread/start` — Agent honors the access setting, Plan/Ask
 /// stay read-only, mirroring the old `codex exec -s` mapping.
-fn sandbox_of(turn: &CodexTurn) -> &'static str {
+pub(super) fn sandbox_of(turn: &CodexTurn) -> &'static str {
     if turn.mode == "Agent" { turn.access.sandbox_arg() } else { "read-only" }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::backend::AccessMode;
-
-    use super::*;
-
-    fn turn(mode: &str, access: AccessMode) -> CodexTurn {
-        CodexTurn {
-            prompt: "hi".into(),
-            model: "gpt-5".into(),
-            mode: mode.into(),
-            access,
-            slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
-            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        }
-    }
-
-    #[test]
-    fn agent_mode_maps_access_to_sandbox() {
-        let cases = [
-            (AccessMode::ReadOnly, "read-only"),
-            (AccessMode::WorkspaceWrite, "workspace-write"),
-            (AccessMode::FullAccess, "danger-full-access"),
-        ];
-        for (access, want) in cases {
-            assert_eq!(sandbox_of(&turn("Agent", access)), want);
-        }
-    }
-
-    #[test]
-    fn plan_and_ask_stay_read_only() {
-        for mode in ["Plan", "Ask"] {
-            for access in AccessMode::ALL {
-                assert_eq!(sandbox_of(&turn(mode, access)), "read-only");
-            }
-        }
-    }
+/// `approvalPolicy` for `thread/start` — Agent honors the access setting's
+/// ask/auto split; Plan/Ask never prompt (their sandbox is read-only).
+pub(super) fn approval_of(turn: &CodexTurn) -> &'static str {
+    if turn.mode == "Agent" { turn.access.approval_arg() } else { "never" }
 }

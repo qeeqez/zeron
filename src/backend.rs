@@ -22,6 +22,8 @@ mod appserver_tests;
 mod appserver_turn_tests;
 #[cfg(test)]
 mod claude_tests;
+#[cfg(test)]
+mod codex_tests;
 
 pub use acp::AcpBackend;
 pub use claude::ClaudeCliBackend;
@@ -33,24 +35,30 @@ pub use models::fetch_codex_models;
 /// always read-only regardless of this setting.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AccessMode {
-    /// `-s read-only` — the agent can inspect but not modify files.
-    ReadOnly,
-    /// `-s workspace-write` — writes confined to the working directory.
+    /// Read-only sandbox; every action needs approval — the agent can
+    /// inspect and propose but not modify files on its own.
+    Supervised,
+    /// `workspace-write` sandbox; file edits inside the workspace are
+    /// auto-accepted, anything else still asks.
+    AutoAcceptEdits,
+    /// `workspace-write` sandbox with approvals off — writes confined to
+    /// the working directory, nothing prompts.
     #[default]
-    WorkspaceWrite,
-    /// `-s danger-full-access` — unsandboxed, like Codex's full access.
+    Auto,
+    /// `danger-full-access` — unsandboxed, like Codex's full access.
     FullAccess,
 }
 
 impl AccessMode {
     /// All modes, in settings-picker order (least to most permissive).
-    pub const ALL: [AccessMode; 3] = [AccessMode::ReadOnly, AccessMode::WorkspaceWrite, AccessMode::FullAccess];
+    pub const ALL: [AccessMode; 4] = [AccessMode::Supervised, AccessMode::AutoAcceptEdits, AccessMode::Auto, AccessMode::FullAccess];
 
     /// Stable id stored in settings.json.
     pub fn name(self) -> &'static str {
         match self {
-            AccessMode::ReadOnly => "read-only",
-            AccessMode::WorkspaceWrite => "workspace-write",
+            AccessMode::Supervised => "supervised",
+            AccessMode::AutoAcceptEdits => "auto-accept-edits",
+            AccessMode::Auto => "auto",
             AccessMode::FullAccess => "full-access",
         }
     }
@@ -58,45 +66,78 @@ impl AccessMode {
     /// Label shown in the settings picker.
     pub fn label(self) -> &'static str {
         match self {
-            AccessMode::ReadOnly => "Read only",
-            AccessMode::WorkspaceWrite => "Workspace write",
+            AccessMode::Supervised => "Supervised",
+            AccessMode::AutoAcceptEdits => "Auto-accept edits",
+            AccessMode::Auto => "Auto",
             AccessMode::FullAccess => "Full access",
         }
     }
 
-    /// `codex exec -s` value for this mode.
+    /// `codex` sandbox value (`thread/start`'s `sandbox`, `codex exec -s`).
     pub fn sandbox_arg(self) -> &'static str {
         match self {
-            AccessMode::ReadOnly => "read-only",
-            AccessMode::WorkspaceWrite => "workspace-write",
+            AccessMode::Supervised => "read-only",
+            AccessMode::AutoAcceptEdits | AccessMode::Auto => "workspace-write",
             AccessMode::FullAccess => "danger-full-access",
         }
     }
 
+    /// `codex` `thread/start` `approvalPolicy` — "ask" modes keep the
+    /// server-side prompt, the auto modes never do.
+    pub fn approval_arg(self) -> &'static str {
+        match self {
+            AccessMode::Supervised => "on-request",
+            AccessMode::AutoAcceptEdits => "on-failure",
+            AccessMode::Auto | AccessMode::FullAccess => "never",
+        }
+    }
+
+    /// Whether the turn may write files at all (Agent mode only — Plan/Ask
+    /// are always read-only).
+    pub fn writes(self) -> bool {
+        !matches!(self, AccessMode::Supervised)
+    }
+
+    /// Whether writes stay confined to the working directory.
+    pub fn workspace_only(self) -> bool {
+        matches!(self, AccessMode::AutoAcceptEdits | AccessMode::Auto)
+    }
+
+    /// Whether permission prompts auto-approve (no approval UI exists, so
+    /// "ask" modes decline instead).
+    pub fn auto_allows(self) -> bool {
+        matches!(self, AccessMode::Auto | AccessMode::FullAccess)
+    }
+
     /// Parse a settings.json value; anything unknown falls back to the
     /// default so a stale or hand-edited file can't wedge the picker.
+    /// Legacy names ("read-only", "workspace-write") map onto the closest
+    /// new mode.
     pub fn from_name(name: &str) -> Self {
-        Self::ALL.iter().copied().find(|m| m.name() == name).unwrap_or_default()
+        match name {
+            "read-only" => AccessMode::Supervised,
+            "workspace-write" => AccessMode::Auto,
+            _ => Self::ALL.iter().copied().find(|m| m.name() == name).unwrap_or_default(),
+        }
     }
 }
 
-/// Process-wide access level read by `CodexCliBackend::send`. The `send`
-/// signature stays stable (its call sites live in files owned by other
-/// lanes), so the workspace publishes the setting here instead — it also
-/// survives `toggle_backend` rebuilding the backend mid-session.
-static ACCESS_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(AccessMode::WorkspaceWrite as u8);
-
-/// Publish the workspace's access mode for subsequent backend turns.
-pub fn set_access_mode(mode: AccessMode) {
-    ACCESS_MODE.store(mode as u8, std::sync::atomic::Ordering::Relaxed);
+/// Per-turn context snapshotted from the chat at send time — the thread's
+/// working directory (project root or its git worktree) and access mode.
+/// A snapshot keeps a mid-turn settings change from altering a running
+/// turn's sandbox or cwd.
+#[derive(Clone, Debug)]
+pub struct TurnContext {
+    /// Directory the backend process spawns in.
+    pub cwd: std::path::PathBuf,
+    /// Filesystem access for Agent-mode turns.
+    pub access: AccessMode,
 }
 
-/// The access mode applied to the next backend turn.
-pub fn access_mode() -> AccessMode {
-    match ACCESS_MODE.load(std::sync::atomic::Ordering::Relaxed) {
-        0 => AccessMode::ReadOnly,
-        2 => AccessMode::FullAccess,
-        _ => AccessMode::WorkspaceWrite,
+impl TurnContext {
+    /// A turn rooted at `cwd` with `access`.
+    pub fn at(cwd: std::path::PathBuf, access: AccessMode) -> Self {
+        Self { cwd, access }
     }
 }
 
@@ -131,11 +172,9 @@ pub enum AgentEvent {
 /// One reply turn's event channel plus the handle that kills its process.
 /// Dropping the stream (task cancel, chat delete, quit) kills the child.
 pub struct ReplyStream {
-    /// Events as they arrive; `Err` on recv means the producer is gone.
     pub events: std::sync::mpsc::Receiver<AgentEvent>,
-    /// Per-turn child slot; `None` for backends without a process. Shared
-    /// with the chat so stop/delete can kill a hung child directly —
-    /// dropping the stream alone only cancels once the pump wakes.
+    /// Backend child for the in-flight turn — shared with the chat so
+    /// stop/delete can kill a hung process without waiting for the pump.
     pub child: Option<std::sync::Arc<parking_lot::Mutex<Option<std::process::Child>>>>,
     /// Set on drop so the backend's retry loop can't spawn a fresh child
     /// after cancellation.
@@ -164,9 +203,7 @@ impl Drop for CancelOnDrop {
 }
 
 impl ReplyStream {
-    /// A handle that cancels this turn on drop — retain it on the UI side
-    /// (inside the reply task's future) so cancel doesn't depend on the
-    /// pump thread observing another backend event.
+    /// A guard that sets `cancelled` when the reply task's future drops.
     pub(crate) fn cancel_guard(&self) -> CancelOnDrop {
         CancelOnDrop(self.cancelled.clone())
     }
@@ -182,9 +219,11 @@ pub trait AgentBackend: Send + Sync {
     fn models(&self) -> Vec<crate::model::ModelInfo> {
         Vec::new()
     }
-    /// Start a reply turn. The returned stream yields events until
-    /// `Done`/`Error` or cancellation (drop the stream to cancel).
-    fn send(&self, prompt: &str, model: &str, mode: &str) -> ReplyStream;
+    /// Start a reply turn. `ctx` carries the thread's working directory and
+    /// access mode, snapshotted at send time. The returned stream yields
+    /// events until `Done`/`Error` or cancellation (drop the stream to
+    /// cancel).
+    fn send(&self, prompt: &str, model: &str, mode: &str, ctx: &TurnContext) -> ReplyStream;
 }
 pub struct SimBackend;
 
@@ -203,7 +242,7 @@ impl AgentBackend for SimBackend {
         }]
     }
 
-    fn send(&self, _prompt: &str, _model: &str, _mode: &str) -> ReplyStream {
+    fn send(&self, _prompt: &str, _model: &str, _mode: &str, _ctx: &TurnContext) -> ReplyStream {
         let (tx, events) = std::sync::mpsc::channel();
         for e in [
             AgentEvent::ToolCallStart { ix: 0, name: "cargo build".into(), detail: "--locked".into() },

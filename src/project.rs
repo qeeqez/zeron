@@ -97,6 +97,13 @@ impl Project {
         self.dir().join("chats")
     }
 
+    /// Per-thread git worktrees live under the project root — same
+    /// filesystem, visible in Finder, and excluded from the parent's
+    /// status via `.git/info/exclude` (see `crate::worktree`).
+    pub fn worktrees_dir(&self) -> PathBuf {
+        self.root.join(".worktrees")
+    }
+
     /// Per-project state; defaults when the file is missing or unreadable.
     pub fn load_state(&self) -> ProjectState {
         fs::read_to_string(self.dir().join("state.json"))

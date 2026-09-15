@@ -11,6 +11,10 @@ impl Workspace {
         if let Some(chat) = self.chats.get_mut(self.active) {
             chat.draft = self.composer.read(cx).value().to_string();
         }
+        // The outgoing thread keeps its own provider/model/access — the
+        // workspace fields are about to be overwritten by the new thread's
+        // defaults.
+        self.stamp_thread();
         let id = self.next_chat_id;
         self.next_chat_id += 1;
         self.chats.push(Chat::new(id, "New chat"));
@@ -21,6 +25,10 @@ impl Workspace {
         self.scroller.update(cx, |s, cx| {
             s.reset(0, cx);
         });
+        // Thread defaults: provider+model, access mode, and — for the
+        // worktree workspace mode — a fresh git worktree as its cwd. Runs
+        // after the scroller reset so a worktree-failure note renders.
+        self.apply_thread_defaults(cx);
         let composer = self.composer.clone();
         cx.spawn(async move |this, cx| {
             let _ = this.update_in(cx, |_this, window, cx| crate::chat_search::focus_new_chat(&composer, window, cx));
@@ -36,7 +44,11 @@ impl Workspace {
         }
         // Save current draft, restore target's.
         self.chats[self.active].draft = self.composer.read(cx).value().to_string();
+        self.stamp_thread();
         self.active = index;
+        // The incoming thread's own provider/model/access replace the
+        // workspace selection — legacy chats (no stamp) keep it.
+        self.restore_thread_selection(cx);
         self.recall_ix = None;
         self.recall_saved = None;
         self.search_match_ix = 0;

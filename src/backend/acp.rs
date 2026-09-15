@@ -53,7 +53,7 @@ impl AgentBackend for AcpBackend {
         self.models.lock().clone()
     }
 
-    fn send(&self, prompt: &str, model: &str, mode: &str) -> ReplyStream {
+    fn send(&self, prompt: &str, model: &str, mode: &str, ctx: &super::TurnContext) -> ReplyStream {
         let (tx, rx) = std::sync::mpsc::channel();
         // Each turn owns its child slot — concurrent chats can't clobber it.
         let turn = std::sync::Arc::new(AcpTurn {
@@ -61,8 +61,8 @@ impl AgentBackend for AcpBackend {
             prompt: prompt.to_string(),
             model: model.to_string(),
             mode: mode.to_string(),
-            access: super::access_mode(),
-            cwd: std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")),
+            access: ctx.access,
+            cwd: ctx.cwd.clone(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             models: self.models.clone(),
@@ -104,7 +104,7 @@ impl AcpTurn {
             prompt: "hi".into(),
             model: model.into(),
             mode: mode.into(),
-            access: super::AccessMode::WorkspaceWrite,
+            access: super::AccessMode::Auto,
             cwd: std::path::PathBuf::from("/tmp"),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),

@@ -54,10 +54,17 @@ pub struct Workspace {
     /// `ProviderKindInfo::fetch`. Keyed by instance id.
     pub model_catalog: std::collections::HashMap<String, Vec<crate::model::ModelInfo>>,
     pub mode: SharedString,
-    /// Filesystem access granted to Agent-mode turns — Plan/Ask are always
-    /// read-only. Published to `crate::backend` on change so the backend
-    /// `send` signature (called from files outside this lane) stays stable.
+    /// Filesystem access granted to the active thread's Agent-mode turns —
+    /// Plan/Ask are always read-only. Passed to the backend via
+    /// `TurnContext` at send time; each chat stamps its own on creation.
     pub access: crate::backend::AccessMode,
+    /// Provider+model new threads start on — `Settings.default_model`.
+    /// Empty fields follow the current selection.
+    pub default_model: crate::persist::DefaultModel,
+    /// Access mode new threads start on; `None` = the current `access`.
+    pub default_permissions: Option<crate::backend::AccessMode>,
+    /// Where new threads run: project checkout or a per-thread worktree.
+    pub default_workspace: crate::worktree::WorkspaceMode,
     pub palette: Entity<CommandState>,
     pub rename: Entity<InputState>,
     /// Chat id being renamed — stable across deletions, unlike a vec index.
@@ -221,6 +228,13 @@ impl Workspace {
                 "Agent".into()
             },
             access: crate::backend::AccessMode::from_name(&settings.access),
+            default_model: settings.default_model.clone(),
+            default_permissions: if settings.default_permissions.is_empty() {
+                None
+            } else {
+                Some(crate::backend::AccessMode::from_name(&settings.default_permissions))
+            },
+            default_workspace: crate::worktree::WorkspaceMode::from_name(&settings.default_workspace),
             rename,
             palette,
             renaming: None,
@@ -247,13 +261,15 @@ impl Workspace {
             project_files: Vec::new(),
             project,
         };
-        crate::backend::set_access_mode(this.access);
         let loaded = crate::persist::load_chats(&this.project.chats_dir(), &mut this.next_chat_id, !crate::lifecycle::any_turn_running(cx));
         if loaded.is_empty() {
             this.new_chat(cx);
         } else {
             this.chats = loaded;
             this.active = this.project.load_state().active_chat.min(this.chats.len().saturating_sub(1));
+            // The resumed thread's own provider/model/access replace the
+            // settings selection — the picker shows the active thread.
+            this.restore_thread_selection(cx);
         }
         this.apply_theme(window, cx);
         // "system" follows the OS — re-resolve when the appearance flips.
@@ -265,43 +281,14 @@ impl Workspace {
         this
     }
 
-    pub(crate) fn save(&mut self) {
-        // Retention: drop oldest non-pinned chats beyond the cap. Storage
-        // order is oldest-first, so retain() hits the oldest first.
-        const MAX_CHATS: usize = 50;
-        if self.chats.len() > MAX_CHATS {
-            let dropped_before_active = self.retention_drops_before_active(MAX_CHATS);
-            let mut drop_left = self.chats.len() - MAX_CHATS;
-            self.chats.retain(|c| {
-                let drop = drop_left > 0 && !c.pinned;
-                drop_left -= usize::from(drop);
-                !drop
-            });
-            self.active = self.active.saturating_sub(dropped_before_active).min(self.chats.len().saturating_sub(1));
-        }
-        crate::persist::save_chats(&self.project.chats_dir(), &self.chats);
-        self.project.save_state(&crate::project::ProjectState { active_chat: self.active });
-    }
-
-    /// How many chats `retain` will drop before `self.active` — the first
-    /// `len - max` non-pinned chats go, so count those under the index.
-    fn retention_drops_before_active(&self, max: usize) -> usize {
-        let mut drop_left = self.chats.len() - max;
-        let mut dropped = 0usize;
-        for (ix, c) in self.chats.iter().enumerate() {
-            if drop_left > 0 && !c.pinned {
-                drop_left -= 1;
-                dropped += usize::from(ix < self.active);
-            }
-        }
-        dropped
-    }
-
-    /// Change the Agent-mode access level, publish it to the backend, and
-    /// persist it. Called from the settings picker.
+    /// Change the active thread's Agent-mode access level and persist it.
+    /// Called from the settings picker; the stamp lands on the active chat
+    /// so switching threads restores each thread's own mode.
     pub fn set_access(&mut self, access: crate::backend::AccessMode, cx: &mut Context<Self>) {
         self.access = access;
-        crate::backend::set_access_mode(access);
+        if let Some(chat) = self.chats.get_mut(self.active) {
+            chat.access = Some(access);
+        }
         self.save_settings();
         cx.notify();
     }

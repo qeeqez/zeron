@@ -26,7 +26,7 @@ impl Workspace {
         .detach();
     }
 
-    fn delete_chat_now(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn delete_chat_now(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         // Re-check: the prompt is async — chats may have shrunk meanwhile.
         if self.chats.len() <= 1 || index >= self.chats.len() {
             return;
@@ -36,6 +36,9 @@ impl Workspace {
         if self.renaming == Some(self.chats[index].id) {
             self.renaming = None;
         }
+        // A worktree thread's checkout goes with it — remove before the
+        // chat drops so the path is still known.
+        crate::worktree::remove_for(self.project.root(), &self.chats[index]);
         // Chat::drop kills the child slot and cancels the reply task.
         self.chats.remove(index);
         if self.active >= self.chats.len() {
@@ -75,6 +78,8 @@ impl Workspace {
                 return;
             }
             let _ = this.update(cx, |this, cx| {
+                // Worktree threads' checkouts go with their chats.
+                crate::worktree::remove_all(this.project.root(), &this.chats);
                 this.chats.clear();
                 this.search_match_ix = 0;
                 this.renaming = None;

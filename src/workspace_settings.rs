@@ -6,6 +6,18 @@ use gpui_kit::*;
 use crate::workspace::Workspace;
 
 impl Workspace {
+    pub(crate) fn save(&mut self) {
+        // Retention: drop oldest non-pinned chats beyond the cap. Storage
+        // order is oldest-first, so eviction hits the oldest first.
+        const MAX_CHATS: usize = 50;
+        if self.chats.len() > MAX_CHATS {
+            let dropped = evict_overflow(&mut self.chats, MAX_CHATS, self.project.root(), self.active);
+            self.active = self.active.saturating_sub(dropped).min(self.chats.len().saturating_sub(1));
+        }
+        crate::persist::save_chats(&self.project.chats_dir(), &self.chats);
+        self.project.save_state(&crate::project::ProjectState { active_chat: self.active });
+    }
+
     pub(crate) fn save_settings(&mut self) {
         self.save_settings_inner(false);
     }
@@ -35,6 +47,9 @@ impl Workspace {
             selected_model: self.model.to_string(),
             mode: self.mode.to_string(),
             access: self.access.name().into(),
+            default_model: self.default_model.clone(),
+            default_permissions: self.default_permissions.map_or_else(String::new, |a| a.name().to_string()),
+            default_workspace: self.default_workspace.name().into(),
             word_wrap: self.word_wrap,
             font_size: self.font_size,
             font_family: self.font_family.clone(),
@@ -59,4 +74,24 @@ impl Workspace {
         self.save_settings_inner(true);
         self.apply_theme(window, cx);
     }
+}
+
+/// Drop the oldest non-pinned chats beyond `max`, removing dropped
+/// worktree checkouts under `root`. Returns how many dropped chats sat
+/// before `active` so the caller can shift the index.
+fn evict_overflow(chats: &mut Vec<crate::model::Chat>, max: usize, root: &std::path::Path, active: usize) -> usize {
+    let mut drop_left = chats.len().saturating_sub(max);
+    let mut dropped_before = 0usize;
+    let mut kept = Vec::with_capacity(chats.len().min(max));
+    for (ix, c) in std::mem::take(chats).into_iter().enumerate() {
+        if drop_left > 0 && !c.pinned {
+            crate::worktree::remove_for(root, &c);
+            drop_left -= 1;
+            dropped_before += usize::from(ix < active);
+        } else {
+            kept.push(c);
+        }
+    }
+    *chats = kept;
+    dropped_before
 }

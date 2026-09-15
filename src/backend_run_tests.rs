@@ -44,7 +44,7 @@ impl AgentBackend for HangingBackend {
         "hanging"
     }
 
-    fn send(&self, _prompt: &str, _model: &str, _mode: &str) -> ReplyStream {
+    fn send(&self, _prompt: &str, _model: &str, _mode: &str, _ctx: &crate::backend::TurnContext) -> ReplyStream {
         let (tx, events) = std::sync::mpsc::channel();
         std::mem::forget(tx); // producer never exits — the pump blocks on recv
         ReplyStream { events, child: None, cancelled: self.cancelled.clone() }
@@ -84,7 +84,7 @@ impl AgentBackend for EmitThenHangBackend {
         "emit-hang"
     }
 
-    fn send(&self, _prompt: &str, _model: &str, _mode: &str) -> ReplyStream {
+    fn send(&self, _prompt: &str, _model: &str, _mode: &str, _ctx: &crate::backend::TurnContext) -> ReplyStream {
         let (tx, events) = std::sync::mpsc::channel();
         let _ = tx.send(AgentEvent::ToolCallStart { ix: 0, name: "bash".into(), detail: "sleep 99".into() });
         let _ = tx.send(AgentEvent::ToolCallDelta { ix: 0, output: "partial".into() });

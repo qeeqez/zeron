@@ -67,7 +67,7 @@ impl AgentBackend for OkBackend {
         "ok"
     }
 
-    fn send(&self, _prompt: &str, _model: &str, _mode: &str) -> ReplyStream {
+    fn send(&self, _prompt: &str, _model: &str, _mode: &str, _ctx: &crate::backend::TurnContext) -> ReplyStream {
         stream(vec![AgentEvent::TextDelta("done".into()), AgentEvent::Done])
     }
 }
@@ -77,7 +77,7 @@ impl AgentBackend for FailBackend {
         "fail"
     }
 
-    fn send(&self, _prompt: &str, _model: &str, _mode: &str) -> ReplyStream {
+    fn send(&self, _prompt: &str, _model: &str, _mode: &str, _ctx: &crate::backend::TurnContext) -> ReplyStream {
         stream(vec![AgentEvent::Error("codex exited 1".into())])
     }
 }
