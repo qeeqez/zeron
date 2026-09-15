@@ -47,9 +47,10 @@ pub(crate) const SIDEBAR_WIDTH_MIN: f32 = 180.;
 pub(crate) const SIDEBAR_WIDTH_MAX: f32 = 480.;
 
 /// Opacity of the sidebar's vibrancy view — the `Sidebar` material's blur
-/// amount is fixed, so this is how strongly the frost applies. <1 softens it.
+/// amount is fixed, so this is how strongly the frost applies. Kept at full
+/// strength; the tint over it (FROSTED_SIDEBAR_ALPHA) is the legibility knob.
 #[cfg(target_os = "macos")]
-const SIDEBAR_VIBRANCY_ALPHA: f64 = 0.6;
+const SIDEBAR_VIBRANCY_ALPHA: f64 = 1.0;
 
 /// Whether the sidebar's native vibrancy view should be installed: only
 /// while the frosted sidebar is on AND the sidebar is actually mounted —
