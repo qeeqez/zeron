@@ -1,4 +1,6 @@
 use crate::views::settings_nav::Section;
+use crate::views::settings_provider_wizard::ProviderWizard;
+use crate::views::settings_providers::ProviderInputs;
 use crate::workspace::Workspace;
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
@@ -8,6 +10,7 @@ use gpui_kit::component::slider::{SliderEvent, SliderState};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use std::collections::HashMap;
 
 use crate::backend::AccessMode;
 use crate::views::settings_general::{access_mode_from_label, workspace_mode_from_label, workspace_mode_label};
@@ -23,8 +26,13 @@ pub struct SettingsPanel {
     pub(crate) ws: WeakEntity<Workspace>,
     pub(crate) section: Section,
     pub(crate) search: Entity<InputState>,
-    url_input: Entity<InputState>,
-    key_input: Entity<InputState>,
+    /// Per-provider-instance detail inputs (name/command/key_env), keyed by
+    /// instance id — created lazily by `sync_provider_inputs` on render.
+    pub(crate) provider_inputs: HashMap<String, ProviderInputs>,
+    /// The instance the Providers detail panel shows.
+    pub(crate) provider_selection: Option<String>,
+    /// In-flight "Add provider" wizard state — `None` when closed.
+    pub(crate) provider_wizard: Option<ProviderWizard>,
     /// Interface font family picker — `SearchableVec<String>` delegate over
     /// the installed font names (a plain `Vec` delegate never filters).
     pub(crate) font_select: Entity<SelectState<SearchableVec<String>>>,
@@ -46,25 +54,6 @@ impl SettingsPanel {
     pub fn new(ws: Entity<Workspace>, settings: &crate::persist::Settings, window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&ws, |_, _, cx| cx.notify()).detach();
         let ws = ws.downgrade();
-        let http = settings.providers.iter().find(|p| p.kind == crate::providers::ProviderKind::Http);
-        let url_input = cx.new(|cx| {
-            let mut s = InputState::new(window, cx).placeholder("https://…");
-            s.set_value(http.map_or_else(String::new, |p| p.command.clone()), window, cx);
-            s
-        });
-        let key_input = cx.new(|cx| {
-            let mut s = InputState::new(window, cx).placeholder("ENV_VAR_NAME");
-            s.set_value(http.map_or_else(String::new, |p| p.key_env.clone()), window, cx);
-            s
-        });
-        // Persist on every edit — the backend reads these at send time.
-        for (input, field) in [(url_input.clone(), Field::Url), (key_input.clone(), Field::KeyEnv)] {
-            let ctx = FieldCtx { field, ws: ws.clone() };
-            cx.subscribe_in(&input, window, move |_, state, event: &InputEvent, _window, cx| {
-                on_http_field(&ctx, state, event, cx);
-            })
-            .detach();
-        }
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search settings…"));
         cx.subscribe_in(&search, window, |_, _, event: &InputEvent, _window, cx| {
             if matches!(event, InputEvent::Change) {
@@ -72,7 +61,6 @@ impl SettingsPanel {
             }
         })
         .detach();
-
         // Font pickers list every installed family; an empty persisted value
         // means "default" and maps to no selection.
         let fonts = cx.text_system().all_font_names();
@@ -140,13 +128,21 @@ impl SettingsPanel {
             }
         })
         .detach();
+        // The detail panel opens on the active provider (or the first one).
+        let provider_selection = settings
+            .providers
+            .iter()
+            .find(|p| p.id == settings.selected_provider)
+            .or_else(|| settings.providers.first())
+            .map(|p| p.id.clone());
 
         Self {
             ws,
             section: Section::General,
             search,
-            url_input,
-            key_input,
+            provider_inputs: HashMap::new(),
+            provider_selection,
+            provider_wizard: None,
             font_select,
             code_font_select,
             contrast_slider,
@@ -167,48 +163,13 @@ fn font_picker(
     cx.new(|cx| SelectState::new(SearchableVec::new(fonts.to_vec()), selected, window, cx).searchable(true))
 }
 
-/// Write a changed http config field onto the first http instance and
-/// persist it — `configure_provider` rebuilds the backend when it's the
-/// selected one.
-fn on_http_field(ctx: &FieldCtx, state: &Entity<InputState>, event: &InputEvent, cx: &mut App) {
-    if !matches!(event, InputEvent::Change) {
-        return;
-    }
-    let value = state.read(cx).value().to_string();
-    let _ = ctx.ws.update(cx, |this, _cx| {
-        let Some(ix) = this.providers.iter().position(|p| p.kind == crate::providers::ProviderKind::Http) else { return };
-        let (id, mut command, mut key_env) = {
-            let p = &this.providers[ix];
-            (p.id.clone(), p.command.clone(), p.key_env.clone())
-        };
-        match ctx.field {
-            Field::Url => command = value.clone(),
-            Field::KeyEnv => key_env = value.clone(),
-        }
-        this.configure_provider(&id, command, key_env);
-    });
-}
-
-/// Everything a field-change handler needs — bundled so the subscribe
-/// closure and handler stay under the argument-count lint.
-struct FieldCtx {
-    field: Field,
-    ws: WeakEntity<Workspace>,
-}
-
-/// Which http config field an input writes — keeps the subscribe loop
-/// under the argument-count lint.
-#[derive(Clone, Copy)]
-enum Field {
-    Url,
-    KeyEnv,
-}
-
 impl Render for SettingsPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(ws) = self.ws.upgrade() else {
             return div().id("settings-screen").test_support();
         };
+        // Reconcile per-instance inputs + selection before the view snapshot.
+        self.sync_provider_inputs(window, cx);
         let s = ws.read(cx);
         let view = crate::views::settings_sections::SettingsView {
             notify: s.notify_on_done,
@@ -221,8 +182,9 @@ impl Render for SettingsPanel {
             word_wrap: s.word_wrap,
             theme: s.theme.clone(),
             ws: ws.clone(),
-            url_input: self.url_input.clone(),
-            key_input: self.key_input.clone(),
+            panel: cx.entity(),
+            provider_inputs: self.provider_inputs.clone(),
+            provider_selection: self.provider_selection.clone(),
             font_select: self.font_select.clone(),
             code_font_select: self.code_font_select.clone(),
             contrast_slider: self.contrast_slider.clone(),

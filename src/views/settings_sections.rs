@@ -3,16 +3,18 @@
 
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::Sizable;
-use gpui_kit::component::input::InputState;
 use gpui_kit::component::select::{SearchableVec, SelectState};
 use gpui_kit::component::slider::SliderState;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use std::collections::HashMap;
 
 use crate::backend::AccessMode;
+use crate::views::settings::SettingsPanel;
 use crate::views::settings_nav::Section;
+use crate::views::settings_providers::ProviderInputs;
 use crate::workspace::Workspace;
 
 /// Snapshot of workspace state + owned inputs the section bodies render from.
@@ -26,8 +28,13 @@ pub struct SettingsView {
     pub word_wrap: bool,
     pub theme: String,
     pub ws: Entity<Workspace>,
-    pub url_input: Entity<InputState>,
-    pub key_input: Entity<InputState>,
+    /// The settings panel entity — provider rows/wizard drive its selection
+    /// and wizard state.
+    pub panel: Entity<SettingsPanel>,
+    /// Per-instance detail inputs, keyed by instance id.
+    pub provider_inputs: HashMap<String, ProviderInputs>,
+    /// The instance the Providers detail panel shows.
+    pub provider_selection: Option<String>,
     pub access: AccessMode,
     pub font_select: Entity<SelectState<SearchableVec<String>>>,
     pub code_font_select: Entity<SelectState<SearchableVec<String>>>,

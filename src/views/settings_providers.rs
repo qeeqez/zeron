@@ -1,43 +1,153 @@
-//! Providers settings section: add/remove/enable provider instances,
-//! per-model enable + ordering, and the HTTP transport inputs. Rows read
-//! the workspace directly so toggles re-render in place.
+//! Providers settings section: a master-detail layout — a scrollable list of
+//! provider instances on the left (icon, name, status, enable switch), the
+//! selected instance's detail panel on the right (see
+//! `settings_provider_detail`), and an "Add provider" button that opens the
+//! wizard in `settings_provider_wizard`. Rows read the workspace directly so
+//! toggles re-render in place.
+
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
-use gpui_kit::component::input::Input;
+use gpui_kit::component::Sizable;
+use gpui_kit::component::button::Button;
+use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::component::switch::Switch;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::providers::{ProviderInstance, ProviderKind};
+use crate::providers::ProviderInstance;
+use crate::views::settings::SettingsPanel;
+use crate::views::settings_provider_detail::detail_panel;
 use crate::views::settings_sections::{SettingsView, group_label};
 use crate::workspace::Workspace;
 
-/// The Providers content pane: one block per configured instance (toggle,
-/// remove, per-model rows) plus an add row and the HTTP endpoint inputs.
+/// The editable fields one instance exposes in the detail panel — the
+/// `InputState` entities live on `SettingsPanel` so typed text survives
+/// re-renders; `SettingsView` carries a clone for the section body.
+#[derive(Clone)]
+pub(crate) struct ProviderInputs {
+    pub name: Entity<InputState>,
+    pub command: Entity<InputState>,
+    pub key_env: Entity<InputState>,
+}
+
+/// Which connection field an input writes — bundled with the instance id so
+/// the subscribe closure stays under the argument-count lint.
+#[derive(Clone)]
+struct FieldCtx {
+    field: ProviderField,
+    id: String,
+    ws: WeakEntity<Workspace>,
+}
+
+#[derive(Clone, Copy)]
+enum ProviderField {
+    Name,
+    Command,
+    KeyEnv,
+}
+
+/// Write a changed detail-panel field onto its instance — name goes through
+/// `rename_provider`, connection fields through `configure_provider` (which
+/// rebuilds the backend when it's the selected one).
+fn on_provider_field(ctx: &FieldCtx, state: &Entity<InputState>, event: &InputEvent, cx: &mut App) {
+    if !matches!(event, InputEvent::Change) {
+        return;
+    }
+    let value = state.read(cx).value().to_string();
+    let _ = ctx.ws.update(cx, |this, cx| match ctx.field {
+        ProviderField::Name => this.rename_provider(&ctx.id, value, cx),
+        ProviderField::Command | ProviderField::KeyEnv => {
+            let Some(p) = this.providers.iter().find(|p| p.id == ctx.id) else { return };
+            let (command, key_env) = match ctx.field {
+                ProviderField::Command => (value, p.key_env.clone()),
+                _ => (p.command.clone(), value),
+            };
+            this.configure_provider(&ctx.id, command, key_env);
+            cx.notify();
+        },
+    });
+}
+
+impl SettingsPanel {
+    /// Reconcile the per-instance input map with the live instance list:
+    /// create + subscribe inputs for new instances, drop entries for removed
+    /// ones (dropping the subscriptions too), and keep `provider_selection`
+    /// pointing at a real instance.
+    pub(crate) fn sync_provider_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let instances: Vec<ProviderInstance> = self.ws.upgrade().map(|ws| ws.read(cx).provider_instances().to_vec()).unwrap_or_default();
+        let ids: std::collections::HashSet<&str> = instances.iter().map(|p| p.id.as_str()).collect();
+        self.provider_inputs.retain(|id, _| ids.contains(id.as_str()));
+        for p in &instances {
+            if !self.provider_inputs.contains_key(&p.id) {
+                let inputs = self.new_provider_inputs(p, window, cx);
+                self.provider_inputs.insert(p.id.clone(), inputs);
+            }
+        }
+        if self.provider_selection.as_deref().is_none_or(|id| !ids.contains(id)) {
+            self.provider_selection = instances.first().map(|p| p.id.clone());
+        }
+    }
+
+    /// Create the three detail inputs for one instance, seeded from its
+    /// persisted fields and subscribed to write edits back.
+    fn new_provider_inputs(&mut self, p: &ProviderInstance, window: &mut Window, cx: &mut Context<Self>) -> ProviderInputs {
+        let name = cx.new(|cx| {
+            let mut s = InputState::new(window, cx).placeholder("Display name");
+            s.set_value(p.name.clone(), window, cx);
+            s
+        });
+        let command = cx.new(|cx| {
+            let mut s = InputState::new(window, cx).placeholder("Command");
+            s.set_value(p.command.clone(), window, cx);
+            s
+        });
+        let key_env = cx.new(|cx| {
+            let mut s = InputState::new(window, cx).placeholder("ENV_VAR_NAME");
+            s.set_value(p.key_env.clone(), window, cx);
+            s
+        });
+        // Persist on every edit — the backend reads these at send time.
+        for (input, field) in [
+            (name.clone(), ProviderField::Name),
+            (command.clone(), ProviderField::Command),
+            (key_env.clone(), ProviderField::KeyEnv),
+        ] {
+            let ctx = FieldCtx { field, id: p.id.clone(), ws: self.ws.clone() };
+            cx.subscribe_in(&input, window, move |_, state, event: &InputEvent, _window, cx| {
+                on_provider_field(&ctx, state, event, cx);
+            })
+            .detach();
+        }
+        ProviderInputs { name, command, key_env }
+    }
+}
+
+/// The Providers content pane: header + add button, then the master-detail
+/// split — scrollable instance list left, selected instance's detail right.
 pub fn providers_section(s: &SettingsView, cx: &App) -> impl IntoElement {
     let instances = s.ws.read(cx).provider_instances().to_vec();
-    let http = instances.iter().find(|p| p.kind == ProviderKind::Http).cloned();
+    let selected = s.provider_selection.as_deref().and_then(|id| instances.iter().find(|p| p.id == id).cloned());
     div()
         .flex()
         .flex_col()
         .gap_3()
-        .child(group_label("Model providers", cx))
-        .children(instances.iter().map(|p| provider_block(p, &s.ws, cx)))
-        .child(div().flex().gap_2().children(ProviderKind::ALL.into_iter().map(|kind| {
-            let ws = s.ws.clone();
+        .child(div().flex().items_center().child(group_label("Model providers", cx)).child(div().flex_1()).child(
+            Button::new("provider-add").label("Add provider").icon(IconName::Plus).small().outline().on_click({
+                let panel = s.panel.clone();
+                move |_, window, cx| panel.update(cx, |this, cx| this.open_provider_wizard(window, cx))
+            }),
+        ))
+        .child(
             div()
-                .id(SharedString::from(format!("provider-add-{}", kind.slug())))
+                .id("providers-split")
                 .test_support()
-                .cursor_pointer()
-                .text_xs()
-                .text_color(cx.theme().accent)
-                .child(format!("+ {}", kind.info().label))
-                .on_click(move |_, _, cx| {
-                    ws.update(cx, |this, cx| {
-                        this.add_provider(kind, kind.info().label.to_string(), cx);
-                    });
-                })
-        })))
+                .flex()
+                .gap_3()
+                .h(px(420.))
+                .child(instance_list(&instances, s, cx))
+                .child(detail_panel(selected.as_ref(), s, cx)),
+        )
         .child(
             div()
                 .text_xs()
@@ -50,88 +160,76 @@ pub fn providers_section(s: &SettingsView, cx: &App) -> impl IntoElement {
                 .text_color(cx.theme().muted_foreground)
                 .child(format!("Active backend: {}", s.backend)),
         )
-        .when_some(http, |d, _| {
-            d.child(group_label("HTTP endpoint", cx)).child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .text_xs()
-                    .child(div().text_color(cx.theme().muted_foreground).child("URL"))
-                    .child(Input::new(&s.url_input).appearance(true))
-                    .child(div().text_color(cx.theme().muted_foreground).child("API key env var"))
-                    .child(Input::new(&s.key_input).appearance(true)),
-            )
-        })
 }
 
-/// One instance block: name + tagline + catalog size, an "active" marker,
-/// enable/remove controls, then one toggle row per catalog model.
-fn provider_block(p: &ProviderInstance, ws: &Entity<Workspace>, cx: &App) -> impl IntoElement {
-    let (active, models) = ws.read_with(cx, |w, _| (w.selected_provider() == Some(p.id.as_str()), w.models_config_for(&p.id)));
-    let enabled = p.enabled;
-    let id = p.id.clone();
-    let ws_toggle = ws.clone();
-    let ws_remove = ws.clone();
-    let id_remove = id.clone();
-    div()
+/// The scrollable left column: one selectable row per instance with the
+/// kind icon, name, status line and an enable `Switch`.
+fn instance_list(instances: &[ProviderInstance], s: &SettingsView, cx: &App) -> impl IntoElement {
+    let mut list = div()
+        .id("provider-list")
+        .test_support()
+        .w(px(220.))
+        .flex_shrink_0()
+        .h_full()
+        .overflow_y_scroll()
         .flex()
         .flex_col()
-        .gap_1()
-        .child(
+        .gap_1();
+    if instances.is_empty() {
+        list = list.child(
             div()
-                .flex()
-                .items_center()
-                .gap_2()
+                .p_3()
                 .text_xs()
-                .child(div().font_semibold().child(p.name.clone()))
-                .child(div().text_color(cx.theme().muted_foreground).child(p.kind.info().tagline))
-                .child(div().text_color(cx.theme().muted_foreground).child(format!("· {} models", models.len())))
-                .when(active, |d| d.child(div().text_color(cx.theme().accent).child("· active")))
-                .child(div().flex_1())
-                .child(icon_btn(&format!("provider-toggle-{id}"), if enabled { IconName::Check } else { IconName::X }, move |_, _, cx| {
-                    ws_toggle.update(cx, |this, cx| this.set_provider_enabled(&id, !enabled, cx));
-                }))
-                .child(icon_btn(&format!("provider-remove-{id_remove}"), IconName::Trash, move |_, _, cx| {
-                    ws_remove.update(cx, |this, cx| this.remove_provider(&id_remove, cx));
-                })),
-        )
-        .children(models.into_iter().map(|(m, on)| model_row(&p.id, m, on, ws, cx)))
+                .text_color(cx.theme().muted_foreground)
+                .child("No providers yet — add one to get started."),
+        );
+    }
+    list.children(instances.iter().map(|p| instance_row(p, s, cx)))
 }
 
-/// One model row inside an instance block: enable toggle, id, and
-/// up/down reorder controls.
-fn model_row(pid: &str, m: crate::model::ModelInfo, on: bool, ws: &Entity<Workspace>, cx: &App) -> impl IntoElement {
-    let pid = pid.to_string();
-    let mid = m.id.to_string();
-    let (ws_t, ws_up, ws_dn) = (ws.clone(), ws.clone(), ws.clone());
-    let (id_t, id_up, id_dn) = (mid.clone(), mid.clone(), mid.clone());
-    let (p_t, p_up, p_dn) = (pid.clone(), pid.clone(), pid.clone());
+/// One instance row: click selects it for the detail panel; the switch
+/// toggles `enabled` without disturbing the selection.
+fn instance_row(p: &ProviderInstance, s: &SettingsView, cx: &App) -> impl IntoElement {
+    let selected = s.provider_selection.as_deref() == Some(p.id.as_str());
+    let (id_sel, id_t) = (p.id.clone(), p.id.clone());
+    let (panel, ws_t) = (s.panel.clone(), s.ws.clone());
     div()
+        .id(SharedString::from(format!("provider-row-{}", p.id)))
+        .test_support()
+        .cursor_pointer()
         .flex()
         .items_center()
         .gap_2()
-        .pl_4()
-        .text_xs()
-        .child(icon_btn(&format!("model-toggle-{pid}-{mid}"), if on { IconName::Check } else { IconName::X }, move |_, _, cx| {
-            ws_t.update(cx, |this, cx| this.set_model_enabled(&p_t, &id_t, !on, cx));
-        }))
-        .child(div().text_color(cx.theme().muted_foreground).child(m.label.clone()))
+        .p_2()
+        .rounded_md()
+        .when(selected, |d| d.bg(cx.theme().accent.opacity(0.15)))
+        .child(div().text_color(cx.theme().muted_foreground).child(p.kind.info().icon))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .min_w_0()
+                .child(div().text_xs().font_semibold().overflow_hidden().child(p.name.clone()))
+                .child(div().text_xs().text_color(cx.theme().muted_foreground).child(if p.enabled {
+                    p.kind.info().tagline
+                } else {
+                    "Disabled"
+                })),
+        )
         .child(div().flex_1())
-        .child(icon_btn(&format!("model-up-{pid}-{id_up}"), IconName::ChevronUp, move |_, _, cx| {
-            ws_up.update(cx, |this, cx| this.move_model(&p_up, &id_up, -1, cx));
-        }))
-        .child(icon_btn(&format!("model-down-{pid}-{id_dn}"), IconName::ChevronDown, move |_, _, cx| {
-            ws_dn.update(cx, |this, cx| this.move_model(&p_dn, &id_dn, 1, cx));
-        }))
-}
-
-/// A small clickable icon — the shared shape for toggle/remove/reorder.
-fn icon_btn(id: &str, icon: IconName, on_click: impl Fn(&gpui_kit::ClickEvent, &mut Window, &mut App) + 'static) -> impl IntoElement {
-    div()
-        .id(SharedString::from(id.to_string()))
-        .test_support()
-        .cursor_pointer()
-        .child(icon)
-        .on_click(on_click)
+        .child(
+            Switch::new(SharedString::from(format!("provider-enable-{}", p.id)))
+                .checked(p.enabled)
+                .small()
+                .accessibility_label(format!("Enable {}", p.name))
+                .on_click(move |on, _, cx| {
+                    ws_t.update(cx, |this, cx| this.set_provider_enabled(&id_t, *on, cx));
+                }),
+        )
+        .on_click(move |_, _, cx| {
+            panel.update(cx, |this, cx| {
+                this.provider_selection = Some(id_sel.clone());
+                cx.notify();
+            });
+        })
 }

@@ -131,6 +131,8 @@ pub struct ProviderInstance {
     pub key_env: String,
     /// Per-model enable + order; empty = all enabled, catalog order.
     pub models: Vec<ModelConfig>,
+    /// Optional accent color (hex) shown as a marker in the picker.
+    pub accent: Option<String>,
 }
 
 impl ProviderInstance {
@@ -145,6 +147,7 @@ impl ProviderInstance {
             command: kind.default_command().to_string(),
             key_env: kind.default_key_env().to_string(),
             models: Vec::new(),
+            accent: None,
         }
     }
 }

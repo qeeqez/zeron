@@ -18,6 +18,9 @@ pub mod settings_general;
 #[cfg(test)]
 mod settings_general_tests;
 pub mod settings_nav;
+pub mod settings_provider_detail;
+pub mod settings_provider_wizard;
+mod settings_provider_wizard_steps;
 pub mod settings_providers;
 pub mod settings_sections;
 

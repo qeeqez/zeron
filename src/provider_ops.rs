@@ -42,6 +42,15 @@ impl Workspace {
     /// instance is enabled but not selected; its catalog seeds from the
     /// kind's static `models()`.
     pub fn add_provider(&mut self, kind: ProviderKind, name: String, cx: &mut Context<Self>) -> String {
+        let id = self.next_instance_id(kind);
+        // Infallible: `next_instance_id` guarantees `id` is free and slugs
+        // are already valid id characters.
+        self.add_provider_with_id(kind, ProviderDraft { name, id, accent: None }, cx).unwrap_or_default()
+    }
+
+    /// The kind's slug with a `-N` suffix until it's free — the id the
+    /// wizard seeds and `add_provider` lands on.
+    pub fn next_instance_id(&self, kind: ProviderKind) -> String {
         let mut id = kind.slug().to_string();
         for n in 2.. {
             if !self.providers.iter().any(|p| p.id == id) {
@@ -49,13 +58,45 @@ impl Workspace {
             }
             id = format!("{}-{n}", kind.slug());
         }
-        let mut p = ProviderInstance::new(kind, name);
-        p.id = id.clone();
-        self.model_catalog.insert(id.clone(), crate::backend::backend_for(&p).models());
+        id
+    }
+
+    /// Add a provider instance with a caller-chosen id (the add-provider
+    /// wizard's Instance ID field). Returns `Some(id)` on success; `None`
+    /// when the id is empty, contains characters outside `[a-zA-Z0-9_-]`,
+    /// or is already taken.
+    pub fn add_provider_with_id(&mut self, kind: ProviderKind, draft: ProviderDraft, cx: &mut Context<Self>) -> Option<String> {
+        let id = draft.id.trim();
+        if id.is_empty()
+            || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            || self.providers.iter().any(|p| p.id == id)
+        {
+            return None;
+        }
+        let mut p = ProviderInstance::new(kind, draft.name);
+        p.id = id.to_string();
+        p.accent = draft.accent;
+        self.model_catalog.insert(id.to_string(), crate::backend::backend_for(&p).models());
         self.providers.push(p);
         self.save_settings();
         cx.notify();
-        id
+        Some(id.to_string())
+    }
+
+    /// Rename an instance's display label. Empty/whitespace names and
+    /// no-ops are ignored so the field can be cleared while editing.
+    pub fn rename_provider(&mut self, instance_id: &str, name: String, cx: &mut Context<Self>) {
+        let name = name.trim();
+        if name.is_empty() {
+            return;
+        }
+        let Some(p) = self.providers.iter_mut().find(|p| p.id == instance_id) else { return };
+        if p.name == name {
+            return;
+        }
+        p.name = name.to_string();
+        self.save_settings();
+        cx.notify();
     }
 
     /// Remove a provider instance. Removing the selected instance moves the
@@ -195,4 +236,12 @@ impl Workspace {
             self.model = resolve_model(self.catalog_of(instance_id), config, &self.model.clone()).into();
         }
     }
+}
+
+/// The wizard's instance fields bundled for `add_provider_with_id` — keeps
+/// the signature under the argument-count lint.
+pub struct ProviderDraft {
+    pub name: String,
+    pub id: String,
+    pub accent: Option<String>,
 }
