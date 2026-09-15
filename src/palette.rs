@@ -1,6 +1,6 @@
+use gpui_kit::component::IndexPath;
 use gpui_kit::component::WindowExt;
 use gpui_kit::component::command::Command;
-use gpui_kit::component::IndexPath;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::*;
@@ -25,10 +25,7 @@ impl Workspace {
         let palette = self.palette.clone();
         let ws = cx.entity();
         window.open_dialog(cx, move |dialog, _window, cx| {
-            dialog
-                .close_button(false)
-                .overlay_closable(true)
-                .child(palette_command(&palette, &chats, &ws, cx))
+            dialog.close_button(false).overlay_closable(true).child(palette_command(&palette, &chats, &ws, cx))
         });
         // The dialog focuses its own handle on open; the palette needs its
         // query field focused so typing and ↑↓/Enter reach the Command
@@ -154,15 +151,12 @@ fn cancel_rename(ws: &Entity<Workspace>, cx: &mut App) -> bool {
 /// workspace render — `on_query` notifies the workspace so each keystroke
 /// re-runs this builder with fresh groups for the new query.
 fn palette_command(
-    palette: &Entity<gpui_kit::component::command::CommandState>,
-    chats: &[crate::palette_items::ChatSnapshot],
-    ws: &Entity<Workspace>,
+    palette: &Entity<gpui_kit::component::command::CommandState>, chats: &[crate::palette_items::ChatSnapshot], ws: &Entity<Workspace>,
     cx: &mut App,
 ) -> Command {
     let ws_confirm = ws.clone();
     let ws_query = ws.clone();
-    let (commands, chat_group) =
-        crate::palette_items::palette_groups(chats, &palette.read(cx).query(cx));
+    let (commands, chat_group) = crate::palette_items::palette_groups(chats, &palette.read(cx).query(cx));
     Command::new(palette)
         .placeholder("Type a command or search chats…")
         // Local filtering is substring-only; ranking is fuzzy and happens
@@ -230,4 +224,3 @@ impl Workspace {
         }
     }
 }
-

@@ -5,14 +5,14 @@
 //! nightly, so tests use `TestAppContext::single()` under plain `#[test]`
 //! with narrow imports (see ui_tests.rs).
 
-use gpui_kit::component::Root;
-use gpui_kit::component::dialog::Confirm;
-use gpui_kit::component::IndexPath;
-use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, Entity, Focusable, TestAppContext, VisualTestContext};
 use crate::palette_fuzzy::fuzzy_score;
 use crate::palette_items::{Entry, entry_at};
 use crate::workspace::Workspace;
+use gpui_kit::component::IndexPath;
+use gpui_kit::component::Root;
+use gpui_kit::component::dialog::Confirm;
+use gpui_kit::test::TestWindowExt;
+use gpui_kit::{AppContext, Entity, Focusable, TestAppContext, VisualTestContext};
 
 /// Mount a `Workspace` in a headless window (same harness as ui_tests.rs).
 fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
@@ -105,7 +105,11 @@ fn palette_fuzzy_filters_and_confirms_chat() {
         assert_eq!(selected, Some(IndexPath::new(0).section(1)), "the chat row should be highlighted");
 
         // Enter confirms the highlighted chat and closes the dialog.
-        ws.read(cx).palette.read(cx).focus_handle(cx).dispatch_action(&Confirm { secondary: false }, window, cx);
+        ws.read(cx)
+            .palette
+            .read(cx)
+            .focus_handle(cx)
+            .dispatch_action(&Confirm { secondary: false }, window, cx);
     });
     cx.run_until_parked();
     cx.update(|window, cx| {
@@ -114,7 +118,6 @@ fn palette_fuzzy_filters_and_confirms_chat() {
         assert!(window.try_find("command").is_none(), "palette should close on confirm");
     });
 }
-
 
 #[test]
 fn palette_confirm_runs_command() {

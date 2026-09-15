@@ -140,9 +140,9 @@ fn result_closes_tool_cards_left_open() {
 }
 
 #[test]
-fn make_backend_selects_claude() {
-    let s = crate::persist::Settings { backend: "claude-cli".into(), ..Default::default() };
-    assert_eq!(crate::backend::make_backend(&s).name(), "claude-cli");
+fn backend_for_builds_claude() {
+    let p = crate::providers::ProviderInstance::new(crate::providers::ProviderKind::ClaudeCli, "Claude".into());
+    assert_eq!(crate::backend::backend_for(&p).name(), "claude-cli");
 }
 
 #[test]

@@ -146,25 +146,46 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    pub model: String,
+    /// Configured provider instances — the picker's provider list. Empty in
+    /// a fresh file means "migrate the legacy flat fields" (see
+    /// `migrate_legacy`); `load_settings` fills it with the built-in set
+    /// when there's nothing to migrate.
+    #[serde(default = "Vec::new")]
+    pub providers: Vec<crate::providers::ProviderInstance>,
+    /// Selected instance id — an entry in `providers`.
+    pub selected_provider: String,
+    /// Selected model id within `selected_provider`'s catalog. Empty = the
+    /// provider's first model; there is no synthetic "default" anymore.
+    pub selected_model: String,
     pub mode: String,
     /// Agent-mode filesystem access: "read-only" | "workspace-write" |
     /// "full-access" — see `crate::backend::AccessMode`.
     pub access: String,
     pub notify_on_done: bool,
     pub word_wrap: bool,
-    /// Backend selector: "codex-cli" | "claude-cli" | "sim" | "http" |
-    /// "acp". Migrated from the old `use_codex_cli` bool — see
-    /// `use_codex_cli` below.
-    pub backend: String,
-    /// HTTP transport endpoint (POST, NDJSON response stream).
-    pub http_url: String,
-    /// Env var holding the bearer token for `http_url` — the key itself
-    /// is never written to this file.
-    pub http_key_env: String,
-    /// Command used to spawn the ACP agent subprocess (program + args,
-    /// whitespace-separated) — e.g. "npx -y @zed-industries/claude-code-acp".
-    pub acp_command: String,
+    /// Legacy field: the pre-instances backend selector ("codex-cli" |
+    /// "claude-cli" | "sim" | "http" | "acp"). Read for migration, never
+    /// written back.
+    #[serde(rename = "backend", skip_serializing)]
+    pub legacy_backend: String,
+    /// Legacy field: the pre-instances model selector ("default" | a model
+    /// id). Read for migration, never written back.
+    #[serde(rename = "model", skip_serializing)]
+    pub legacy_model: String,
+    /// Legacy field: the http provider's endpoint. Read for migration,
+    /// never written back — it lives on the instance's `command` now.
+    #[serde(rename = "http_url", skip_serializing)]
+    pub legacy_http_url: String,
+    /// Legacy field: env var holding the http bearer token.
+    #[serde(rename = "http_key_env", skip_serializing)]
+    pub legacy_http_key_env: String,
+    /// Legacy field: the acp provider's spawn command.
+    #[serde(rename = "acp_command", skip_serializing)]
+    pub legacy_acp_command: String,
+    /// Legacy field: provider ids hidden from the picker — instance
+    /// `enabled` flags now. Read for migration, never written back.
+    #[serde(rename = "disabled_providers", skip_serializing)]
+    pub legacy_disabled_providers: Vec<String>,
     /// Legacy field: present only in pre-`backend` files. Read for
     /// migration, never written back.
     #[serde(skip_serializing)]
@@ -193,50 +214,6 @@ pub struct Settings {
     pub active_chat: usize,
     /// Appearance: "system" | "light" | "dark".
     pub theme: String,
-    /// Providers hidden from the model picker — ids from
-    /// `crate::model::PROVIDERS`. New providers default to enabled.
-    pub disabled_providers: Vec<String>,
-}
-
-impl Settings {
-    /// Effective backend name, folding in the legacy bool when the file
-    /// predates the `backend` field.
-    pub fn backend_name(&self) -> &str {
-        match self.use_codex_cli {
-            Some(true) => "codex-cli",
-            Some(false) => "sim",
-            None => self.backend.as_str(),
-        }
-    }
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            model: "default".into(),
-            mode: "Agent".into(),
-            access: "workspace-write".into(),
-            notify_on_done: true,
-            word_wrap: true,
-            backend: "codex-cli".into(),
-            http_url: String::new(),
-            http_key_env: "RIXL_API_KEY".into(),
-            acp_command: crate::backend::AcpBackend::DEFAULT_COMMAND.into(),
-            use_codex_cli: None,
-            font_size: 14,
-            font_family: String::new(),
-            code_font_family: String::new(),
-            code_font_size: 13,
-            contrast: 100,
-            sidebar_frosted: true,
-            window_bounds: None,
-            sidebar_width: 255.0,
-            sidebar_collapsed: false,
-            active_chat: 0,
-            theme: "system".into(),
-            disabled_providers: Vec::new(),
-        }
-    }
 }
 
 fn settings_path() -> PathBuf {
@@ -256,10 +233,17 @@ pub fn save_settings(s: &Settings) {
 }
 
 pub fn load_settings() -> Settings {
-    fs::read_to_string(settings_path())
+    let mut s: Settings = fs::read_to_string(settings_path())
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    s.migrate_legacy();
+    if s.providers.is_empty() {
+        // Fresh profile — no file, nothing to migrate.
+        s.providers = crate::persist_migrate::default_providers();
+        s.selected_provider = crate::providers::ProviderKind::CodexCli.slug().to_string();
+    }
+    s
 }
 
 /// Cache file for fetched model catalogs — lets the picker show last
@@ -309,7 +293,7 @@ mod tests {
     fn settings_defaults_missing_fields() {
         // A file with only `model` must not reset the rest.
         let s: Settings = serde_json::from_str(r#"{"model":"gpt-5"}"#).unwrap();
-        assert_eq!(s.model, "gpt-5");
+        assert_eq!(s.legacy_model, "gpt-5");
         assert_eq!(s.font_size, 14);
         assert!(s.notify_on_done);
     }
@@ -319,7 +303,7 @@ mod tests {
         let s = Settings::default();
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.model, s.model);
+        assert_eq!(back.selected_model, s.selected_model);
         assert_eq!(back.font_size, s.font_size);
     }
 }

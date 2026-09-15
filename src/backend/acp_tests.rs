@@ -1,4 +1,4 @@
-//! ACP backend tests: `make_backend` selection, the `session/update`
+//! ACP backend tests: `backend_for` construction, the `session/update`
 //! decoder, and the full pump driven by canned NDJSON — no real
 //! subprocess is ever spawned.
 
@@ -8,16 +8,14 @@ use super::acp::{AcpBackend, AcpTurn, PumpEnd, pump};
 use super::acp_decode::AcpDecoder;
 use super::acp_rpc_tests::session_result;
 use super::{AgentBackend, AgentEvent};
-use crate::persist::Settings;
 
-// ---- make_backend / provider plumbing ----
+// ---- backend_for / provider plumbing ----
 
 #[test]
-fn make_backend_selects_acp() {
-    let s = Settings { backend: "acp".into(), ..Default::default() };
-    assert_eq!(crate::backend::make_backend(&s).name(), "acp");
-    assert_eq!(crate::backend::backend_for("acp", "", "").name(), "acp");
-    assert_eq!(crate::backend::backend_for("acp", "", "").provider_id(), "acp");
+fn backend_for_builds_acp() {
+    let p = crate::providers::ProviderInstance::new(crate::providers::ProviderKind::Acp, "ACP".into());
+    let b = crate::backend::backend_for(&p);
+    assert_eq!(b.name(), "acp");
 }
 
 #[test]
@@ -207,7 +205,7 @@ fn pump_answers_permission_and_reports_errors() {
         json!({"jsonrpc": "2.0", "id": 3, "error": {"code": -32603, "message": "boom"}}),
     ];
     // Agent mode + workspace-write → permission auto-allowed.
-    let turn = AcpTurn::for_test("default", "Agent");
+    let turn = AcpTurn::for_test("m1", "Agent");
     let (end, reqs, events) = drive(&agent_out, &turn);
     assert_eq!(end, PumpEnd::Done);
 
@@ -226,7 +224,7 @@ fn pump_answers_permission_and_reports_errors() {
 #[test]
 fn pump_eof_before_prompt_response() {
     let input = [json!({"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": 1}})];
-    let turn = AcpTurn::for_test("default", "Agent");
+    let turn = AcpTurn::for_test("m1", "Agent");
     let (end, _, _) = drive(&input, &turn);
     assert_eq!(end, PumpEnd::Eof);
 }

@@ -253,11 +253,8 @@ fn model_option(result: &Value) -> Option<&Value> {
 }
 
 /// Build the model-selection request for this turn, or `None` when the
-/// picker is on "default" or the agent doesn't offer the model.
+/// agent doesn't offer the model.
 pub(super) fn model_request(id: i64, sid: &str, model: &str, result: &Value) -> Option<Value> {
-    if model == "default" {
-        return None;
-    }
     if let Some(opt) = model_option(result) {
         let flat = opt["options"].as_array().into_iter().flatten();
         let grouped = flat.clone().flat_map(|g| g["options"].as_array().into_iter().flatten());

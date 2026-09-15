@@ -58,7 +58,12 @@ impl Workspace {
             .into_iter()
             .map(|ix| {
                 let chat = &self.chats[ix];
-                ChatSnapshot { id: chat.id, title: chat.title.clone(), active: ix == self.active, at: chat.created_at }
+                ChatSnapshot {
+                    id: chat.id,
+                    title: chat.title.clone(),
+                    active: ix == self.active,
+                    at: chat.created_at,
+                }
             })
             .collect()
     }
@@ -68,20 +73,90 @@ impl Workspace {
 /// Order is the empty-query display order; a query re-sorts by fuzzy score.
 fn command_specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec { label: "New Chat", icon: IconName::Plus, keywords: &["create", "thread"], effect: Effect::Dispatch(Box::new(crate::NewChat)) },
-        CommandSpec { label: "Rename Chat", icon: IconName::Pencil, keywords: &["title"], effect: Effect::Run(Workspace::rename_active) },
-        CommandSpec { label: "Delete Chat", icon: IconName::Delete, keywords: &["remove"], effect: Effect::Dispatch(Box::new(crate::DeleteChat)) },
-        CommandSpec { label: "Search in Chat", icon: IconName::Search, keywords: &["find"], effect: Effect::Run(Workspace::open_chat_search) },
-        CommandSpec { label: "Copy Transcript", icon: IconName::Copy, keywords: &["clipboard"], effect: Effect::Dispatch(Box::new(crate::CopyTranscript)) },
-        CommandSpec { label: "Export Transcript…", icon: IconName::Share, keywords: &["markdown", "save"], effect: Effect::Run(|this, _window, cx| this.export_active(cx)) },
-        CommandSpec { label: "Toggle Sidebar", icon: IconName::PanelLeft, keywords: &[], effect: Effect::Dispatch(Box::new(crate::ToggleSidebar)) },
-        CommandSpec { label: "Toggle Agents Panel", icon: IconName::Bot, keywords: &["tasks"], effect: Effect::Dispatch(Box::new(crate::ToggleAgents)) },
-        CommandSpec { label: "Toggle Changes Panel", icon: IconName::FileDiff, keywords: &["git", "diff"], effect: Effect::Dispatch(Box::new(crate::ToggleChanges)) },
-        CommandSpec { label: "Open Settings", icon: IconName::Settings, keywords: &["preferences"], effect: Effect::Dispatch(Box::new(crate::OpenSettings)) },
-        CommandSpec { label: "Reveal Chats Folder", icon: IconName::FolderOpen, keywords: &["finder"], effect: Effect::Dispatch(Box::new(crate::RevealChats)) },
-        CommandSpec { label: "Keyboard Shortcuts", icon: IconName::Keyboard, keywords: &["help", "keys"], effect: Effect::Run(Workspace::shortcuts_help) },
-        CommandSpec { label: "Switch to Light Theme", icon: IconName::Sun, keywords: &["appearance"], effect: Effect::Dispatch(Box::new(crate::ThemeLight)) },
-        CommandSpec { label: "Switch to Dark Theme", icon: IconName::Moon, keywords: &["appearance"], effect: Effect::Dispatch(Box::new(crate::ThemeDark)) },
+        CommandSpec {
+            label: "New Chat",
+            icon: IconName::Plus,
+            keywords: &["create", "thread"],
+            effect: Effect::Dispatch(Box::new(crate::NewChat)),
+        },
+        CommandSpec {
+            label: "Rename Chat",
+            icon: IconName::Pencil,
+            keywords: &["title"],
+            effect: Effect::Run(Workspace::rename_active),
+        },
+        CommandSpec {
+            label: "Delete Chat",
+            icon: IconName::Delete,
+            keywords: &["remove"],
+            effect: Effect::Dispatch(Box::new(crate::DeleteChat)),
+        },
+        CommandSpec {
+            label: "Search in Chat",
+            icon: IconName::Search,
+            keywords: &["find"],
+            effect: Effect::Run(Workspace::open_chat_search),
+        },
+        CommandSpec {
+            label: "Copy Transcript",
+            icon: IconName::Copy,
+            keywords: &["clipboard"],
+            effect: Effect::Dispatch(Box::new(crate::CopyTranscript)),
+        },
+        CommandSpec {
+            label: "Export Transcript…",
+            icon: IconName::Share,
+            keywords: &["markdown", "save"],
+            effect: Effect::Run(|this, _window, cx| this.export_active(cx)),
+        },
+        CommandSpec {
+            label: "Toggle Sidebar",
+            icon: IconName::PanelLeft,
+            keywords: &[],
+            effect: Effect::Dispatch(Box::new(crate::ToggleSidebar)),
+        },
+        CommandSpec {
+            label: "Toggle Agents Panel",
+            icon: IconName::Bot,
+            keywords: &["tasks"],
+            effect: Effect::Dispatch(Box::new(crate::ToggleAgents)),
+        },
+        CommandSpec {
+            label: "Toggle Changes Panel",
+            icon: IconName::FileDiff,
+            keywords: &["git", "diff"],
+            effect: Effect::Dispatch(Box::new(crate::ToggleChanges)),
+        },
+        CommandSpec {
+            label: "Open Settings",
+            icon: IconName::Settings,
+            keywords: &["preferences"],
+            effect: Effect::Dispatch(Box::new(crate::OpenSettings)),
+        },
+        CommandSpec {
+            label: "Reveal Chats Folder",
+            icon: IconName::FolderOpen,
+            keywords: &["finder"],
+            effect: Effect::Dispatch(Box::new(crate::RevealChats)),
+        },
+        CommandSpec {
+            label: "Keyboard Shortcuts",
+            icon: IconName::Keyboard,
+            keywords: &["help", "keys"],
+            effect: Effect::Run(Workspace::shortcuts_help),
+        },
+        CommandSpec {
+            label: "Switch to Light Theme",
+            icon: IconName::Sun,
+            keywords: &["appearance"],
+            effect: Effect::Dispatch(Box::new(crate::ThemeLight)),
+        },
+        CommandSpec {
+            label: "Switch to Dark Theme",
+            icon: IconName::Moon,
+            keywords: &["appearance"],
+            effect: Effect::Dispatch(Box::new(crate::ThemeDark)),
+        },
     ]
 }
 
@@ -102,13 +177,7 @@ pub(crate) fn build_entries(chats: &[ChatSnapshot], query: &str) -> Vec<Entry> {
     let mut commands: Vec<(usize, i32)> = specs
         .iter()
         .enumerate()
-        .filter_map(|(ix, spec)| {
-            if query.is_empty() {
-                Some((ix, 0))
-            } else {
-                rank_command(spec, query).map(|score| (ix, score))
-            }
-        })
+        .filter_map(|(ix, spec)| if query.is_empty() { Some((ix, 0)) } else { rank_command(spec, query).map(|score| (ix, score)) })
         .collect();
     if !query.is_empty() {
         commands.sort_by_key(|(ix, score)| (std::cmp::Reverse(*score), *ix));
@@ -145,7 +214,12 @@ pub(crate) fn build_entries(chats: &[ChatSnapshot], query: &str) -> Vec<Entry> {
         })
         .chain(matched.into_iter().map(|(ix, _)| {
             let chat = &chats[ix];
-            Entry::Chat(ChatSnapshot { id: chat.id, title: chat.title.clone(), active: chat.active, at: chat.at })
+            Entry::Chat(ChatSnapshot {
+                id: chat.id,
+                title: chat.title.clone(),
+                active: chat.active,
+                at: chat.at,
+            })
         }))
         .collect()
 }
@@ -197,19 +271,16 @@ fn command_item(spec: CommandSpec) -> CommandItem {
 /// renders at the trailing edge.
 fn chat_item(chat: ChatSnapshot) -> CommandItem {
     let title = chat.title.clone();
-    CommandItem::new()
-        .label(chat.title)
-        .checked(chat.active)
-        .child(move |_, cx| {
-            h_flex()
-                .flex_1()
-                .gap_2()
-                .items_center()
-                .child(IconName::SquareTerminal)
-                .child(title.clone())
-                .child(div().flex_1())
-                .child(div().text_xs().text_color(cx.theme().muted_foreground).child(rel_time(chat.at)))
-        })
+    CommandItem::new().label(chat.title).checked(chat.active).child(move |_, cx| {
+        h_flex()
+            .flex_1()
+            .gap_2()
+            .items_center()
+            .child(IconName::SquareTerminal)
+            .child(title.clone())
+            .child(div().flex_1())
+            .child(div().text_xs().text_color(cx.theme().muted_foreground).child(rel_time(chat.at)))
+    })
 }
 
 /// "2h ago"-style age for chat rows.

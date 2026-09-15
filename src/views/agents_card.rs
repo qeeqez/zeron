@@ -85,9 +85,7 @@ pub(super) fn agent_card(agent: &Agent, tools: Vec<&ToolCall>, cx: &mut Context<
                 .text_color(cx.theme().muted_foreground)
                 .child(format!("{} · {}", agent.lane, agent.step)),
         )
-        .when(!progress.is_empty(), |d| {
-            d.child(div().text_xs().text_color(cx.theme().muted_foreground).child(progress))
-        })
+        .when(!progress.is_empty(), |d| d.child(div().text_xs().text_color(cx.theme().muted_foreground).child(progress)))
         .children(tools.into_iter().map(|tool| tool_row(agent, tool, cx)))
         .when(agent.expanded && !agent.log.is_empty(), |d| {
             d.child(
@@ -141,19 +139,13 @@ fn tool_row(agent: &Agent, tool: &ToolCall, cx: &mut Context<Workspace>) -> AnyE
                 .text_xs()
                 .child(div().text_color(color).child(icon))
                 .child(div().flex_shrink_0().child(tool.name.clone()))
-                .child(
-                    div()
-                        .min_w_0()
-                        .text_ellipsis()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(tool.detail.clone()),
-                )
+                .child(div().min_w_0().text_ellipsis().text_color(cx.theme().muted_foreground).child(tool.detail.clone()))
                 .child(div().flex_1().flex_shrink_0())
-                .child(
-                    div()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(if expanded { IconName::ChevronDown } else { IconName::ChevronRight }),
-                )
+                .child(div().text_color(cx.theme().muted_foreground).child(if expanded {
+                    IconName::ChevronDown
+                } else {
+                    IconName::ChevronRight
+                }))
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_agent_tool(agent_id, ix, cx))),
         )
         .when(expanded && !tool.output.is_empty(), |d| {

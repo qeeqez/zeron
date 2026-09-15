@@ -212,7 +212,15 @@ impl Workspace {
 
     /// Dispatch to the real backend or the simulator. Only `sim` is fake —
     /// every other backend (codex-cli, http) goes through `run_backend`.
+    /// A provider with no catalog has no model to send — the turn becomes
+    /// an error note instead of a synthetic "default".
     fn start_reply(&mut self, prompt: &str, cx: &mut Context<Self>) {
+        if self.model.is_empty() {
+            let chat_id = self.chats[self.active].id;
+            self.push_note("**Error:** the selected provider has no models — pick a provider with a catalog.".into(), cx);
+            self.finish_reply(chat_id, cx);
+            return;
+        }
         if self.backend.name() == "sim" {
             crate::simulate::simulate_reply(self, cx);
         } else {
@@ -228,20 +236,26 @@ impl Workspace {
             "export" => self.export_active(cx),
             "rename" => self.rename_active(window, cx),
             "model" => {
-                // `provider/model` selects across providers; a bare id
-                // stays on the active provider.
-                let (provider, model_id) = arg.split_once('/').unwrap_or((self.provider, arg));
-                let provider = provider.to_string();
-                let known: Vec<String> = self.picker_options(&provider).iter().map(|m| m.id.to_string()).collect();
+                // `instance/model` selects across instances; a bare id
+                // stays on the selected instance.
+                let current = self.selected_provider.clone();
+                let (instance, model_id) = arg.split_once('/').map_or((current.as_str(), arg), |(i, m)| (i, m));
+                let instance = instance.to_string();
+                let known: Vec<String> = self.models_for(&instance).iter().map(|m| m.id.to_string()).collect();
                 if arg.is_empty() {
                     self.push_note(
-                        format!("Current model: **{} · {}** — pick one of: {}", self.provider, self.model, known.join(", ")),
+                        format!(
+                            "Current model: **{} · {}** — pick one of: {}",
+                            self.selected_provider,
+                            self.selected_model(),
+                            known.join(", ")
+                        ),
                         cx,
                     );
-                } else if self.select_model(&provider, model_id, cx) {
-                    self.push_note(format!("Model set to **{provider} · {model_id}**"), cx);
+                } else if self.select_model(&instance, model_id, cx) {
+                    self.push_note(format!("Model set to **{instance} · {model_id}**"), cx);
                 } else {
-                    self.push_note(format!("Unknown model `{arg}` — pick one of: {} (or `provider/model`)", known.join(", ")), cx);
+                    self.push_note(format!("Unknown model `{arg}` — pick one of: {} (or `instance/model`)", known.join(", ")), cx);
                 }
             },
             "compact" => {

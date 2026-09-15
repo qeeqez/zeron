@@ -40,9 +40,13 @@ impl Workspace {
         };
 
         let model_picker = model_picker(ModelPickerSpec {
-            current_provider: self.provider,
+            current_provider: self.selected_provider.clone(),
             current_model: self.model.clone(),
-            providers: self.enabled_providers().into_iter().map(|p| (*p, self.picker_options(p.id))).collect(),
+            providers: self
+                .enabled_providers()
+                .into_iter()
+                .map(|p| (p.id.clone(), p.name.clone(), self.models_for(&p.id)))
+                .collect(),
             ws: ws.clone(),
         });
         let mode_picker = picker(PickerSpec {

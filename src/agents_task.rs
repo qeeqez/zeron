@@ -28,6 +28,14 @@ impl Workspace {
         let mut agent = Agent::new(id, name, self.backend.name(), 0);
         agent.step = "running".into();
         agent.log.push("[0s] task started".into());
+        if self.model.is_empty() {
+            // No synthetic "default" — a provider with no catalog can't run.
+            agent.log.push("error: the selected provider has no models".into());
+            agent.status = AgentStatus::Failed;
+            self.agents.push(agent);
+            cx.notify();
+            return;
+        }
         let stream = self.backend.send(&prompt, self.model.as_ref(), self.mode.as_ref());
         agent.stream = Some(stream);
         self.agents.push(agent);

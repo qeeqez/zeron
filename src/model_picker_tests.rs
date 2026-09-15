@@ -1,6 +1,7 @@
 //! Headless tests for the provider→model picker: injected catalogs render
-//! under provider submenus, `default` leads every provider's list, picks
-//! switch provider+model, and disabled providers stay out of the menu.
+//! under instance submenus, picks switch instance+model, and disabled
+//! instances stay out of the menu. There is no synthetic `default` entry —
+//! a provider with no catalog shows an empty submenu.
 
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
@@ -37,17 +38,17 @@ fn mi(id: &str, label: &str) -> ModelInfo {
 }
 
 /// Inject a fetched catalog the way `refresh_model_catalogs` would.
-fn inject(ws: &Entity<Workspace>, cx: &mut VisualTestContext, provider: &'static str, models: Vec<ModelInfo>) {
-    ws.update(cx, |this, cx| this.land_catalog(provider, models, cx));
+fn inject(ws: &Entity<Workspace>, cx: &mut VisualTestContext, instance: &str, models: Vec<ModelInfo>) {
+    ws.update(cx, |this, cx| this.land_catalog(instance, models, cx));
 }
 
 #[test]
-fn picker_options_put_default_first() {
+fn picker_options_have_no_default_entry() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     inject(&ws, cx, "codex-cli", vec![mi("gpt-9", "GPT-9"), mi("gpt-8", "GPT-8")]);
-    let ids: Vec<String> = ws.read_with(cx, |w, _| w.picker_options("codex-cli").iter().map(|m| m.id.to_string()).collect());
-    assert_eq!(ids, ["default", "gpt-9", "gpt-8"]);
+    let ids: Vec<String> = ws.read_with(cx, |w, _| w.models_for("codex-cli").iter().map(|m| m.id.to_string()).collect());
+    assert_eq!(ids, ["gpt-9", "gpt-8"]);
 }
 
 #[test]
@@ -63,7 +64,7 @@ fn picker_shows_injected_catalog_under_provider() {
         // Hover the first provider submenu (codex-cli) to reveal its models.
         window.within("popup-menu").hover(0usize, cx);
         window.draw(cx).clear(cx);
-        assert!(window.find("model-opt-codex-cli-default").visible(), "default leads the list");
+        assert!(window.try_find("model-opt-codex-cli-default").is_none(), "no synthetic default row");
         assert!(window.find("model-opt-codex-cli-gpt-9").visible(), "injected model should render");
     });
 }
@@ -83,8 +84,9 @@ fn picking_model_selects_provider_and_model() {
         window.click("model-opt-sim-sim-x", cx);
         window.draw(cx).clear(cx);
     });
-    let (provider, model, backend) = ws.read_with(cx, |w, _| (w.provider, w.model.to_string(), w.backend.provider_id()));
-    assert_eq!((provider, model.as_str(), backend), ("sim", "sim-x", "sim"));
+    let (provider, model, backend) =
+        ws.read_with(cx, |w, _| (w.selected_provider().map(str::to_string), w.model.to_string(), w.backend.name()));
+    assert_eq!((provider.as_deref(), model.as_str(), backend), (Some("sim"), "sim-x", "sim"));
 }
 
 #[test]
@@ -113,26 +115,24 @@ fn disabled_provider_hidden_and_unselectable() {
 fn disabling_active_provider_moves_selection() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
-    assert_eq!(ws.read_with(cx, |w, _| w.provider), "codex-cli");
+    assert_eq!(ws.read_with(cx, |w, _| w.selected_provider().map(str::to_string)), Some("codex-cli".to_string()));
     ws.update(cx, |this, cx| this.set_provider_enabled("codex-cli", false, cx));
-    let (provider, model) = ws.read_with(cx, |w, _| (w.provider, w.model.to_string()));
-    assert_eq!(provider, "claude-cli", "selection moves to the first enabled provider");
-    assert_eq!(model, "default");
+    let (provider, model) = ws.read_with(cx, |w, _| (w.selected_provider().map(str::to_string), w.model.to_string()));
+    assert_eq!(provider.as_deref(), Some("claude-cli"), "selection moves to the first enabled provider");
+    assert_eq!(model, "sonnet", "model resolves to the new provider's first model");
 }
 
 #[test]
-fn last_enabled_provider_cannot_be_disabled() {
+fn disabling_last_provider_clears_selection() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     ws.update(cx, |this, cx| {
-        for id in ["claude-cli", "acp", "http", "sim"] {
+        for id in ["codex-cli", "claude-cli", "acp", "http", "sim"] {
             this.set_provider_enabled(id, false, cx);
         }
-        // Only codex-cli remains — disabling it must be refused.
-        this.set_provider_enabled("codex-cli", false, cx);
     });
-    let (provider, enabled) = ws.read_with(cx, |w, _| (w.provider, w.enabled_providers().len()));
-    assert_eq!((provider, enabled), ("codex-cli", 1));
+    let (provider, model) = ws.read_with(cx, |w, _| (w.selected_provider().map(str::to_string), w.model.to_string()));
+    assert_eq!((provider, model.as_str()), (None, ""), "no enabled provider → empty selection");
 }
 
 #[test]
@@ -143,9 +143,9 @@ fn land_catalog_resets_removed_model() {
     ws.update(cx, |this, cx| {
         assert!(this.select_model("codex-cli", "gpt-9", cx));
     });
-    // A refresh that drops gpt-9 resets the selection to default.
+    // A refresh that drops gpt-9 resets the selection to the first model.
     inject(&ws, cx, "codex-cli", vec![mi("gpt-10", "GPT-10")]);
-    assert_eq!(ws.read_with(cx, |w, _| w.model.to_string()), "default");
+    assert_eq!(ws.read_with(cx, |w, _| w.model.to_string()), "gpt-10");
 }
 
 #[test]

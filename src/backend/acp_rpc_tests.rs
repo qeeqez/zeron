@@ -91,9 +91,9 @@ fn model_request_uses_legacy_set_model() {
     let result = json!({"models": {"availableModels": [{"modelId": "m9", "name": "Nine"}]}});
     let req = wire::model_request(3, "s1", "m9", &result).unwrap();
     assert_eq!(req["method"], json!("session/set_model"));
-    // Unknown model or "default" → no request; the agent keeps its default.
+    // Unknown model → no request; the agent keeps its configured model.
     assert!(wire::model_request(3, "s1", "nope", &result).is_none());
-    assert!(wire::model_request(3, "s1", "default", &session_result()).is_none());
+    assert!(wire::model_request(3, "s1", "nope", &session_result()).is_none());
 }
 
 #[test]

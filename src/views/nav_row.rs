@@ -92,10 +92,7 @@ impl NavRow {
         self
     }
 
-    pub(crate) fn context_menu(
-        mut self,
-        menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
-    ) -> Self {
+    pub(crate) fn context_menu(mut self, menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static) -> Self {
         self.context_menu = Some(Rc::new(menu));
         self
     }
@@ -142,12 +139,8 @@ impl SidebarItem for NavRow {
             .gap_x_2()
             .rounded(radius)
             .text_sm()
-            .when(!self.active, |this| {
-                this.hover(|this| this.bg(accent.opacity(0.8)).text_color(accent_fg))
-            })
-            .when(self.active, |this| {
-                this.font_medium().bg(accent_bg).text_color(accent_fg)
-            })
+            .when(!self.active, |this| this.hover(|this| this.bg(accent.opacity(0.8)).text_color(accent_fg)))
+            .when(self.active, |this| this.font_medium().bg(accent_bg).text_color(accent_fg))
             .when_some(self.icon, |this, icon| this.child(icon))
             .when(self.collapsed, |this| this.justify_center())
             .when(!self.collapsed, |this| this.h_7().child(content))
@@ -156,6 +149,11 @@ impl SidebarItem for NavRow {
                 Some(menu) => this.context_menu(move |m, window, cx| menu(m, window, cx)).into_any_element(),
                 None => this.into_any_element(),
             });
-        div().id(id).test_support().w_full().when_some(self.group, |this, group| this.group(group)).child(row)
+        div()
+            .id(id)
+            .test_support()
+            .w_full()
+            .when_some(self.group, |this, group| this.group(group))
+            .child(row)
     }
 }

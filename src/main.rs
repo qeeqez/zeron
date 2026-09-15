@@ -51,10 +51,16 @@ mod palette_items;
 #[cfg(test)]
 mod palette_tests;
 mod persist;
+mod persist_migrate;
+#[cfg(test)]
 mod persist_tests;
 mod project;
 #[cfg(test)]
 mod project_tests;
+mod provider_ops;
+#[cfg(test)]
+mod provider_tests;
+mod providers;
 mod root;
 mod send;
 mod send_queue;

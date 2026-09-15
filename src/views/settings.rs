@@ -37,14 +37,15 @@ impl SettingsPanel {
     pub fn new(ws: Entity<Workspace>, settings: &crate::persist::Settings, window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&ws, |_, _, cx| cx.notify()).detach();
         let ws = ws.downgrade();
+        let http = settings.providers.iter().find(|p| p.kind == crate::providers::ProviderKind::Http);
         let url_input = cx.new(|cx| {
             let mut s = InputState::new(window, cx).placeholder("https://…");
-            s.set_value(settings.http_url.clone(), window, cx);
+            s.set_value(http.map_or_else(String::new, |p| p.command.clone()), window, cx);
             s
         });
         let key_input = cx.new(|cx| {
             let mut s = InputState::new(window, cx).placeholder("ENV_VAR_NAME");
-            s.set_value(settings.http_key_env.clone(), window, cx);
+            s.set_value(http.map_or_else(String::new, |p| p.key_env.clone()), window, cx);
             s
         });
         // Persist on every edit — the backend reads these at send time.
@@ -111,28 +112,32 @@ impl SettingsPanel {
 /// it's a real family name (empty = default → no selection). The delegate is
 /// `SearchableVec`, not `Vec` — only it implements `perform_search`, so a
 /// plain `Vec` would render the search box but never filter the list.
-fn font_picker(fonts: &[String], current: &str, window: &mut Window, cx: &mut Context<SettingsPanel>) -> Entity<SelectState<SearchableVec<String>>> {
+fn font_picker(
+    fonts: &[String], current: &str, window: &mut Window, cx: &mut Context<SettingsPanel>,
+) -> Entity<SelectState<SearchableVec<String>>> {
     let selected = fonts.iter().position(|f| f == current).map(gpui_kit::component::IndexPath::new);
     cx.new(|cx| SelectState::new(SearchableVec::new(fonts.to_vec()), selected, window, cx).searchable(true))
 }
 
-/// Write a changed http config field to the workspace and persist it.
+/// Write a changed http config field onto the first http instance and
+/// persist it — `configure_provider` rebuilds the backend when it's the
+/// selected one.
 fn on_http_field(ctx: &FieldCtx, state: &Entity<InputState>, event: &InputEvent, cx: &mut App) {
     if !matches!(event, InputEvent::Change) {
         return;
     }
     let value = state.read(cx).value().to_string();
     let _ = ctx.ws.update(cx, |this, _cx| {
+        let Some(ix) = this.providers.iter().position(|p| p.kind == crate::providers::ProviderKind::Http) else { return };
+        let (id, mut command, mut key_env) = {
+            let p = &this.providers[ix];
+            (p.id.clone(), p.command.clone(), p.key_env.clone())
+        };
         match ctx.field {
-            Field::Url => this.http_url = value.clone(),
-            Field::KeyEnv => this.http_key_env = value.clone(),
+            Field::Url => command = value.clone(),
+            Field::KeyEnv => key_env = value.clone(),
         }
-        // HttpBackend clones url/key_env at construction — rebuild it so
-        // the next send uses the edited values instead of the stale ones.
-        if this.backend.name() == "http" {
-            this.backend = std::sync::Arc::new(crate::backend::HttpBackend::new(this.http_url.clone(), this.http_key_env.clone()));
-        }
-        this.save_settings();
+        this.configure_provider(&id, command, key_env);
     });
 }
 

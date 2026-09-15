@@ -26,9 +26,7 @@ pub(crate) fn thread_start_req(id: i64, model: &str, sandbox: &str) -> Value {
         "ephemeral": true,
         "cwd": std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| "/".into()),
     });
-    if model != "default" {
-        params["model"] = json!(model);
-    }
+    params["model"] = json!(model);
     json!({"method": "thread/start", "id": id, "params": params})
 }
 
@@ -101,7 +99,7 @@ mod tests {
 
     #[test]
     fn thread_start_maps_sandbox_and_approval() {
-        let req = thread_start_req(2, "default", "workspace-write");
+        let req = thread_start_req(2, "gpt-5", "workspace-write");
         assert_eq!(req["method"], json!("thread/start"));
         assert_eq!(req["params"]["sandbox"], json!("workspace-write"));
         // No approval UI exists — the server must never block on one.
@@ -110,8 +108,8 @@ mod tests {
     }
 
     #[test]
-    fn model_only_set_when_not_default() {
-        assert!(thread_start_req(2, "default", "read-only")["params"].get("model").is_none());
+    fn thread_start_always_sends_the_model() {
+        // No synthetic "default" — the concrete id always goes on the wire.
         assert_eq!(thread_start_req(2, "gpt-5", "read-only")["params"]["model"], json!("gpt-5"));
     }
 

@@ -16,9 +16,8 @@ use super::{AgentBackend, AgentEvent, ReplyStream, kill_slot};
 pub struct ClaudeCliBackend;
 
 /// Models the picker offers for this provider — claude-cli can't enumerate
-/// its models, so this is the static alias list from `claude --help`. No
-/// "default" entry: the picker synthesizes it, and `send` maps it to "omit
-/// --model" so claude uses its configured default.
+/// its models, so this is the static alias list from `claude --help`.
+/// An empty model id omits `--model` so claude uses its configured default.
 const CLAUDE_MODELS: [(&str, &str); 4] = [("sonnet", "Sonnet"), ("opus", "Opus"), ("haiku", "Haiku"), ("fable", "Fable")];
 
 impl ClaudeCliBackend {
@@ -112,7 +111,7 @@ fn spawn_claude(turn: &ClaudeTurn, tx: &std::sync::mpsc::Sender<AgentEvent>) -> 
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    if !turn.model.is_empty() && turn.model != "default" {
+    if !turn.model.is_empty() {
         cmd.arg("--model").arg(&turn.model);
     }
 
@@ -206,7 +205,7 @@ mod tests {
     fn turn(mode: &str, access: super::super::AccessMode) -> ClaudeTurn {
         ClaudeTurn {
             prompt: "hi".into(),
-            model: "default".into(),
+            model: "sonnet".into(),
             mode: mode.into(),
             access,
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),

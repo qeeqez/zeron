@@ -43,15 +43,16 @@ pub struct Workspace {
     pub search: Entity<InputState>,
     pub scroller: Entity<MessageScrollerState>,
     pub model: SharedString,
-    /// Selected provider id — an entry in `crate::model::PROVIDERS`. The
-    /// backend is rebuilt from it on change; persisted as `Settings.backend`.
-    pub provider: &'static str,
-    /// Per-provider model lists for the picker — seeded from each
+    /// Selected provider instance id — an entry in `providers`. The
+    /// backend is rebuilt from it on change; persisted as
+    /// `Settings.selected_provider`.
+    pub selected_provider: String,
+    /// Configured provider instances — the picker's provider list.
+    pub providers: Vec<crate::providers::ProviderInstance>,
+    /// Per-instance model lists for the picker — seeded from each
     /// backend's `models()`, overlaid by the cache, refreshed by
-    /// `ProviderInfo::fetch`. Never contains the synthetic `default`.
+    /// `ProviderKindInfo::fetch`. Keyed by instance id.
     pub model_catalog: std::collections::HashMap<String, Vec<crate::model::ModelInfo>>,
-    /// Provider ids hidden from the picker — persisted in settings.
-    pub disabled_providers: Vec<String>,
     pub mode: SharedString,
     /// Filesystem access granted to Agent-mode turns — Plan/Ask are always
     /// read-only. Published to `crate::backend` on change so the backend
@@ -105,10 +106,6 @@ pub struct Workspace {
     pub project: crate::project::Project,
 
     pub backend: std::sync::Arc<dyn crate::backend::AgentBackend>,
-    /// HTTP transport config — kept on the workspace so provider switches
-    /// can rebuild `HttpBackend` without re-reading settings.json.
-    pub http_url: String,
-    pub http_key_env: String,
 }
 
 impl Workspace {
@@ -174,15 +171,17 @@ impl Workspace {
         })
         .detach();
 
-        let mut settings = crate::persist::load_settings();
+        let settings = crate::persist::load_settings();
         project.migrate_legacy_chats(settings.active_chat);
-        let disabled_providers = settings.disabled_providers.clone();
-        let provider = crate::model_catalog::pick_provider(settings.backend_name(), &disabled_providers);
+        let providers = settings.providers.clone();
+        let selected_provider = crate::model_catalog::resolve_provider(&providers, &settings.selected_provider)
+            .unwrap_or_default()
+            .to_string();
         let model_catalog = crate::model_catalog::seed_catalog(&settings);
-        // Point the loaded settings at the resolved provider so
-        // `make_backend` builds what the picker shows.
-        settings.backend = provider.to_string();
-        settings.use_codex_cli = None;
+        let backend = providers
+            .iter()
+            .find(|p| p.id == selected_provider)
+            .map_or_else(|| std::sync::Arc::new(crate::backend::SimBackend) as _, crate::backend::backend_for);
         // Built eagerly — creating it inside open_settings would re-enter the
         // workspace borrow (the click listener already holds it).
         let ws = cx.entity();
@@ -204,18 +203,17 @@ impl Workspace {
             composer,
             search,
             scroller,
-            model: if settings.model == "default"
-                || model_catalog
-                    .get(provider)
-                    .is_some_and(|ms| ms.iter().any(|m| m.id.as_ref() == settings.model.as_str()))
-            {
-                settings.model.clone().into()
-            } else {
-                "default".into()
-            },
-            provider,
+            model: providers.iter().find(|p| p.id == selected_provider).map_or_else(SharedString::default, |p| {
+                crate::model_catalog::resolve_model(
+                    model_catalog.get(&p.id).map_or(&[], Vec::as_slice),
+                    &p.models,
+                    &settings.selected_model,
+                )
+                .into()
+            }),
+            selected_provider,
+            providers,
             model_catalog,
-            disabled_providers,
             task_input,
             mode: if ["Agent", "Plan", "Ask"].contains(&settings.mode.as_str()) {
                 settings.mode.clone().into()
@@ -236,8 +234,8 @@ impl Workspace {
             settings_open: false,
             settings_panel,
             notify_on_done: settings.notify_on_done,
+            backend,
             word_wrap: settings.word_wrap,
-            backend: crate::backend::make_backend(&settings),
             font_size: settings.font_size.clamp(crate::appearance::FONT_SIZE_MIN, crate::appearance::FONT_SIZE_MAX),
             font_family: settings.font_family.clone(),
             code_font_family: settings.code_font_family.clone(),
@@ -248,8 +246,6 @@ impl Workspace {
             theme_persisted: settings.theme.clone(),
             project_files: Vec::new(),
             project,
-            http_url: settings.http_url.clone(),
-            http_key_env: settings.http_key_env.clone(),
         };
         crate::backend::set_access_mode(this.access);
         let loaded = crate::persist::load_chats(&this.project.chats_dir(), &mut this.next_chat_id, !crate::lifecycle::any_turn_running(cx));

@@ -177,13 +177,8 @@ impl ReplyStream {
 pub trait AgentBackend: Send + Sync {
     /// Human-readable name for the status bar.
     fn name(&self) -> &'static str;
-    /// Stable provider id for the model picker's provider grouping —
-    /// defaults to `name()` since most backends are their own provider.
-    fn provider_id(&self) -> &'static str {
-        self.name()
-    }
-    /// Models this provider offers; empty means "default" only. Backends
-    /// that learn their catalog at runtime return what they've seen.
+    /// Models this provider offers; empty means the picker shows nothing.
+    /// Backends that learn their catalog at runtime return what they've seen.
     fn models(&self) -> Vec<crate::model::ModelInfo> {
         Vec::new()
     }
@@ -198,6 +193,16 @@ impl AgentBackend for SimBackend {
         "sim"
     }
 
+    /// One static model so the simulator is selectable end-to-end — a
+    /// provider with no catalog can't be sent to at all.
+    fn models(&self) -> Vec<crate::model::ModelInfo> {
+        vec![crate::model::ModelInfo {
+            id: "sim".into(),
+            label: "Sim".into(),
+            description: "built-in simulator".into(),
+        }]
+    }
+
     fn send(&self, _prompt: &str, _model: &str, _mode: &str) -> ReplyStream {
         let (tx, events) = std::sync::mpsc::channel();
         for e in [
@@ -208,7 +213,7 @@ impl AgentBackend for SimBackend {
                 path: "src/main.rs".into(),
                 added: 24,
                 removed: 6,
-                hunks: "@@ -10,6 +10,24 @@\n fn main() {\n-    println!(\"old\");\n+    gpui_kit::application().run(|cx| {\n+        gpui_kit::init(cx);\n+    });\n }".into(),
+                hunks: "@@ -10,6 +10,24 @@\n fn main() {\n-    println!(\"old\");\n+    gpui_kit::application().run(|cx| {\n        gpui_kit::init(cx);\n    });\n }".into(),
             },
             AgentEvent::TextDelta("Done. The build is **green** — `0 warnings`, all checks passed.\n\n- `cargo build --locked` finished in 3.6s\n- clippy: clean\n- nextest: 0 tests".into()),
             AgentEvent::Done,
@@ -235,25 +240,15 @@ pub(crate) fn kill_slot(slot: &parking_lot::Mutex<Option<std::process::Child>>) 
     }
 }
 
-/// Build a backend by provider id without a full `Settings` — the model
-/// picker constructs providers just to enumerate `models()`. Unknown ids
-/// fall back to codex-cli.
-pub fn backend_for(provider_id: &str, http_url: &str, http_key_env: &str) -> std::sync::Arc<dyn AgentBackend> {
-    match provider_id {
-        "sim" => std::sync::Arc::new(SimBackend),
-        "http" if !http_url.is_empty() => std::sync::Arc::new(HttpBackend::new(http_url.to_string(), http_key_env.to_string())),
-        "acp" => std::sync::Arc::new(AcpBackend::default()),
-        "claude-cli" => std::sync::Arc::new(ClaudeCliBackend::new()),
-        _ => std::sync::Arc::new(CodexCliBackend::new()),
-    }
-}
-
-/// Build the backend for the configured provider. Provider-specific
-/// settings (acp's command, http's endpoint) are honored here — sibling
-/// backends hook their configured construction into this match.
-pub fn make_backend(s: &crate::persist::Settings) -> std::sync::Arc<dyn AgentBackend> {
-    match s.backend_name() {
-        "acp" => std::sync::Arc::new(AcpBackend::new(s.acp_command.clone())),
-        name => backend_for(name, &s.http_url, &s.http_key_env),
+/// Build the backend for one provider instance — `command`/`key_env` carry
+/// the kind-specific connection fields (acp spawn command, http endpoint).
+pub fn backend_for(p: &crate::providers::ProviderInstance) -> std::sync::Arc<dyn AgentBackend> {
+    use crate::providers::ProviderKind;
+    match p.kind {
+        ProviderKind::CodexCli => std::sync::Arc::new(CodexCliBackend::new()),
+        ProviderKind::ClaudeCli => std::sync::Arc::new(ClaudeCliBackend::new()),
+        ProviderKind::Acp => std::sync::Arc::new(AcpBackend::new(p.command.clone())),
+        ProviderKind::Http => std::sync::Arc::new(HttpBackend::new(p.command.clone(), p.key_env.clone())),
+        ProviderKind::Sim => std::sync::Arc::new(SimBackend),
     }
 }

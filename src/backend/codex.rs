@@ -257,7 +257,7 @@ mod tests {
     fn turn(mode: &str, access: AccessMode) -> CodexTurn {
         CodexTurn {
             prompt: "hi".into(),
-            model: "default".into(),
+            model: "gpt-5".into(),
             mode: mode.into(),
             access,
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),

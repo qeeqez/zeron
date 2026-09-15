@@ -116,39 +116,45 @@ pub fn apply_pick(ws: &Entity<Workspace>, set: fn(&mut Workspace, &'static str),
 /// Owned inputs for `model_picker` — the composer builds this from
 /// `&Workspace` so the returned element holds no borrow.
 pub struct ModelPickerSpec {
-    pub current_provider: &'static str,
+    /// Selected instance id — empty when no instance exists.
+    pub current_provider: String,
     pub current_model: SharedString,
-    /// Enabled providers with their picker options (`default` first).
-    pub providers: Vec<(crate::model::ProviderInfo, Vec<crate::model::ModelInfo>)>,
+    /// Enabled instances as (id, display name, effective model list).
+    pub providers: Vec<(String, String, Vec<crate::model::ModelInfo>)>,
     pub ws: Entity<Workspace>,
 }
 
-/// The provider→model dropdown: one submenu per enabled provider listing
-/// `default` plus that provider's catalog. Picking a model under another
-/// provider switches the active backend too.
+/// The provider→model dropdown: one submenu per enabled instance listing
+/// its effective catalog. Picking a model under another instance switches
+/// the active backend too. An instance with no catalog shows an empty
+/// submenu — there is no synthetic default entry.
 pub fn model_picker(spec: ModelPickerSpec) -> impl IntoElement {
     let ModelPickerSpec { current_provider, current_model, providers, ws: ws_entity } = spec;
-    let provider_label = providers.iter().find(|(p, _)| p.id == current_provider).map_or(current_provider, |(p, _)| p.label);
+    let provider_label = providers
+        .iter()
+        .find(|(id, _, _)| *id == current_provider)
+        .map_or_else(|| current_provider.clone(), |(_, name, _)| name.clone());
     let model_label = providers
         .iter()
-        .find(|(p, _)| p.id == current_provider)
-        .and_then(|(_, opts)| opts.iter().find(|m| m.id == current_model))
-        .map_or(current_model.clone(), |m| m.label.clone());
+        .find(|(id, _, _)| *id == current_provider)
+        .and_then(|(_, _, opts)| opts.iter().find(|m| m.id == current_model))
+        .map_or_else(|| current_model.to_string(), |m| m.label.to_string());
     let label = format!("{provider_label} · {model_label}");
     Button::new("model")
         .ghost()
         .label(label)
         .icon(IconName::ChevronsUpDown)
         .dropdown_menu(move |menu, window, cx| {
-            providers.iter().fold(menu, |menu, (p, options)| {
+            providers.iter().fold(menu, |menu, (id, name, options)| {
                 let item_ctx = ModelItemCtx {
                     ws: ws_entity.clone(),
-                    current_provider,
+                    current_provider: current_provider.clone(),
                     current_model: current_model.clone(),
-                    provider: *p,
+                    provider: id.clone(),
                 };
                 let options = options.clone();
-                menu.submenu(p.label, window, cx, move |sub, _w, _cx| {
+                let name = name.clone();
+                menu.submenu(name, window, cx, move |sub, _w, _cx| {
                     options.iter().cloned().fold(sub, |sub, m| sub.item(model_menu_item(&item_ctx, m)))
                 })
             })
@@ -159,30 +165,32 @@ pub fn model_picker(spec: ModelPickerSpec) -> impl IntoElement {
 /// the nesting/arg-count lints.
 struct ModelItemCtx {
     ws: Entity<Workspace>,
-    current_provider: &'static str,
+    current_provider: String,
     current_model: SharedString,
-    provider: crate::model::ProviderInfo,
+    /// The instance this submenu lists models for.
+    provider: String,
 }
 
 /// One clickable model row: check when selected, click selects
-/// provider+model on the workspace.
+/// instance+model on the workspace.
 fn model_menu_item(ctx: &ModelItemCtx, m: crate::model::ModelInfo) -> PopupMenuItem {
-    let checked = ctx.current_provider == ctx.provider.id && ctx.current_model.as_ref() == m.id.as_ref();
+    let checked = ctx.current_provider == ctx.provider && ctx.current_model.as_ref() == m.id.as_ref();
     let ws = ctx.ws.clone();
-    let pid = ctx.provider.id;
+    let pid = ctx.provider.clone();
     let mid = m.id.clone();
-    PopupMenuItem::element(move |_, cx| model_option(pid, &m, cx))
+    let pid2 = pid.clone();
+    PopupMenuItem::element(move |_, cx| model_option(&pid2, &m, cx))
         .checked(checked)
         .on_click(move |_, _, cx| {
             ws.update(cx, |this, cx| {
-                this.select_model(pid, &mid, cx);
+                this.select_model(&pid, &mid, cx);
             });
         })
 }
 
-/// One model row inside a provider submenu — label plus the provider's
+/// One model row inside a provider submenu — label plus the model's
 /// one-line description, dimmed.
-fn model_option(provider: &'static str, m: &crate::model::ModelInfo, cx: &App) -> gpui_kit::base::ObservedElement<Stateful<Div>> {
+fn model_option(provider: &str, m: &crate::model::ModelInfo, cx: &App) -> gpui_kit::base::ObservedElement<Stateful<Div>> {
     div()
         .id(SharedString::from(format!("model-opt-{provider}-{}", m.id)))
         .test_support()
