@@ -71,6 +71,7 @@ impl Workspace {
             voice_on_device: self.voice.on_device,
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
+            terminal_open: self.terminal.open,
             theme,
             ..Default::default()
         });

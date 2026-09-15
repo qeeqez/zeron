@@ -141,6 +141,9 @@ mod speech;
 mod steer;
 #[cfg(test)]
 mod steer_tests;
+mod terminal;
+#[cfg(test)]
+mod terminal_tests;
 mod thread_defaults;
 #[cfg(test)]
 mod thread_defaults_tests;
@@ -174,6 +177,7 @@ actions!([
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat, SearchAllChats,
     FindInChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext, NewWindow,
     OpenProject, AboutApp, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront, ToggleDictation,
+    ToggleTerminal,
 ]);
 
 /// Workspace-context key bindings. Menu items pick their key equivalents up
@@ -223,6 +227,13 @@ fn main() {
         cx.set_menus(menus::app_menus());
         cx.set_dock_menu(vec![MenuItem::action("New Window", NewWindow)]);
         cx.bind_keys(workspace_keys());
+        // Cmd-` (and Ctrl-` as a fallback — macOS may claim Cmd-` for
+        // window cycling) toggles the terminal panel. Bound here rather
+        // than in `workspace_keys`: that list is the cheat-sheet table.
+        cx.bind_keys([
+            KeyBinding::new("cmd-`", ToggleTerminal, Some("workspace")),
+            KeyBinding::new("ctrl-`", ToggleTerminal, Some("workspace")),
+        ]);
         install_app_actions(cx);
         cx.spawn(async move |cx| {
             lifecycle::open_workspace_window(cx).expect("failed to open window");

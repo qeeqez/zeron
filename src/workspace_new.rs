@@ -64,6 +64,13 @@ impl Workspace {
             }
         })
         .detach();
+        let terminal_input = cx.new(|cx| InputState::new(window, cx).placeholder("Run a command…"));
+        cx.subscribe_in(&terminal_input, window, |this, _s, event: &InputEvent, window, cx| {
+            if matches!(event, InputEvent::PressEnter { .. }) {
+                this.terminal_send(window, cx);
+            }
+        })
+        .detach();
         // Cmd+Q / QuitApp bypasses the window close gate — save drafts here.
         cx.on_app_quit(|this, cx| {
             this.chats[this.active].draft = this.composer.read(cx).value().to_string();
@@ -172,6 +179,7 @@ impl Workspace {
             voice: crate::voice::VoiceState::new(settings.voice_enabled, settings.voice_language.clone(), settings.voice_on_device),
             resume_open: false,
             auth: crate::auth::AuthBook::seeded(),
+            terminal: crate::views::terminal::TerminalPanel::new(settings.terminal_open, terminal_input),
         };
         this.snapshots.retention_days = settings.snapshot_retention_days.unwrap_or(crate::snapshots::DEFAULT_RETENTION_DAYS);
         this.snapshots.cap_mb = settings.snapshot_cap_mb.unwrap_or(0);
@@ -195,6 +203,11 @@ impl Workspace {
         this.refresh_auth(cx);
         // Launch-time retention pass — prunes aged/over-cap snapshots.
         this.refresh_snapshots(cx);
+        // A persisted-open terminal spawns its shell now rather than on
+        // first toggle.
+        if this.terminal.open {
+            this.ensure_terminal(cx);
+        }
         this
     }
 }

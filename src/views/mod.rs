@@ -53,6 +53,7 @@ pub mod shortcuts;
 pub(crate) mod sidebar;
 mod sidebar_row;
 pub(crate) mod snapshots;
+pub(crate) mod terminal;
 
 pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_item, slash_item, usage_indicator};
 pub use empty::render_empty_state;

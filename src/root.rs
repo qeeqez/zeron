@@ -5,7 +5,7 @@ use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EnterFullscreen,
     EscapeKey, FindInChat, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats,
     SearchAllChats, SearchChat, ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleDictation, ToggleExplorer,
-    ToggleSidebar, ToggleSnapshots, ZoomWindow,
+    ToggleSidebar, ToggleSnapshots, ToggleTerminal, ZoomWindow,
 };
 use gpui_kit::component::Root;
 
@@ -70,6 +70,12 @@ impl Render for Workspace {
                 let ws = cx.entity();
                 move |_: &ToggleExplorer, _, cx| {
                     ws.update(cx, |this, cx| this.toggle_explorer(cx));
+                }
+            })
+            .on_action({
+                let ws = cx.entity();
+                move |_: &ToggleTerminal, window, cx| {
+                    ws.update(cx, |this, cx| this.toggle_terminal(window, cx));
                 }
             })
             .on_action(move |_: &OpenPalette, window, cx| {
@@ -196,6 +202,9 @@ impl Render for Workspace {
                     .when(self.changes_panel_open, |d| d.child(self.render_changes_panel(window, cx)))
                     .when(self.snapshots.open, |d| d.child(self.render_snapshots_panel(window, cx))),
             )
+            // Bottom terminal panel — full width below the sidebar + chat
+            // row, like Codex/VS Code.
+            .when(self.terminal.open, |d| d.child(self.render_terminal_panel(window, cx)))
             // Settings is an overlay that starts at the sidebar's right edge —
             // the sidebar + toggle stay visible and functional, and the chat
             // composer keeps focus so Esc still closes settings.

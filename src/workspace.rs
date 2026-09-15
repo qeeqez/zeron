@@ -147,6 +147,9 @@ pub struct Workspace {
     pub project: crate::project::Project,
     /// Voice dictation settings + live take state (see `crate::voice`).
     pub voice: crate::voice::VoiceState,
+    /// Bottom terminal panel: PTY session, input line, scroll state (see
+    /// `crate::views::terminal`). `open` persists via `Settings`.
+    pub terminal: crate::views::terminal::TerminalPanel,
 
     /// Past threads the backend can reopen — the sidebar's Resume section.
     /// Filled by `refresh_sessions`; empty until the first fetch lands.

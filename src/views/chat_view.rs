@@ -67,6 +67,7 @@ impl Workspace {
         let ws_empty = cx.entity();
         let ws_menu = cx.entity();
         let ws_toggle = cx.entity();
+        let ws_term = cx.entity();
 
         let running_agents = self.running_agents();
         let panel_open = self.agents_panel_open;
@@ -141,6 +142,24 @@ impl Workspace {
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_click(move |_, _, cx| {
                             ws_toggle.update(cx, |this, cx| this.toggle_agents_panel(cx));
+                        }),
+                )
+                .child(
+                    div()
+                        .id("terminal-toggle")
+                        .test_support()
+                        .flex()
+                        .items_center()
+                        .px_2()
+                        .py_1()
+                        .rounded_md()
+                        .cursor_pointer()
+                        .when(self.terminal.open, |d| d.bg(cx.theme().accent).text_color(cx.theme().accent_foreground))
+                        .when(!self.terminal.open, |d| d.text_color(cx.theme().muted_foreground))
+                        .child(IconName::SquareTerminal)
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(move |_, window, cx| {
+                            ws_term.update(cx, |this, cx| this.toggle_terminal(window, cx));
                         }),
                 )
                 .child(Button::new("chat-menu").ghost().icon(IconName::Ellipsis).dropdown_menu({

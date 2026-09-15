@@ -285,6 +285,8 @@ pub struct Settings {
     pub window_bounds: Option<[f32; 4]>,
     pub sidebar_width: f32,
     pub sidebar_collapsed: bool,
+    /// Bottom terminal panel open/closed — restored on launch.
+    pub terminal_open: bool,
     /// Legacy field: per-project now (`projects/<id>/state.json`). Read for
     /// migration, never written back.
     #[serde(skip_serializing)]
