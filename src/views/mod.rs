@@ -19,6 +19,11 @@ mod diff;
 mod diff_split;
 mod empty;
 pub(crate) mod explorer;
+#[path = "../explorer_git.rs"]
+pub(crate) mod explorer_git;
+#[cfg(test)]
+#[path = "../explorer_git_tests.rs"]
+mod explorer_git_tests;
 #[cfg(test)]
 mod explorer_tests;
 pub(crate) mod logs;

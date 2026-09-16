@@ -12,6 +12,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::files::{DirNode, build_file_tree};
+use crate::views::explorer_git;
 use crate::views::sidebar::SidebarTab;
 use crate::workspace::Workspace;
 
@@ -27,8 +28,18 @@ pub struct ExplorerState {
 
 /// One visible line of the flattened tree.
 enum Row {
-    Dir { name: SharedString, path: SharedString, depth: usize, expanded: bool },
-    File { path: SharedString, depth: usize },
+    Dir {
+        name: SharedString,
+        path: SharedString,
+        depth: usize,
+        expanded: bool,
+        dirty: Option<explorer_git::Tone>,
+    },
+    File {
+        path: SharedString,
+        depth: usize,
+        badge: Option<explorer_git::GitBadge>,
+    },
 }
 
 impl Workspace {
@@ -98,8 +109,11 @@ impl Workspace {
                 .extend(build_file_tree(&self.project_files).dirs.iter().map(|d| d.path.to_string()));
         }
         let tree = build_file_tree(&self.project_files);
+        // Git badges are a view over the workspace's `changes` snapshot —
+        // built once per render, never a fresh `git status`.
+        let git = explorer_git::GitDecorations::build(&self.changes);
         let mut rows = Vec::new();
-        flatten(&tree, 0, &self.explorer.expanded, &mut rows);
+        flatten(&tree, 0, &self.explorer.expanded, &git, &mut rows);
         let selected = self.explorer.selected.clone();
         let rows: Vec<AnyElement> = rows.into_iter().enumerate().map(|(ix, row)| render_row(ix, row, selected.as_deref(), cx)).collect();
         div()
@@ -152,7 +166,9 @@ impl Workspace {
 }
 
 /// Depth-first walk: a dir emits its row, then its children when expanded.
-fn flatten(dir: &DirNode, depth: usize, expanded: &std::collections::HashSet<String>, out: &mut Vec<Row>) {
+fn flatten(
+    dir: &DirNode, depth: usize, expanded: &std::collections::HashSet<String>, git: &explorer_git::GitDecorations, out: &mut Vec<Row>,
+) {
     for d in &dir.dirs {
         let open = expanded.contains(d.path.as_str());
         out.push(Row::Dir {
@@ -160,19 +176,20 @@ fn flatten(dir: &DirNode, depth: usize, expanded: &std::collections::HashSet<Str
             path: d.path.clone(),
             depth,
             expanded: open,
+            dirty: git.dir(&d.path),
         });
         if open {
-            flatten(d, depth + 1, expanded, out);
+            flatten(d, depth + 1, expanded, git, out);
         }
     }
     for f in &dir.files {
-        out.push(Row::File { path: f.clone(), depth });
+        out.push(Row::File { path: f.clone(), depth, badge: git.file(f) });
     }
 }
 
 fn render_row(ix: usize, row: Row, selected: Option<&str>, cx: &mut Context<Workspace>) -> AnyElement {
     match row {
-        Row::Dir { name, path, depth, expanded } => {
+        Row::Dir { name, path, depth, expanded, dirty } => {
             let indent = 8. + depth as f32 * 14.;
             div()
                 .id(("explorer-dir", ix))
@@ -197,11 +214,12 @@ fn render_row(ix: usize, row: Row, selected: Option<&str>, cx: &mut Context<Work
                 } else {
                     IconName::Folder
                 }))
-                .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(name))
+                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(name))
+                .when_some(dirty.map(|tone| explorer_git::dirty_dot(ix, tone, cx)), |d, dot| d.child(dot))
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_explorer_dir(&path, cx)))
                 .into_any_element()
         },
-        Row::File { path, depth } => {
+        Row::File { path, depth, badge } => {
             let indent = 8. + depth as f32 * 14. + 16.;
             let is_selected = selected == Some(path.as_str());
             let menu_path = path.to_string();
@@ -223,12 +241,14 @@ fn render_row(ix: usize, row: Row, selected: Option<&str>, cx: &mut Context<Work
                 .child(div().flex_shrink_0().text_color(cx.theme().muted_foreground).child(file_icon(&path)))
                 .child(
                     div()
+                        .flex_1()
                         .min_w_0()
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
                         .child(file_name(&path).to_string()),
                 )
+                .when_some(badge.map(|b| explorer_git::badge_element(ix, b, cx)), |d, el| d.child(el))
                 .on_click(cx.listener(move |this, _, window, cx| this.mention_file(&path, window, cx)))
                 .context_menu(move |menu, window, cx| crate::open_in::file_menu(&ws, &menu_path, menu, window, cx))
                 .into_any_element()
