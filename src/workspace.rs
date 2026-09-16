@@ -248,6 +248,12 @@ pub struct Workspace {
     /// `Settings.onboarding_dismissed`; a configured provider hides the
     /// card regardless of this flag.
     pub onboarding_dismissed: bool,
+    /// Provider kinds the last detection scan found installed — `None`
+    /// until the first scan lands. Runtime only; the onboarding card and
+    /// the provider wizard read it (see `crate::provider_detect`).
+    pub detected_providers: Option<Vec<crate::providers::ProviderKind>>,
+    /// A detection scan is in flight on the background executor.
+    pub detection_pending: bool,
     /// System-wide summon hotkey toggle — `Settings.global_hotkey_enabled`;
     /// the monitor itself lives in `crate::app_setup::global_hotkey`.
     pub global_hotkey_enabled: bool,

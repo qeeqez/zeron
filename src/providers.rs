@@ -8,6 +8,11 @@ use gpui_kit::assets::IconName;
 
 use crate::model::ModelInfo;
 
+/// First-run detection: the probe seam + background scan — a submodule
+/// (not a `main.rs` entry) because the crate root is at the SLOC cap.
+#[path = "provider_detect.rs"]
+pub(crate) mod provider_detect;
+
 /// A provider catalog refresh — runs on a background thread with the
 /// instance's connection fields, returns the real model list or an error
 /// the picker ignores (cache/statics remain).
@@ -41,6 +46,12 @@ pub struct ProviderKindInfo {
     pub tagline: &'static str,
     /// Icon shown next to instances of this kind (picker, settings).
     pub icon: IconName,
+    /// CLI binary first-run detection looks for on PATH — `None` for
+    /// kinds with nothing installable to find.
+    pub cli: Option<&'static str>,
+    /// Localhost port first-run detection connects to — `None` for kinds
+    /// without a local daemon.
+    pub daemon: Option<u16>,
     /// Refresh an instance's catalog from the provider itself; `None` for
     /// kinds whose `models()` list is already complete.
     pub fetch: Option<ModelFetch>,
@@ -56,6 +67,8 @@ impl ProviderKind {
             label: "Codex",
             tagline: "codex app-server over stdio",
             icon: IconName::Bot,
+            cli: Some("codex"),
+            daemon: None,
             fetch: Some(crate::backend::fetch_codex_models),
         };
         const CLAUDE: ProviderKindInfo = ProviderKindInfo {
@@ -63,6 +76,8 @@ impl ProviderKind {
             label: "Claude",
             tagline: "claude CLI over stdio",
             icon: IconName::Sparkles,
+            cli: Some("claude"),
+            daemon: None,
             fetch: None,
         };
         const ACP: ProviderKindInfo = ProviderKindInfo {
@@ -70,6 +85,8 @@ impl ProviderKind {
             label: "ACP",
             tagline: "Agent Client Protocol agent",
             icon: IconName::Network,
+            cli: None,
+            daemon: None,
             fetch: None,
         };
         const HTTP: ProviderKindInfo = ProviderKindInfo {
@@ -77,6 +94,8 @@ impl ProviderKind {
             label: "HTTP",
             tagline: "custom NDJSON endpoint",
             icon: IconName::Globe,
+            cli: None,
+            daemon: None,
             fetch: None,
         };
         const OLLAMA: ProviderKindInfo = ProviderKindInfo {
@@ -84,6 +103,8 @@ impl ProviderKind {
             label: "Ollama",
             tagline: "local models via an Ollama daemon",
             icon: IconName::HardDrive,
+            cli: Some("ollama"),
+            daemon: Some(11434),
             fetch: Some(crate::backend::fetch_ollama_models),
         };
         const SIM: ProviderKindInfo = ProviderKindInfo {
@@ -91,6 +112,8 @@ impl ProviderKind {
             label: "Sim",
             tagline: "built-in simulator (no backend)",
             icon: IconName::FlaskConical,
+            cli: None,
+            daemon: None,
             fetch: None,
         };
         match self {
@@ -106,6 +129,14 @@ impl ProviderKind {
     /// The persisted slug — matches the serde rename and legacy `backend` ids.
     pub fn slug(self) -> &'static str {
         self.info().slug
+    }
+
+    /// Whether first-run detection finds this kind installed: its CLI on
+    /// PATH, its daemon answering, or both when it has both (an Ollama
+    /// daemon without the CLI still counts — the app talks HTTP to it).
+    pub(crate) fn detected_by(self, probe: &dyn provider_detect::ProviderProbe) -> bool {
+        let info = self.info();
+        info.cli.is_some_and(|bin| probe.on_path(bin)) || info.daemon.is_some_and(|port| probe.daemon_up(port))
     }
 
     /// Default `command` for a fresh instance: the ACP agent command, empty

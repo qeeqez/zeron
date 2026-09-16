@@ -31,15 +31,16 @@ const COMING_SOON: [(&str, IconName); 3] = [("Gemini", IconName::Sparkles), ("Co
 
 /// Step 1: a two-column grid of provider-kind cards plus "Coming soon"
 /// placeholders. Clicking a card selects the kind and re-seeds the
-/// instance id + connection defaults for it.
-pub(super) fn driver_step(panel: &Entity<SettingsPanel>, kind: ProviderKind, cx: &App) -> AnyElement {
+/// instance id + connection defaults for it. Kinds the detection scan
+/// found installed carry a "Detected" chip.
+pub(super) fn driver_step(panel: &Entity<SettingsPanel>, kind: ProviderKind, detected: &[ProviderKind], cx: &App) -> AnyElement {
     div()
         .id("wizard-driver")
         .test_support()
         .flex()
         .flex_wrap()
         .gap_2()
-        .children(ProviderKind::ALL.into_iter().map(|k| kind_card(panel, k, k == kind, cx)))
+        .children(ProviderKind::ALL.into_iter().map(|k| kind_card(panel, k, k == kind, detected.contains(&k), cx)))
         .children(COMING_SOON.into_iter().map(|(name, icon)| {
             div()
                 .flex()
@@ -59,8 +60,9 @@ pub(super) fn driver_step(panel: &Entity<SettingsPanel>, kind: ProviderKind, cx:
         .into_any_element()
 }
 
-/// One selectable driver card — accent border + check when selected.
-fn kind_card(panel: &Entity<SettingsPanel>, kind: ProviderKind, selected: bool, cx: &App) -> impl IntoElement {
+/// One selectable driver card — accent border + check when selected, a
+/// "Detected" chip when the scan found this kind installed.
+fn kind_card(panel: &Entity<SettingsPanel>, kind: ProviderKind, selected: bool, detected: bool, cx: &App) -> impl IntoElement {
     let panel = panel.clone();
     div()
         .id(SharedString::from(format!("wizard-kind-{}", kind.slug())))
@@ -77,6 +79,19 @@ fn kind_card(panel: &Entity<SettingsPanel>, kind: ProviderKind, selected: bool, 
         .child(div().text_color(cx.theme().muted_foreground).child(kind.info().icon))
         .child(div().text_xs().child(kind.info().label))
         .child(div().flex_1())
+        .when(detected, |d| {
+            d.child(
+                div()
+                    .id(SharedString::from(format!("wizard-detected-{}", kind.slug())))
+                    .test_support()
+                    .text_xs()
+                    .px_1()
+                    .rounded_sm()
+                    .text_color(cx.theme().success)
+                    .bg(cx.theme().success.opacity(0.12))
+                    .child("Detected"),
+            )
+        })
         .when(selected, |d| d.child(div().text_color(cx.theme().accent).child(IconName::Check)))
         .on_click(move |_, window, cx| {
             panel.update(cx, |this, cx| this.reseed_wizard(kind, window, cx));

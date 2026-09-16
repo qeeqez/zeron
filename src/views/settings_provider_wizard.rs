@@ -25,6 +25,12 @@ pub(crate) struct ProviderWizard {
     /// Index into `STEPS`.
     pub step: usize,
     pub kind: ProviderKind,
+    /// Kinds the last detection scan found installed — drives the Driver
+    /// step's "Detected" chips; empty until a scan lands.
+    pub detected: Vec<ProviderKind>,
+    /// The user picked a kind card — detection landings stop re-seeding
+    /// the selection so a late scan can't clobber their click.
+    pub user_selected: bool,
     pub label: Entity<InputState>,
     pub instance_id: Entity<InputState>,
     pub command: Entity<InputState>,
@@ -40,7 +46,9 @@ impl ProviderWizard {
     /// Fresh inputs per open; `instance_id` seeds with the kind's slug,
     /// de-duplicated against existing instances.
     fn new(ws: &WeakEntity<Workspace>, window: &mut Window, cx: &mut App) -> Self {
-        let kind = ProviderKind::CodexCli;
+        let detected = ws.upgrade().and_then(|ws| ws.read(cx).detected_providers.clone()).unwrap_or_default();
+        // Pre-select the first detected kind; the default stays Codex.
+        let kind = detected.first().copied().unwrap_or(ProviderKind::CodexCli);
         let id = ws.upgrade().map(|ws| ws.read(cx).next_instance_id(kind)).unwrap_or_else(|| kind.slug().to_string());
         let label = cx.new(|cx| InputState::new(window, cx).placeholder("e.g. Work"));
         let instance_id = cx.new(|cx| {
@@ -61,6 +69,8 @@ impl ProviderWizard {
         Self {
             step: 0,
             kind,
+            detected,
+            user_selected: false,
             label,
             instance_id,
             command,
@@ -84,6 +94,11 @@ impl ProviderWizard {
 impl SettingsPanel {
     /// Open the wizard dialog with fresh state.
     pub(crate) fn open_provider_wizard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Fresh scan on every open — a CLI installed since the last probe
+        // shows up Detected when it lands.
+        if let Some(ws) = self.ws.upgrade() {
+            ws.update(cx, |ws, cx| ws.detect_providers(cx));
+        }
         self.provider_wizard = Some(ProviderWizard::new(&self.ws, window, cx));
         let panel = cx.entity();
         window.open_dialog(cx, move |dialog, window, cx| {
@@ -99,9 +114,36 @@ impl SettingsPanel {
         });
     }
 
-    /// Re-point the wizard at `kind`: re-seed the instance id and the
-    /// connection defaults so the Identity/Config steps match the driver.
+    /// Re-point the wizard at `kind` from a user click: marks the choice
+    /// explicit so a late detection landing can't override it, then
+    /// re-seeds the instance id and connection defaults.
     pub(crate) fn reseed_wizard(&mut self, kind: ProviderKind, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(w) = self.provider_wizard.as_mut() {
+            w.user_selected = true;
+        }
+        self.seed_wizard_kind(kind, window, cx);
+    }
+
+    /// A detection scan landed while the wizard is open: refresh the
+    /// Driver step's chips and, unless the user already picked a kind,
+    /// pre-select the first detected one.
+    pub(crate) fn apply_detected(&mut self, found: Vec<ProviderKind>, window: &mut Window, cx: &mut Context<Self>) {
+        let next = match self.provider_wizard.as_mut() {
+            Some(w) => {
+                w.detected = found;
+                (!w.user_selected).then(|| w.detected.first().copied()).flatten()
+            },
+            None => None,
+        };
+        match next {
+            Some(kind) => self.seed_wizard_kind(kind, window, cx),
+            None => cx.notify(),
+        }
+    }
+
+    /// Point the wizard at `kind`: re-seed the instance id and the
+    /// connection defaults so the Identity/Config steps match the driver.
+    fn seed_wizard_kind(&mut self, kind: ProviderKind, window: &mut Window, cx: &mut Context<Self>) {
         let id = self
             .ws
             .upgrade()
@@ -180,18 +222,18 @@ fn close_wizard(panel: &Entity<SettingsPanel>, cx: &mut App) {
 /// The step pills + current step's body — rebuilt every frame while the
 /// dialog is open, so it always reflects `provider_wizard`.
 fn wizard_body(panel: &Entity<SettingsPanel>, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-    let (step, kind, error) = panel
+    let (step, kind, detected, error) = panel
         .read(cx)
         .provider_wizard
         .as_ref()
-        .map_or((0, ProviderKind::CodexCli, None), |w| (w.step, w.kind, w.error.clone()));
+        .map_or((0, ProviderKind::CodexCli, Vec::new(), None), |w| (w.step, w.kind, w.detected.clone(), w.error.clone()));
     div()
         .flex()
         .flex_col()
         .gap_3()
         .child(step_pills(step, cx))
         .child(match step {
-            0 => driver_step(panel, kind, cx),
+            0 => driver_step(panel, kind, &detected, cx),
             1 => identity_step(panel, cx),
             _ => config_step(panel, kind, cx),
         })

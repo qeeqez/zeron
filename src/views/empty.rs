@@ -27,7 +27,7 @@ pub fn render_empty_state(ws: Entity<Workspace>, state: &Workspace, cx: &mut App
         .justify_center()
         .gap_6()
         .child(if show_onboarding {
-            onboarding_card(&ws, state.settings_panel.clone(), cx).into_any_element()
+            onboarding_card(&ws, state, cx).into_any_element()
         } else {
             chat_empty(ws, state.project.root(), cx).into_any_element()
         })
@@ -35,8 +35,24 @@ pub fn render_empty_state(ws: Entity<Workspace>, state: &Workspace, cx: &mut App
 
 /// The first-run setup card: app mark, one-line pitch, a primary button that
 /// opens the same provider wizard Settings → Providers uses, and a ghost
-/// Skip that dismisses the card permanently.
-fn onboarding_card(ws: &Entity<Workspace>, panel: Entity<crate::views::settings::SettingsPanel>, cx: &App) -> impl IntoElement {
+/// Skip that dismisses the card permanently. The first render kicks the
+/// provider-detection scan; once it lands the button names the first
+/// detected kind ("Set up Codex CLI") instead of the generic copy.
+fn onboarding_card(ws: &Entity<Workspace>, state: &Workspace, cx: &App) -> impl IntoElement {
+    // First render of the card kicks the PATH/daemon scan; the deferred
+    // spawn keeps the workspace borrow free until after this render.
+    if state.detected_providers.is_none() && !state.detection_pending {
+        let ws = ws.clone();
+        cx.spawn(async move |cx| {
+            ws.update(cx, |this, cx| this.detect_providers(cx));
+        })
+        .detach();
+    }
+    let detected = state.detected_providers.as_deref().unwrap_or(&[]);
+    let setup_label = match detected.first() {
+        Some(kind) => format!("Set up {} CLI", kind.info().label),
+        None => "Set up a provider".to_string(),
+    };
     crate::views::cards::card_frame(cx)
         .id("onboarding-card")
         .test_support()
@@ -59,11 +75,12 @@ fn onboarding_card(ws: &Entity<Workspace>, panel: Entity<crate::views::settings:
                 .items_center()
                 .gap_2()
                 .pt_2()
-                .child(Button::new("onboarding-setup").label("Set up a provider").icon(IconName::Plus).primary().on_click(
+                .child(Button::new("onboarding-setup").label(setup_label).icon(IconName::Plus).primary().on_click({
+                    let panel = state.settings_panel.clone();
                     move |_, window, cx| {
                         panel.update(cx, |this, cx| this.open_provider_wizard(window, cx));
-                    },
-                ))
+                    }
+                }))
                 .child(Button::new("onboarding-skip").label("Skip").ghost().on_click({
                     let ws = ws.clone();
                     move |_, _, cx| ws.update(cx, |this, cx| this.dismiss_onboarding(cx))

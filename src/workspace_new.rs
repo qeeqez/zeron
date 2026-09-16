@@ -172,6 +172,8 @@ impl Workspace {
             }),
             update: crate::update::UpdateState::restored(&settings),
             onboarding_dismissed: settings.onboarding_dismissed,
+            detected_providers: None,
+            detection_pending: false,
             resume_open: false,
             auth: crate::auth::AuthBook::seeded(),
             terminal: crate::views::terminal::TerminalPanel::new(settings.terminal_open, inputs.terminal_input, inputs.terminal_find_input),
