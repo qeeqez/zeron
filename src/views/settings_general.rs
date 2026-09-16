@@ -94,14 +94,30 @@ pub(crate) fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
             this.word_wrap = next;
             this.scroller.update(cx, |s, cx| s.remeasure(cx));
         }))
+        .child(group_label("Usage", cx))
+        .child(default_row(
+            "Budget alert",
+            "Warn when a chat's spend passes this cap — per-chat overrides live in the chat's ⋯ menu. Enter applies it.",
+            div()
+                .w(px(220.))
+                .child(Input::new(&s.ws.read(cx).budget_cap_input).id("budget-cap-input").small().appearance(true)),
+            cx,
+        ))
         .child(group_label("System", cx))
-        .child(toggle_row(("toggle-global-hotkey", "Global hotkey"), s.ws.read(cx).global_hotkey_enabled, ws.clone(), |this, next, _w, cx| {
-            this.set_global_hotkey_enabled(next, cx);
-        }))
+        .child(toggle_row(
+            ("toggle-global-hotkey", "Global hotkey"),
+            s.ws.read(cx).global_hotkey_enabled,
+            ws.clone(),
+            |this, next, _w, cx| {
+                this.set_global_hotkey_enabled(next, cx);
+            },
+        ))
         .child(default_row(
             "Summon shortcut",
             "System-wide chord that focuses the app — e.g. cmd-shift-space. Enter applies it.",
-            div().w(px(220.)).child(Input::new(&s.ws.read(cx).hotkey_input).id("global-hotkey-input").small().appearance(true)),
+            div()
+                .w(px(220.))
+                .child(Input::new(&s.ws.read(cx).hotkey_input).id("global-hotkey-input").small().appearance(true)),
             cx,
         ))
         .children(s.ws.read(cx).hotkey_error.iter().map(|e| {

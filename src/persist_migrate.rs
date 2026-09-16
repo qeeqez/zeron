@@ -47,6 +47,7 @@ impl Default for Settings {
             mcp_servers: Vec::new(),
             snapshot_retention_days: None,
             snapshot_cap_mb: None,
+            budget_alert_usd: None,
             voice_enabled: false,
             voice_language: String::new(),
             voice_on_device: false,

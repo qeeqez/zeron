@@ -82,6 +82,7 @@ impl Workspace {
             mcp_servers: prev.mcp_servers,
             snapshot_retention_days: Some(self.snapshots.retention_days),
             snapshot_cap_mb: Some(self.snapshots.cap_mb),
+            budget_alert_usd: self.budget_alert_usd,
             voice_enabled: self.voice.enabled,
             voice_language: self.voice.language.clone(),
             voice_on_device: self.voice.on_device,

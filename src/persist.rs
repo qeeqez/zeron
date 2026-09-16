@@ -67,6 +67,10 @@ pub(crate) struct StoredChat {
     /// color tags existed; unknown names load as untagged.
     #[serde(default)]
     color: String,
+    /// Per-chat spend cap in USD — missing in files written before budget
+    /// alerts existed; `None` rides the global default.
+    #[serde(default)]
+    budget_alert_usd: Option<f64>,
 }
 
 /// Chats dir for the current project — kept for `RevealChats` in root.rs.
@@ -110,6 +114,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             prompt_history: chat.prompt_history.clone(),
             color: chat.color.map_or_else(String::new, |c| c.name().to_string()),
             instructions: chat.instructions.clone().unwrap_or_default(),
+            budget_alert_usd: chat.budget_alert_usd,
         };
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
@@ -226,6 +231,7 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
             chat.prompt_history = stored.prompt_history;
             chat.color = crate::model::ChatColor::from_name(&stored.color);
             chat.instructions = if stored.instructions.is_empty() { None } else { Some(stored.instructions) };
+            chat.budget_alert_usd = stored.budget_alert_usd;
             Some(chat)
         })
         .collect()

@@ -23,12 +23,15 @@ pub(crate) struct WorkspaceInputs {
     pub terminal_input: Entity<InputState>,
     pub terminal_find_input: Entity<InputState>,
     pub hotkey_input: Entity<InputState>,
+    /// The General section's budget-cap field — Enter or blur commits.
+    pub budget_cap_input: Entity<InputState>,
 }
 
 impl WorkspaceInputs {
     /// Create every input entity and wire its subscriptions. `global_hotkey`
-    /// is the persisted chord shown in the settings field.
-    pub(crate) fn build(global_hotkey: &str, window: &mut Window, cx: &mut Context<Workspace>) -> Self {
+    /// is the persisted chord shown in the settings field; `budget_cap` is
+    /// the persisted global spend cap shown in the budget field.
+    pub(crate) fn build(global_hotkey: &str, budget_cap: Option<f64>, window: &mut Window, cx: &mut Context<Workspace>) -> Self {
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(1, 8)
@@ -94,6 +97,7 @@ impl WorkspaceInputs {
             async {}
         })
         .detach();
+        let budget_cap_input = new_budget_cap_input(budget_cap, window, cx);
         let hotkey_input = new_hotkey_input(global_hotkey, window, cx);
         Self {
             composer,
@@ -106,6 +110,7 @@ impl WorkspaceInputs {
             task_input,
             terminal_input,
             terminal_find_input,
+            budget_cap_input,
             hotkey_input,
         }
     }
@@ -122,6 +127,23 @@ fn new_hotkey_input(chord: &str, window: &mut Window, cx: &mut Context<Workspace
     cx.subscribe_in(&input, window, |this, _s, event: &InputEvent, window, cx| {
         if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
             this.commit_global_hotkey(window, cx);
+        }
+    })
+    .detach();
+    input
+}
+
+/// The General section's budget-cap field — Enter or blur commits the
+/// amount (parsing lives in `commit_budget_cap`); empty means no cap.
+fn new_budget_cap_input(cap: Option<f64>, window: &mut Window, cx: &mut Context<Workspace>) -> Entity<InputState> {
+    let input = cx.new(|cx| {
+        let mut input = InputState::new(window, cx).placeholder("e.g. 5.00 — empty = no cap");
+        input.set_value(cap.map(|c| c.to_string()).unwrap_or_default(), window, cx);
+        input
+    });
+    cx.subscribe_in(&input, window, |this, _s, event: &InputEvent, window, cx| {
+        if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+            this.commit_budget_cap(window, cx);
         }
     })
     .detach();

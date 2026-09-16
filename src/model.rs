@@ -270,6 +270,17 @@ pub struct Chat {
     /// index + timestamp so truncation can't reopen a different group.
     /// Runtime state, not persisted; groups start collapsed.
     pub expanded_tool_groups: std::collections::HashSet<(usize, SystemTime)>,
+    /// Per-chat spend cap in USD — overrides the global
+    /// `Settings.budget_alert_usd` default; `None` rides the default.
+    /// Persisted; ephemeral chats never reach disk.
+    pub budget_alert_usd: Option<f64>,
+    /// The cap the budget alert last fired under — compared against the
+    /// *current* effective cap so raising/lowering it re-arms the alert.
+    /// Runtime state, not persisted.
+    pub budget_alerted: Option<f64>,
+    /// The user dismissed the current alert — the banner stays hidden
+    /// until the cap changes. Runtime state, not persisted.
+    pub budget_dismissed: bool,
 }
 
 impl Chat {
@@ -297,6 +308,9 @@ impl Chat {
             provider: String::new(),
             model: String::new(),
             access: None,
+            budget_alert_usd: None,
+            budget_alerted: None,
+            budget_dismissed: false,
             effort: None,
             workdir: String::new(),
             worktree: false,

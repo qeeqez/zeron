@@ -202,6 +202,7 @@ impl Workspace {
         }
         crate::dock_badge::update(cx);
         self.record_turn_finished(chat_id);
+        self.check_budget_alert(chat_id, cx);
         if is_active {
             self.scroller.update(cx, |s, cx| s.remeasure(cx));
         }

@@ -19,7 +19,7 @@ impl Workspace {
     /// launch project; turns carry the root via `TurnContext`.
     pub fn for_project(project: crate::project::Project, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let settings = crate::persist::load_settings();
-        let inputs = WorkspaceInputs::build(&settings.global_hotkey, window, cx);
+        let inputs = WorkspaceInputs::build(&settings.global_hotkey, settings.budget_alert_usd, window, cx);
         let project_state = project.load_state();
         project.migrate_legacy_chats(settings.active_chat);
         let providers = settings.providers.clone();
@@ -173,6 +173,9 @@ impl Workspace {
             global_hotkey: settings.global_hotkey.clone(),
             hotkey_input: inputs.hotkey_input,
             hotkey_error: None,
+            budget_alert_usd: settings.budget_alert_usd,
+            budget_cap_input: inputs.budget_cap_input,
+            budget_input: cx.new(|cx| InputState::new(window, cx).placeholder("e.g. 5.00 — empty = global default")),
         };
         this.snapshots.retention_days = settings.snapshot_retention_days.unwrap_or(crate::snapshots::DEFAULT_RETENTION_DAYS);
         this.git.ignore_ws = settings.diff_ignore_ws;

@@ -123,6 +123,11 @@ pub struct Settings {
     /// no cap). See `crate::snapshots`.
     pub snapshot_retention_days: Option<u32>,
     pub snapshot_cap_mb: Option<u32>,
+    /// Global default spend cap in USD — a chat whose accumulated cost
+    /// crosses it raises the budget banner (`None` = no cap). A chat's own
+    /// `budget_alert_usd` overrides this; see `crate::chat_ops::budget`.
+    #[serde(default)]
+    pub budget_alert_usd: Option<f64>,
     /// Voice dictation master switch — the composer's mic button and
     /// Cmd-Shift-D only record when this is on.
     pub voice_enabled: bool,

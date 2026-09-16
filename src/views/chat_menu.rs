@@ -102,6 +102,7 @@ pub fn chat_menu(
     let ws_window = ws.clone();
     let ws_temp = ws.clone();
     let ws_info = ws.clone();
+    let ws_budget = ws.clone();
     let menu = menu
         .item(PopupMenuItem::new("New Temporary Chat").icon(IconName::Ghost).on_click(move |_, _, cx| {
             ws_temp.update(cx, |this, cx| this.new_temp_chat(cx));
@@ -128,6 +129,12 @@ pub fn chat_menu(
                     this.open_chat_instructions(id, window, cx);
                 });
             }
+        }))
+        .item(PopupMenuItem::new("Budget alert…").icon(IconName::CircleDollarSign).on_click(move |_, window, cx| {
+            ws_budget.update(cx, |this, cx| {
+                let id = this.chats[this.active].id;
+                this.open_chat_budget(id, window, cx);
+            });
         }))
         .item(PopupMenuItem::new("Export").icon(IconName::Share).disabled(ephemeral).on_click(move |_, _, cx| {
             ws_export.update(cx, |this, cx| this.export_active(cx));

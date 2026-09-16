@@ -1,3 +1,4 @@
+pub(crate) mod budget;
 mod colors;
 mod folders;
 pub(crate) mod instructions;
@@ -180,6 +181,8 @@ impl Workspace {
         }
         crate::dock_badge::update(cx);
         self.record_turn_finished(chat_id);
+        // Spend crossed the cap? The banner + note ride this turn's end.
+        self.check_budget_alert(chat_id, cx);
         // The first completed exchange earns the chat a real title —
         // replaces the placeholder unless the user renamed meanwhile.
         self.maybe_generate_title(chat_id, had_stream, cx);

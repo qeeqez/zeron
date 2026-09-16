@@ -254,6 +254,9 @@ impl Workspace {
                 chat.usage.rate_limit.as_ref().and_then(|rl| crate::views::rate_limit::rate_limit_banner(rl, running, &ws_empty, cx)),
                 |d, banner| d.child(banner),
             )
+            .when_some(self.budget_alert_visible(chat).map(|(spent, cap)| crate::views::budget::budget_banner(spent, cap, &ws_empty, cx)), |d, b| {
+                d.child(b)
+            })
             .when(failed && !running && !limited, |d| {
                 let ws_retry = ws_empty.clone();
                 let row = d.child(

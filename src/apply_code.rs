@@ -96,19 +96,6 @@ pub(crate) fn set_file_writer(writer: Arc<dyn FileWriter>) {
 /// or `run_cmd`'s local command-run cards.
 static NEXT_APPLY_IX: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(usize::MAX / 2);
 
-/// A transcript message carrying an assistant text note.
-fn note_message(text: String) -> ChatMessage {
-    ChatMessage {
-        role: Role::Assistant,
-        kind: MessageKind::Text(text.into()),
-        rating: None,
-        bookmarked: false,
-        usage: None,
-        attachments: vec![],
-        at: SystemTime::now(),
-    }
-}
-
 /// A transcript message carrying the apply approval card.
 fn approval_message(detail: String, respond: ApprovalResponder) -> ChatMessage {
     ChatMessage {
@@ -267,26 +254,6 @@ impl Workspace {
             Err(e) => format!("**Apply failed:** couldn't write `{rel}` — {e}"),
         };
         self.note_in(chat_id, text, cx);
-    }
-
-    /// `push_note` for a chat that may not be active — the apply can land
-    /// after the user switched threads.
-    fn note_in(&mut self, chat_id: u64, text: String, cx: &mut Context<Self>) {
-        let ix = self.chat_index(chat_id).unwrap_or(self.active);
-        let is_active = ix == self.active;
-        let chat = &mut self.chats[ix];
-        chat.last_turn = None;
-        Rc::make_mut(&mut chat.messages).push(note_message(text));
-        if is_active {
-            if self.push_visible(cx) {
-                self.scroller.update(cx, |s, cx| s.append(1, cx));
-            }
-        } else {
-            chat.unread = true;
-        }
-        crate::dock_badge::update(cx);
-        cx.notify();
-        self.save();
     }
 }
 

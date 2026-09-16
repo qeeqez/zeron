@@ -247,6 +247,15 @@ pub struct Workspace {
     pub hotkey_input: Entity<InputState>,
     /// Validation error from the last hotkey commit; shown under the field.
     pub hotkey_error: Option<String>,
+    /// Global default spend cap in USD — `Settings.budget_alert_usd`; a
+    /// chat's own `Chat::budget_alert_usd` overrides it. `None` = no cap.
+    pub budget_alert_usd: Option<f64>,
+    /// The General section's budget-cap field — workspace-owned so typed
+    /// text survives settings open/close like the other inputs.
+    pub budget_cap_input: Entity<InputState>,
+    /// Shared text field for the per-chat "Budget alert…" dialog — seeded
+    /// with the chat's current override on open.
+    pub budget_input: Entity<InputState>,
 
     /// Past threads the backend can reopen — the sidebar's Resume section.
     /// Filled by `refresh_sessions`; empty until the first fetch lands.

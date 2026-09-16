@@ -2,6 +2,7 @@ pub(crate) mod activity;
 mod agents_card;
 mod agents_panel;
 mod approval;
+pub(crate) mod budget;
 mod cards;
 mod changes;
 mod changes_commits;

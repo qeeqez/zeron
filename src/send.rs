@@ -214,19 +214,44 @@ impl Workspace {
         // Notes aren't turns — don't let them inherit the last turn's
         // "Worked for Ns" label.
         self.chats[self.active].last_turn = None;
-        std::rc::Rc::make_mut(&mut self.chats[self.active].messages).push(ChatMessage {
-            role: Role::Assistant,
-            kind: MessageKind::Text(text.into()),
-            rating: None,
-            bookmarked: false,
-            usage: None,
-            attachments: vec![],
-            at: SystemTime::now(),
-        });
+        Rc::make_mut(&mut self.chats[self.active].messages).push(note_message(text));
         if self.push_visible(cx) {
             self.scroller.update(cx, |s, cx| s.append(1, cx));
         }
         cx.notify();
         self.save();
+    }
+
+    /// `push_note` for a chat that may not be active — the apply/budget
+    /// notes can land after the user switched threads.
+    pub(crate) fn note_in(&mut self, chat_id: u64, text: String, cx: &mut Context<Self>) {
+        let ix = self.chat_index(chat_id).unwrap_or(self.active);
+        let is_active = ix == self.active;
+        let chat = &mut self.chats[ix];
+        chat.last_turn = None;
+        Rc::make_mut(&mut chat.messages).push(note_message(text));
+        if is_active {
+            if self.push_visible(cx) {
+                self.scroller.update(cx, |s, cx| s.append(1, cx));
+            }
+        } else {
+            chat.unread = true;
+        }
+        crate::dock_badge::update(cx);
+        cx.notify();
+        self.save();
+    }
+}
+
+/// A transcript message carrying an assistant text note.
+pub(crate) fn note_message(text: String) -> ChatMessage {
+    ChatMessage {
+        role: Role::Assistant,
+        kind: MessageKind::Text(text.into()),
+        rating: None,
+        bookmarked: false,
+        usage: None,
+        attachments: vec![],
+        at: SystemTime::now(),
     }
 }
