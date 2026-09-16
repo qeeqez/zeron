@@ -201,11 +201,11 @@ pub enum Role {
 pub struct ReviewComment {
     /// Project-relative file path the comment is anchored to.
     pub path: String,
-    /// Line number in the file — the new side when the diff line has one,
-    /// else the old side (removed lines only exist there).
+    /// Line number in the file — the new side; removed lines aren't
+    /// commentable, so every anchor counts on the new side.
     pub line: u32,
-    /// `line` counts on the old side — a removed line can share its number
-    /// with an added line, so the side is part of the anchor's identity.
+    /// `line` counts on the old side — part of the anchor's identity; only
+    /// new-side lines are commentable, so this is always `false` today.
     pub old_side: bool,
     /// The diff line's content, quoted in the review for context.
     pub code: String,

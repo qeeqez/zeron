@@ -6,6 +6,7 @@
 //! deletions, or renames, so only `Modified` rows offer it, and only for
 //! hunks with a recorded patch range.
 
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::{Disableable, Sizable};
@@ -68,9 +69,11 @@ pub(crate) fn unified_rows(
     rows
 }
 
-/// One numbered diff row: `old new │ sign text`, tinted by line kind. Rows
-/// with a line number are clickable — a click anchors the comment editor, a
-/// ⌘-click opens the file at that line — and a row whose line already has a
+/// One numbered diff row: `+ old new │ sign text`, tinted by line kind.
+/// Every numbered row is clickable — a ⌘-click opens the file at that
+/// line — and rows with a new-side number (added or context, never
+/// removed) are commentable: hovering reveals a `+` affordance and a
+/// click anchors the comment editor. A row whose line already has a
 /// comment shows it after the code.
 /// Paired removed/added lines carry their changed range as a stronger wash.
 /// A hunk header row with a `HunkTarget` right-aligns a Stage/Unstage ghost
@@ -92,7 +95,9 @@ pub(crate) fn diff_line(row: DiffRow, marked: &MarkedDiff, ws: &Workspace, cx: &
             .text_color(theme.muted_foreground)
             .child(n.map(|n| n.to_string()).unwrap_or_default())
     };
-    let commentable = line.new.or(line.old).is_some();
+    let clickable = line.new.or(line.old).is_some();
+    let commentable = line.new.is_some();
+    let group = || SharedString::from(format!("diff-row-{}", row.id));
     let mut code = div().text_color(fg).child(marked.code_text(row.target.line_ix, fg));
     if row.hunk.is_some() {
         // Grow the code cell so the hunk button pins to the row's right edge.
@@ -106,6 +111,13 @@ pub(crate) fn diff_line(row: DiffRow, marked: &MarkedDiff, ws: &Workspace, cx: &
         .w_auto()
         .min_w_full()
         .whitespace_nowrap()
+        .child(
+            div()
+                .w(px(16.))
+                .flex_shrink_0()
+                .text_color(theme.muted_foreground)
+                .when(commentable, |d| d.child(div().invisible().group_hover(group(), |s| s.visible()).child(IconName::Plus))),
+        )
         .child(gutter(line.old))
         .child(gutter(line.new))
         .child(div().w(px(14.)).flex_shrink_0().text_center().text_color(fg).child(sign))
@@ -133,17 +145,27 @@ pub(crate) fn diff_line(row: DiffRow, marked: &MarkedDiff, ws: &Workspace, cx: &
             ),
         );
     }
-    if commentable {
+    if clickable {
         row_div = row_div
             .cursor_pointer()
             .hover(|d| d.bg(theme.muted.opacity(0.4)))
-            .tooltip(|window, cx| gpui_kit::component::tooltip::Tooltip::new("⌘-click opens in editor").build(window, cx))
+            .tooltip(move |window, cx| {
+                let tip = if commentable {
+                    "Click to comment · ⌘-click opens in editor"
+                } else {
+                    "⌘-click opens in editor"
+                };
+                gpui_kit::component::tooltip::Tooltip::new(tip).build(window, cx)
+            })
             .on_click(cx.listener(move |this, event, window, cx| {
                 this.click_diff_line(row.target, event, window, cx);
             }));
         if let Some(ix) = ws.review_comment_at(row.target) {
             row_div = row_div.child(crate::views::diff::comment_chip(&ws.review.comments[ix], cx));
         }
+    }
+    if commentable {
+        row_div = row_div.group(group());
     }
     row_div.into_any_element()
 }

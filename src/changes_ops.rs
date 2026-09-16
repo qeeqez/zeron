@@ -98,6 +98,14 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Stage or unstage the file at row `ix` — `git add` / `git restore
+    /// --staged` — then refresh so the row's staged marker and counts update.
+    pub fn toggle_change_stage(&mut self, ix: usize, cx: &mut Context<Self>) {
+        let Some(change) = self.changes.get(ix) else { return };
+        let op = if change.staged { GitOp::Unstage(change.path.clone()) } else { GitOp::Stage(change.path.clone()) };
+        self.run_git_op(op, cx);
+    }
+
     /// Publish an op's outcome: the note under the buttons, a cleared commit
     /// box and a reset amend toggle when a commit succeeded (a failed commit
     /// keeps the typed message so it isn't lost), a cleared stash box when a

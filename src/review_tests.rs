@@ -12,8 +12,8 @@ use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext};
 
 use crate::backend::{AgentBackend, AgentEvent, ReplyStream, TurnContext};
-use crate::changes_diff::{DiffLine, DiffLineKind, FileDiff};
-use crate::git::{ChangeStatus, FileChange};
+use crate::changes_ui_tests::{change, sample_diff};
+use crate::git::ChangeStatus;
 use crate::model::{MessageKind, ReviewComment, ReviewTarget};
 use crate::workspace::Workspace;
 
@@ -72,53 +72,6 @@ fn use_prompt_backend(workspace: &Entity<Workspace>, cx: &mut VisualTestContext)
     prompts
 }
 
-fn change(path: &str, status: ChangeStatus, added: u32, deleted: u32) -> FileChange {
-    FileChange {
-        path: path.into(),
-        source: None,
-        status,
-        added,
-        deleted,
-        staged: false,
-        diff: None,
-        diff_load: 0,
-    }
-}
-
-/// Hunk + context + removed + added — the added line is `new = 2`, the
-/// removed line is `old = 2`, the context line is `1` on both sides.
-fn sample_diff() -> FileDiff {
-    FileDiff {
-        lines: vec![
-            DiffLine {
-                kind: DiffLineKind::Hunk,
-                old: None,
-                new: None,
-                text: "@@ -1,3 +1,4 @@".into(),
-            },
-            DiffLine {
-                kind: DiffLineKind::Context,
-                old: Some(1),
-                new: Some(1),
-                text: "fn main() {".into(),
-            },
-            DiffLine {
-                kind: DiffLineKind::Removed,
-                old: Some(2),
-                new: None,
-                text: "old();".into(),
-            },
-            DiffLine {
-                kind: DiffLineKind::Added,
-                old: None,
-                new: Some(2),
-                text: "new();".into(),
-            },
-        ],
-        ..FileDiff::default()
-    }
-}
-
 /// Seed one expanded change row with `sample_diff` and open the panel.
 fn seed_diff(workspace: &Entity<Workspace>, cx: &mut VisualTestContext) {
     cx.update(|_, cx| {
@@ -169,6 +122,25 @@ fn clicking_diff_line_opens_anchored_comment_editor(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn removed_lines_are_not_commentable(cx: &mut TestAppContext) {
+    let (ws, cx) = mount(cx);
+    seed_diff(&ws, cx);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        // Diff line 2 is the removed line (old = 2, no new-side number).
+        window.click(("diff-line", 2usize), cx);
+        assert!(ws.read(cx).review.target.is_none(), "removed lines refuse the comment editor");
+        window.draw(cx).clear(cx);
+        assert!(window.try_find("review-editor").is_none(), "no editor opens on a removed line");
+
+        ws.update(cx, |this, cx| {
+            this.open_review_comment(0, 2, window, cx);
+            assert!(this.review.target.is_none(), "the store refuses removed lines too");
+        });
+    });
+}
+
+#[gpui_kit::test]
 fn comments_collect_edit_and_remove(cx: &mut TestAppContext) {
     let (ws, cx) = mount(cx);
     seed_diff(&ws, cx);
@@ -213,53 +185,72 @@ fn comments_collect_edit_and_remove(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn send_review_formats_file_line_and_comment(cx: &mut TestAppContext) {
+fn draft_review_formats_file_line_and_comment(cx: &mut TestAppContext) {
     let (ws, cx) = mount(cx);
     let prompts = use_prompt_backend(&ws, cx);
     seed_diff(&ws, cx);
+    // A second file so the draft spans two paths.
+    cx.update(|_, cx| {
+        ws.update(cx, |this, _| {
+            let mut c = change("src/other.rs", ChangeStatus::Modified, 1, 0);
+            c.diff = Some(sample_diff());
+            this.changes.push(c);
+        });
+    });
     cx.update(|window, cx| {
         ws.update(cx, |this, cx| {
-            this.open_review_comment(0, 2, window, cx); // removed line → old 2
-            this.review.input.update(cx, |s, cx| s.set_value("why remove this?", window, cx));
+            this.open_review_comment(0, 1, window, cx); // context line → new 1
+            this.review.input.update(cx, |s, cx| s.set_value("document this", window, cx));
             this.commit_review_comment(cx);
             this.open_review_comment(0, 3, window, cx); // added line → new 2
             this.review.input.update(cx, |s, cx| s.set_value("rename suggested", window, cx));
             this.commit_review_comment(cx);
+            this.open_review_comment(1, 3, window, cx); // second file, added line → new 2
+            this.review.input.update(cx, |s, cx| s.set_value("same here", window, cx));
+            this.commit_review_comment(cx);
 
-            this.send_review(window, cx);
+            this.draft_review(window, cx);
             assert!(this.review.comments.is_empty(), "send clears the pending review");
             assert!(this.review.target.is_none());
         });
     });
+    let draft = ws.read_with(cx, |ws, cx| ws.composer.read(cx).value().to_string());
+    assert!(draft.contains("Review comments"), "structured header: {draft}");
+    assert!(draft.contains("src/edited.rs:1 — document this"), "file:line — comment entry: {draft}");
+    assert!(draft.contains("src/edited.rs:2 — rename suggested"), "second entry: {draft}");
+    assert!(draft.contains("src/other.rs:2 — same here"), "second file's entry: {draft}");
+    assert!(prompts.lock().is_empty(), "staging the draft sends nothing yet");
+
+    // Enter on the staged draft ships it through the normal send path.
+    cx.update(|window, cx| {
+        ws.update(cx, |this, cx| this.send(window, cx));
+    });
     let sent = prompts.lock().clone();
-    assert_eq!(sent.len(), 1, "send review produces exactly one backend turn");
-    assert!(sent[0].contains("Review comments"), "structured header: {}", sent[0]);
-    // Both sides of line 2 survive — the removed-line comment is tagged.
-    assert!(sent[0].contains("src/edited.rs:2 (removed line)"), "removed-side entry: {}", sent[0]);
-    assert!(sent[0].contains("why remove this?"), "comment text: {}", sent[0]);
-    assert!(sent[0].contains("rename suggested"), "second comment: {}", sent[0]);
+    assert_eq!(sent.len(), 1, "sending the draft produces exactly one backend turn");
+    assert!(sent[0].contains("src/edited.rs:1 — document this"), "sent review: {}", sent[0]);
     ws.read_with(cx, |ws, _| {
         let msgs = texts(ws);
-        assert!(msgs.iter().any(|t| t.contains("src/edited.rs:2")), "review appears as a user message");
+        assert!(msgs.iter().any(|t| t.contains("src/edited.rs:1")), "review appears as a user message");
     });
 }
 
 #[gpui_kit::test]
-fn empty_review_does_not_send(cx: &mut TestAppContext) {
+fn empty_review_stages_nothing(cx: &mut TestAppContext) {
     let (ws, cx) = mount(cx);
     let prompts = use_prompt_backend(&ws, cx);
     cx.update(|window, cx| {
-        ws.update(cx, |this, cx| this.send_review(window, cx));
+        ws.update(cx, |this, cx| this.draft_review(window, cx));
     });
     assert!(prompts.lock().is_empty(), "empty review must not reach the backend");
-    ws.read_with(cx, |ws, _| {
+    ws.read_with(cx, |ws, cx| {
+        assert!(ws.composer.read(cx).value().is_empty(), "empty review leaves the composer empty");
         assert!(texts(ws).is_empty(), "empty review adds no user message");
     });
 }
 
 /// The full headless path: click a diff line → type in the comment box →
-/// Enter commits → the banner counts the pending review → Send review ships
-/// the structured message to the backend.
+/// Enter commits → the banner counts the pending review → Send stages the
+/// draft in the composer → Enter ships it to the backend.
 #[gpui_kit::test]
 fn click_type_send_review_end_to_end(cx: &mut TestAppContext) {
     let (ws, cx) = mount(cx);
@@ -288,9 +279,17 @@ fn click_type_send_review_end_to_end(cx: &mut TestAppContext) {
         window.click("send-review", cx);
         window.draw(cx).clear(cx);
         assert!(window.try_find("review-banner").is_none(), "send clears the banner");
+        let draft = ws.read(cx).composer.read(cx).value().to_string();
+        assert!(draft.contains("src/edited.rs:2 — rename this call"), "composer holds the staged review: {draft}");
+
+        ws.update(cx, |this, cx| this.send(window, cx));
     });
     let sent = prompts.lock().clone();
     assert_eq!(sent.len(), 1);
     assert!(sent[0].contains("src/edited.rs:2"), "structured file:line: {}", sent[0]);
     assert!(sent[0].contains("rename this call"), "comment body: {}", sent[0]);
 }
+
+/// Comment lifecycle across diff refreshes — split for the SLOC cap.
+#[path = "review_lifecycle_tests.rs"]
+mod lifecycle;

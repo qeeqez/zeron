@@ -1,11 +1,13 @@
 //! Split (side-by-side) rendering for an expanded Changes-panel diff: old
 //! lines on the left, new on the right, aligned by `crate::changes_diff::
 //! split_rows`. Row pairing lives in `changes_diff`; this file only draws.
-//! Cells keep the unified view's review affordance — a numbered cell is
-//! clickable and anchors the comment editor to its `DiffLine` index (⌘-click
-//! opens the file at that line instead), so `ReviewTarget`s resolve
-//! identically in both modes.
+//! Cells keep the unified view's review affordance — a cell whose line has
+//! a new-side number (added or context, never removed) reveals a `+` on
+//! hover and anchors the comment editor to its `DiffLine` index on click
+//! (⌘-click opens the file at that line instead), so `ReviewTarget`s
+//! resolve identically in both modes.
 
+use gpui_kit::assets::IconName;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -57,10 +59,11 @@ enum Side {
     New,
 }
 
-/// One half of a paired row: a 30px gutter plus the line text, tinted like
-/// the unified view (danger on the old side, success on the new). An empty
-/// cell — the missing half of an unpaired removal or addition — gets a
-/// muted fill. Commented lines carry the same chip as unified rows.
+/// One half of a paired row: a 16px `+` slot, a 30px gutter, then the line
+/// text, tinted like the unified view (danger on the old side, success on
+/// the new). An empty cell — the missing half of an unpaired removal or
+/// addition — gets a muted fill. Commented lines carry the same chip as
+/// unified rows.
 fn cell(target: Option<ReviewTarget>, side: Side, marked: &MarkedDiff, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     // Copy theme fields up front — `cx.theme()` borrows `*cx` and the
     // listeners below need `&mut cx`.
@@ -89,6 +92,12 @@ fn cell(target: Option<ReviewTarget>, side: Side, marked: &MarkedDiff, ws: &Work
         Side::Old => line.old,
         Side::New => line.new,
     };
+    let commentable = line.new.is_some();
+    let tag = match side {
+        Side::Old => "old",
+        Side::New => "new",
+    };
+    let group = || SharedString::from(format!("diff-cell-{}-{}-{}", target.file_ix, tag, target.line_ix));
     let mut cell = div()
         .id(match side {
             Side::Old => ("diff-cell-old", target.line_ix),
@@ -103,6 +112,13 @@ fn cell(target: Option<ReviewTarget>, side: Side, marked: &MarkedDiff, ws: &Work
         .overflow_hidden()
         .when(matches!(side, Side::Old), |d| d.border_r_1().border_color(border))
         .when_some(tint, |d, t| d.bg(t))
+        .child(
+            div()
+                .w(px(16.))
+                .flex_shrink_0()
+                .text_color(muted_fg)
+                .when(commentable, |d| d.child(div().invisible().group_hover(group(), |s| s.visible()).child(IconName::Plus))),
+        )
         .child(
             div()
                 .w(px(30.))
@@ -124,13 +140,23 @@ fn cell(target: Option<ReviewTarget>, side: Side, marked: &MarkedDiff, ws: &Work
         cell = cell
             .cursor_pointer()
             .hover(|d| d.bg(muted.opacity(0.4)))
-            .tooltip(|window, cx| gpui_kit::component::tooltip::Tooltip::new("⌘-click opens in editor").build(window, cx))
+            .tooltip(move |window, cx| {
+                let tip = if commentable {
+                    "Click to comment · ⌘-click opens in editor"
+                } else {
+                    "⌘-click opens in editor"
+                };
+                gpui_kit::component::tooltip::Tooltip::new(tip).build(window, cx)
+            })
             .on_click(cx.listener(move |this, event, window, cx| {
                 this.click_diff_line(target, event, window, cx);
             }));
         if let Some(cix) = ws.review_comment_at(target) {
             cell = cell.child(crate::views::diff::comment_chip(&ws.review.comments[cix], cx));
         }
+    }
+    if commentable {
+        cell = cell.group(group());
     }
     cell.into_any_element()
 }

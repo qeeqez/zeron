@@ -217,6 +217,7 @@ impl Workspace {
         let Some(row) = self.changes.iter_mut().find(|r| r.diff_load == stamp.1) else { return };
         row.diff_load = 0;
         row.diff = diff;
+        self.prune_review_comments(cx);
         cx.notify();
     }
 
@@ -263,15 +264,8 @@ impl Workspace {
         self.git.stashes = snapshot.stashes;
         self.git.conflicts = snapshot.conflicts;
         self.git.pr = snapshot.pr;
+        self.prune_review_comments(cx);
         cx.notify();
-    }
-
-    /// Stage or unstage the file at row `ix` — `git add` / `git restore
-    /// --staged` — then refresh so the row's staged marker and counts update.
-    pub fn toggle_change_stage(&mut self, ix: usize, cx: &mut Context<Self>) {
-        let Some(change) = self.changes.get(ix) else { return };
-        let op = if change.staged { GitOp::Unstage(change.path.clone()) } else { GitOp::Stage(change.path.clone()) };
-        self.run_git_op(op, cx);
     }
 
     /// Commit the staged files with the commit box's message — or amend HEAD

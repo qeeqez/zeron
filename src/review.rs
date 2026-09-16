@@ -1,6 +1,6 @@
 //! Diff review: pending comments collected from the Changes panel's diff
-//! lines, the inline comment editor's state, and the send path that turns
-//! them into a structured review message for the agent.
+//! lines, the inline comment editor's state, and the send path that stages
+//! them as one composer draft for the agent.
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
@@ -61,9 +61,10 @@ impl Workspace {
     }
 
     /// Open (or toggle closed) the inline comment editor on diff line
-    /// `line_ix` of change `file_ix`. Lines without a line number (hunk
-    /// headers) aren't commentable — the click is ignored. Opening a line
-    /// that already has a comment seeds the editor with its text.
+    /// `line_ix` of change `file_ix`. Only lines with a new-side number are
+    /// commentable — hunk headers and removed lines ignore the click.
+    /// Opening a line that already has a comment seeds the editor with its
+    /// text.
     pub fn open_review_comment(&mut self, file_ix: usize, line_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let target = ReviewTarget { file_ix, line_ix };
         if self.review.target == Some(target) {
@@ -127,31 +128,60 @@ impl Workspace {
         }
     }
 
-    /// Format the pending comments as a structured review message — one
-    /// `path:line` entry per comment with the code line quoted for context.
+    /// Drop comments whose anchor no longer resolves against the current
+    /// diff — a refresh that removes the file or a reload that drops the
+    /// line. A file whose diff isn't loaded keeps its comments: nothing
+    /// proved the line is gone. Also clears the editor's anchor when it
+    /// stops resolving.
+    pub(crate) fn prune_review_comments(&mut self, cx: &mut Context<Self>) {
+        let before = self.review.comments.len();
+        self.review.comments.retain(|c| {
+            let Some(change) = self.changes.iter().find(|ch| ch.path == c.path) else { return false };
+            change
+                .diff
+                .as_ref()
+                .is_none_or(|d| d.lines.iter().any(|l| if c.old_side { l.old == Some(c.line) } else { l.new == Some(c.line) }))
+        });
+        if self.review.target.is_some_and(|t| crate::changes_diff::review_anchor(&self.changes, t).is_none()) {
+            self.review.target = None;
+        }
+        if self.review.comments.len() != before {
+            cx.notify();
+        }
+    }
+
+    /// Format the pending comments as one composer message — a
+    /// `path:line — comment` entry per comment with the code line quoted
+    /// for context.
     pub(crate) fn format_review(comments: &[ReviewComment]) -> String {
         let mut out = String::from("Review comments on the working tree:\n");
         for c in comments {
             let side = if c.old_side { " (removed line)" } else { "" };
-            out.push_str(&format!("\n- {}:{}{}", c.path, c.line, side));
+            out.push_str(&format!("\n- {}:{}{} — {}", c.path, c.line, side, c.text));
             if !c.code.trim().is_empty() {
                 out.push_str(&format!("\n  > {}", c.code.trim()));
             }
-            out.push_str(&format!("\n  {}", c.text));
         }
         out
     }
 
-    /// Send the pending review to the agent through the normal send path —
-    /// queued behind a running turn exactly like a typed message. An empty
-    /// review is a no-op so the button can't fire a bare header.
-    pub fn send_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Stage the pending review in the composer — the formatted comments
+    /// become the draft (appended after any typed text) so the user can
+    /// edit before Enter sends. An empty review is a no-op so the button
+    /// can't fire a bare header.
+    pub fn draft_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.review.comments.is_empty() {
             return;
         }
         let text = Self::format_review(&self.review.comments);
         self.review.comments.clear();
         self.review.target = None;
-        self.send_or_queue(&text, window, cx);
+        self.composer.update(cx, |s, cx| {
+            let existing = s.value();
+            let draft = if existing.trim().is_empty() { text } else { format!("{}\n\n{}", existing.trim_end(), text) };
+            s.set_value(draft, window, cx);
+            s.focus(window, cx);
+        });
+        cx.notify();
     }
 }

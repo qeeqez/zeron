@@ -247,7 +247,8 @@ impl Workspace {
     }
 
     /// Route a click on a numbered diff row: ⌘-click opens the file at that
-    /// line in the editor; a plain click anchors the review-comment editor.
+    /// line in the editor; a plain click anchors the review-comment editor
+    /// (a no-op on removed lines — `open_review_comment` refuses them).
     /// Shared by the unified rows and both split cells.
     pub fn click_diff_line(&mut self, target: crate::model::ReviewTarget, event: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
         if event.modifiers().secondary() {

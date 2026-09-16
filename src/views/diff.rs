@@ -134,7 +134,7 @@ pub(crate) fn comment_editor(target: ReviewTarget, ws: &Workspace, cx: &mut Cont
 
 /// The pending-review strip between the panel header and the file list:
 /// a count, one removable row per comment (click reopens the editor on its
-/// diff line), and the Send button that ships the review to the agent.
+/// diff line), and the Send button that stages the review in the composer.
 pub fn review_banner(ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     // Copy theme fields up front — `cx.theme()` borrows `*cx` and the row
     // builder below needs `&mut cx` for its click listeners.
@@ -177,8 +177,8 @@ pub fn review_banner(ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement 
                         .bg(accent)
                         .text_color(accent_fg)
                         .child(IconName::Send)
-                        .child("Send review")
-                        .on_click(cx.listener(|this, _, window, cx| this.send_review(window, cx))),
+                        .child(format!("Send {n} comment{}", if n == 1 { "" } else { "s" }))
+                        .on_click(cx.listener(|this, _, window, cx| this.draft_review(window, cx))),
                 ),
         )
         .children(rows)
