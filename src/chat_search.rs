@@ -138,8 +138,10 @@ impl Workspace {
 
     /// Scroll the scroller to the row showing message `real_ix`, accounting
     /// for the chat-search filter — the shared jump used by find, global
-    /// search and message navigation.
+    /// search and message navigation. A collapsed target expands first so a
+    /// match inside the clipped region is visible on landing.
     pub(crate) fn scroll_to_message(&mut self, real_ix: usize, cx: &mut Context<Self>) {
+        self.expand_msg(real_ix, cx);
         let pos = self.filtered_pos(real_ix, cx);
         self.scroller.update(cx, |s, cx| s.scroll_to_item(pos, cx));
     }
@@ -220,8 +222,10 @@ impl Workspace {
 
     /// Enter in chat search: jump to next match; Shift+Enter: previous.
     /// `search_match_ix` is the position within the filtered list, which is
-    /// what the scroller indexes.
+    /// what the scroller indexes. A collapsed match expands first so the
+    /// hit inside the clipped region is visible on landing.
     pub fn jump_to_match(&mut self, back: bool, cx: &mut Context<Self>) {
+        let query = self.chat_search.read(cx).value().to_lowercase();
         let matches = self.match_count(cx);
         if matches == 0 {
             return;
@@ -231,6 +235,16 @@ impl Workspace {
         } else {
             (self.search_match_ix + 1) % matches
         };
+        // The filtered position maps back to the message's real index.
+        if let Some((real_ix, _)) = self.chats[self.active]
+            .messages
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| msg_matches(m, &query))
+            .nth(self.search_match_ix)
+        {
+            self.expand_msg(real_ix, cx);
+        }
         self.scroller.update(cx, |s, cx| {
             s.scroll_to_item(self.search_match_ix, cx);
         });

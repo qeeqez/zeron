@@ -83,6 +83,9 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
             input,
         )
     };
+    // Long messages clip behind a fade + "Show more" bar — never the
+    // streaming tail (it classifies once `running` clears) or the editor.
+    let collapse = crate::views::chat_collapse::collapse_state(ws.read(cx), ix, msg, edit_input.is_some());
     let alignment = match role {
         Role::User => MessageAlignment::End,
         Role::Assistant => MessageAlignment::Start,
@@ -151,6 +154,7 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
             })
             .into_any_element()
     };
+    let body = crate::views::chat_collapse::collapse_wrap(mc, body, collapse, ws, cx);
 
     let mut message = Message::new().alignment(alignment).content(MessageContent::new().child(body));
     // Group for hover-revealed footer actions.

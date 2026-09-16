@@ -3,7 +3,7 @@ mod agents_card;
 mod agents_panel;
 mod approval;
 pub(crate) mod budget;
-mod cards;
+pub(crate) mod cards;
 mod changes;
 mod changes_commits;
 mod changes_conflicts;
@@ -11,6 +11,13 @@ mod changes_git;
 mod changes_git_branch;
 mod changes_pr;
 mod changes_stash;
+/// Collapsible long messages — lives at `src/chat_collapse.rs` because
+/// `main.rs` is at the SLOC cap (same pattern as `date_separator`).
+#[path = "../chat_collapse.rs"]
+pub(crate) mod chat_collapse;
+#[cfg(test)]
+#[path = "../chat_collapse_tests.rs"]
+mod chat_collapse_tests;
 mod chat_info;
 mod chat_menu;
 mod chat_view;

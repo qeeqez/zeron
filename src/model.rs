@@ -318,6 +318,10 @@ pub struct Chat {
     /// index + timestamp so truncation can't reopen a different group.
     /// Runtime state, not persisted; groups start collapsed.
     pub expanded_tool_groups: std::collections::HashSet<(usize, SystemTime)>,
+    /// Long text messages the user expanded past the collapse clip — keyed
+    /// by message index + timestamp so truncation can't reopen a different
+    /// message. Runtime state, not persisted; long messages start collapsed.
+    pub expanded_msgs: std::collections::HashSet<(usize, SystemTime)>,
     /// Per-chat spend cap in USD — overrides the global
     /// `Settings.budget_alert_usd` default; `None` rides the default.
     /// Persisted; ephemeral chats never reach disk.
@@ -371,6 +375,7 @@ impl Chat {
             feedback: Vec::new(),
             instructions: None,
             expanded_tool_groups: std::collections::HashSet::new(),
+            expanded_msgs: std::collections::HashSet::new(),
             prompt_history: Vec::new(),
         }
     }

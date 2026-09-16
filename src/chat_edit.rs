@@ -228,9 +228,10 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Re-measure message `ix`'s scroller row — the bubble↔editor swap
-    /// changes its height. No-op when the row is gone or filtered out.
-    fn remeasure_row(&mut self, ix: usize, cx: &mut Context<Self>) {
+    /// Re-measure message `ix`'s scroller row after an in-place height
+    /// change (bubble↔editor swap, collapse toggle). No-op when the row is
+    /// gone or filtered out.
+    pub(crate) fn remeasure_row(&mut self, ix: usize, cx: &mut Context<Self>) {
         let pos = self.filtered_pos(ix, cx);
         if pos < self.filtered_count(cx) {
             self.scroller.update(cx, |s, cx| s.remeasure_items(pos..pos + 1, cx));
