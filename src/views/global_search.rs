@@ -131,11 +131,21 @@ fn filter_row(filters: &Entity<SearchFilters>, docs: &[SearchDoc], cx: &mut App)
         .into_any_element()
 }
 
-/// A result row: chat title over the match snippet, relative age over the
-/// hit's provider·model stamp at the trailing edge.
-fn hit_item(hit: SearchHit) -> CommandItem {
+/// A result row: chat title over the match snippet over one line of
+/// neighboring-message context ("You: …" / "Rixl: …"), relative age over
+/// the hit's provider·model stamp at the trailing edge.
+fn hit_item(row: usize, hit: SearchHit) -> CommandItem {
     let title = hit.title.clone();
     let snippet = hit.snippet.clone();
+    // The neighboring message's role + text — what identifies the hit
+    // without opening the chat.
+    let context: Option<SharedString> = hit.context.map(|(role, text)| {
+        let who = match role {
+            crate::model::Role::User => "You",
+            crate::model::Role::Assistant => "Rixl",
+        };
+        format!("{who}: {text}").into()
+    });
     // Which backend produced the hit — muted under the timestamp.
     let stamps: SharedString = [hit.provider.as_str(), hit.model.as_str()]
         .into_iter()
@@ -163,7 +173,20 @@ fn hit_item(hit: SearchHit) -> CommandItem {
                             .whitespace_nowrap()
                             .text_ellipsis()
                             .child(snippet.clone()),
-                    ),
+                    )
+                    .when_some(context.clone(), |d, line| {
+                        d.child(
+                            div()
+                                .id(("hit-context", row))
+                                .test_support()
+                                .aria_label(line.clone())
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                                .child(line),
+                        )
+                    }),
             )
             .child(
                 div()
@@ -193,7 +216,9 @@ pub(crate) fn search_command(
     let filter_docs = docs.to_vec();
     let filter_state = filters.clone();
     let hits = search(docs, &state.read(cx).query(cx), filters.read(cx));
-    let group = CommandGroup::new().label("Messages").items(hits.into_iter().map(hit_item));
+    let group = CommandGroup::new()
+        .label("Messages")
+        .items(hits.into_iter().enumerate().map(|(row, hit)| hit_item(row, hit)));
     Command::new(state)
         .placeholder("Search all chats…")
         // Matching happens in `search`, not the component's substring filter.

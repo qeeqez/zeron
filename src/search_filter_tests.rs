@@ -86,7 +86,13 @@ fn push_to(this: &mut Workspace, s: &str) {
 /// window borrow) so the dismiss animation can park before the next chip
 /// click — a still-closing popover would toggle shut instead of opening.
 fn click_menu_item(vcx: &mut VisualTestContext, chip: &str, label: &str) {
+    // The popover's enter animation runs off the wall clock (150ms) and
+    // its items only register once the surface mounts — wait it out like
+    // the component's own tests do (several times the duration).
+    vcx.run_until_parked();
+    std::thread::sleep(std::time::Duration::from_millis(700));
     vcx.update(|window, cx| {
+        window.draw(cx).clear(cx);
         let popover = format!("popover:dropdown-menu:Name(\"{chip}\")");
         let item = snapshots(window)
             .iter()

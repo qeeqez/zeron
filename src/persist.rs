@@ -7,9 +7,9 @@ use crate::model::{Chat, ChatMessage, MessageKind, ToolStatus};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct StoredChat {
-    v: u32,
-    title: String,
-    messages: Vec<ChatMessage>,
+    pub(crate) v: u32,
+    pub(crate) title: String,
+    pub(crate) messages: Vec<ChatMessage>,
     /// Missing in early v1 files.
     #[serde(default)]
     pub(crate) pinned: bool,
@@ -24,33 +24,33 @@ pub(crate) struct StoredChat {
     /// The title was auto-generated — missing in files written before
     /// chat titles existed; false lets an old chat still earn one.
     #[serde(default)]
-    title_generated: bool,
+    pub(crate) title_generated: bool,
     /// Missing in early v1 files — fall back to now().
     #[serde(default = "std::time::SystemTime::now")]
-    created_at: std::time::SystemTime,
+    pub(crate) created_at: std::time::SystemTime,
     /// Per-thread provider/model/access/workdir — missing in files written
     /// before thread defaults existed; empty means "follow the selection".
     #[serde(default)]
-    provider: String,
+    pub(crate) provider: String,
     #[serde(default)]
-    model: String,
+    pub(crate) model: String,
     #[serde(default)]
-    access: String,
+    pub(crate) access: String,
     /// Reasoning effort override — missing/empty = the model's default.
     #[serde(default)]
-    effort: String,
+    pub(crate) effort: String,
     #[serde(default)]
-    workdir: String,
+    pub(crate) workdir: String,
     #[serde(default)]
-    worktree: bool,
+    pub(crate) worktree: bool,
     /// Backend thread the chat continues (resumed sessions); missing in
     /// files written before resume existed.
     #[serde(default)]
-    thread_id: String,
+    pub(crate) thread_id: String,
     /// Per-turn workdir checkpoints — missing in files written before
     /// checkpoints existed.
     #[serde(default)]
-    checkpoints: Vec<crate::checkpoints::TurnCheckpoint>,
+    pub(crate) checkpoints: Vec<crate::checkpoints::TurnCheckpoint>,
     /// "What went wrong" notes on thumbs-down ratings — missing in files
     /// written before message feedback existed.
     #[serde(default)]
@@ -58,19 +58,53 @@ pub(crate) struct StoredChat {
     /// Composer prompt history (Up/Down recall) — missing in files written
     /// before history existed.
     #[serde(default)]
-    prompt_history: Vec<String>,
+    pub(crate) prompt_history: Vec<String>,
     /// Per-chat custom instructions — missing in files written before
     /// per-chat instructions existed; empty means no override.
     #[serde(default)]
-    instructions: String,
+    pub(crate) instructions: String,
     /// Color tag for visual grouping — missing in files written before
     /// color tags existed; unknown names load as untagged.
     #[serde(default)]
-    color: String,
+    pub(crate) color: String,
     /// Per-chat spend cap in USD — missing in files written before budget
     /// alerts existed; `None` rides the global default.
     #[serde(default)]
-    budget_alert_usd: Option<f64>,
+    pub(crate) budget_alert_usd: Option<f64>,
+}
+
+impl StoredChat {
+    /// The live `Chat` this file becomes — shared by `load_chats` and the
+    /// global-search single-file load so neither drops fields the other
+    /// restores.
+    pub(crate) fn into_chat(self, id: u64) -> Chat {
+        let mut chat = Chat::new(id, self.title);
+        chat.messages = std::rc::Rc::new(self.messages);
+        chat.pinned = self.pinned;
+        chat.archived = self.archived;
+        chat.folder = self.folder;
+        chat.draft = self.draft;
+        chat.title_generated = self.title_generated;
+        chat.created_at = self.created_at;
+        chat.provider = self.provider;
+        chat.model = self.model;
+        chat.access = if self.access.is_empty() {
+            None
+        } else {
+            Some(crate::backend::AccessMode::from_name(&self.access))
+        };
+        chat.effort = if self.effort.is_empty() { None } else { Some(self.effort) };
+        chat.workdir = self.workdir;
+        chat.worktree = self.worktree;
+        chat.checkpoints = self.checkpoints;
+        chat.thread_id = self.thread_id;
+        chat.feedback = self.feedback;
+        chat.prompt_history = self.prompt_history;
+        chat.color = crate::model::ChatColor::from_name(&self.color);
+        chat.instructions = if self.instructions.is_empty() { None } else { Some(self.instructions) };
+        chat.budget_alert_usd = self.budget_alert_usd;
+        chat
+    }
 }
 
 /// Chats dir for the current project — kept for `RevealChats` in root.rs.
@@ -206,32 +240,8 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
                     t.status = ToolStatus::Failed;
                 }
             }
-            let mut chat = Chat::new(*next_id, stored.title);
+            let chat = stored.into_chat(*next_id);
             *next_id += 1;
-            chat.messages = std::rc::Rc::new(stored.messages);
-            chat.pinned = stored.pinned;
-            chat.archived = stored.archived;
-            chat.folder = stored.folder;
-            chat.draft = stored.draft;
-            chat.title_generated = stored.title_generated;
-            chat.created_at = stored.created_at;
-            chat.provider = stored.provider;
-            chat.model = stored.model;
-            chat.access = if stored.access.is_empty() {
-                None
-            } else {
-                Some(crate::backend::AccessMode::from_name(&stored.access))
-            };
-            chat.effort = if stored.effort.is_empty() { None } else { Some(stored.effort) };
-            chat.workdir = stored.workdir;
-            chat.worktree = stored.worktree;
-            chat.checkpoints = stored.checkpoints;
-            chat.thread_id = stored.thread_id;
-            chat.feedback = stored.feedback;
-            chat.prompt_history = stored.prompt_history;
-            chat.color = crate::model::ChatColor::from_name(&stored.color);
-            chat.instructions = if stored.instructions.is_empty() { None } else { Some(stored.instructions) };
-            chat.budget_alert_usd = stored.budget_alert_usd;
             Some(chat)
         })
         .collect()

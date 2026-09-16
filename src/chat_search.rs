@@ -5,7 +5,7 @@ use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::*;
 
-use crate::model::{ChatMessage, MessageKind};
+use crate::model::{ChatMessage, MessageKind, Role};
 use crate::workspace::Workspace;
 
 /// The text fields a query matches against for one message — the same
@@ -51,6 +51,39 @@ pub(crate) fn match_snippet(m: &ChatMessage, query: &str) -> String {
     let prefix = if from > 0 { "…" } else { "" };
     let suffix = if to < hay.len() { "…" } else { "" };
     format!("{prefix}{body}{suffix}")
+}
+
+/// One line of surrounding context for a search hit: the neighboring
+/// message's role plus its text, whitespace-collapsed and clipped to ~72
+/// chars. The neighbor is whichever side carries the conversational
+/// anchor — a user hit shows the reply it drew, an assistant hit shows
+/// the prompt it answered; at the transcript's edge the other side is
+/// used. `None` when the hit is the only message or the neighbor has no
+/// text (e.g. a bare approval card).
+pub(crate) fn context_line(messages: &[ChatMessage], msg_ix: usize) -> Option<(Role, SharedString)> {
+    let m = messages.get(msg_ix)?;
+    let (prev, next) = (msg_ix.checked_sub(1), msg_ix.checked_add(1));
+    let order = match m.role {
+        Role::User => [next, prev],
+        Role::Assistant => [prev, next],
+    };
+    let (role, text) = order.into_iter().flatten().find_map(|ix| {
+        let n = messages.get(ix)?;
+        let text = haystacks(n).join(" ");
+        (!text.trim().is_empty()).then_some((n.role, text))
+    })?;
+    const MAX: usize = 72;
+    let body: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let clipped = if body.len() > MAX {
+        let mut end = MAX;
+        while !body.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}…", &body[..end])
+    } else {
+        body
+    };
+    Some((role, clipped.into()))
 }
 
 /// Should a newly pushed last message grow the scroller? False only when a

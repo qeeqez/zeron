@@ -165,6 +165,7 @@ fn open_hit_selects_chat_and_jumps_to_message() {
                 msg_ix: 2,
                 title: this.chats[0].title.clone(),
                 snippet: "needle two".into(),
+                context: None,
                 provider: String::new(),
                 model: String::new(),
                 at: std::time::SystemTime::now(),

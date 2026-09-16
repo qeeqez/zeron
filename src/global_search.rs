@@ -14,9 +14,8 @@ use std::time::SystemTime;
 
 use gpui_kit::component::{IndexPath, WindowExt};
 use gpui_kit::*;
-use serde::Deserialize;
 
-use crate::model::{Chat, ChatMessage};
+use crate::model::{Chat, ChatMessage, Role};
 use crate::workspace::Workspace;
 
 /// Most matches shown per chat — one busy thread shouldn't crowd out
@@ -55,7 +54,7 @@ impl SearchDoc {
             messages: chat.messages.clone(),
         }
     }
-    fn stored(file_ix: usize, stored: StoredChatFile) -> Self {
+    fn stored(file_ix: usize, stored: crate::persist::StoredChat) -> Self {
         Self {
             chat_id: None,
             file_ix,
@@ -73,10 +72,14 @@ impl SearchDoc {
 pub(crate) struct SearchHit {
     pub chat_id: Option<u64>,
     pub file_ix: usize,
-    /// Index into the chat's message vec.
+    /// Index into the chat's message vec — `open_hit` scrolls to it via
+    /// the find bar.
     pub msg_ix: usize,
     pub title: SharedString,
     pub snippet: SharedString,
+    /// The neighboring message's role + truncated text — the row's second
+    /// line of context (see `chat_search::context_line`).
+    pub context: Option<(Role, SharedString)>,
     /// The hit chat's provider/model stamps — what the Provider and Model
     /// filters matched on.
     pub provider: String,
@@ -142,40 +145,6 @@ pub(crate) struct SearchFilters {
     pub provider: Option<String>,
 }
 
-/// Mirror of `persist::StoredChat` for targeted single-file reads — its
-/// fields are private, so the serde shape is duplicated here and must
-/// track the original field-for-field.
-#[derive(Deserialize)]
-struct StoredChatFile {
-    v: u32,
-    title: String,
-    messages: Vec<ChatMessage>,
-    #[serde(default)]
-    pinned: bool,
-    #[serde(default)]
-    archived: bool,
-    #[serde(default)]
-    draft: String,
-    #[serde(default = "std::time::SystemTime::now")]
-    created_at: SystemTime,
-    #[serde(default)]
-    provider: String,
-    #[serde(default)]
-    model: String,
-    #[serde(default)]
-    access: String,
-    #[serde(default)]
-    effort: String,
-    #[serde(default)]
-    workdir: String,
-    #[serde(default)]
-    worktree: bool,
-    #[serde(default)]
-    thread_id: String,
-    #[serde(default)]
-    checkpoints: Vec<crate::checkpoints::TurnCheckpoint>,
-}
-
 /// `(index, path)` pairs for every `N.json` chat file in `dir`, sorted —
 /// the same naming `persist::save_chats` writes.
 fn chat_files(dir: &Path) -> Vec<(usize, PathBuf)> {
@@ -195,8 +164,8 @@ fn chat_files(dir: &Path) -> Vec<(usize, PathBuf)> {
 }
 
 /// Parse one chat file; `None` on unreadable or foreign-format content.
-fn read_stored(path: &Path) -> Option<StoredChatFile> {
-    let stored: StoredChatFile = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+fn read_stored(path: &Path) -> Option<crate::persist::StoredChat> {
+    let stored: crate::persist::StoredChat = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
     (stored.v == 1).then_some(stored)
 }
 
@@ -235,6 +204,7 @@ pub(crate) fn search(docs: &[SearchDoc], query: &str, filters: &SearchFilters) -
                 msg_ix,
                 title: doc.title.clone(),
                 snippet: crate::chat_search::match_snippet(m, &query).into(),
+                context: crate::chat_search::context_line(&doc.messages, msg_ix),
                 provider: doc.provider.clone(),
                 model: doc.model.clone(),
                 at: m.at,
@@ -318,24 +288,16 @@ impl Workspace {
     /// turn in another window must not be marked failed here).
     fn load_chat(&mut self, file_ix: usize) -> Option<Chat> {
         let stored = read_stored(&self.project.chats_dir().join(format!("{file_ix}.json")))?;
-        let mut chat = Chat::new(self.next_chat_id, stored.title);
+        let chat = stored.into_chat(self.next_chat_id);
         self.next_chat_id += 1;
-        chat.messages = Rc::new(stored.messages);
-        chat.pinned = stored.pinned;
-        chat.archived = stored.archived;
-        chat.draft = stored.draft;
-        chat.created_at = stored.created_at;
-        chat.provider = stored.provider;
-        chat.model = stored.model;
-        chat.access = (!stored.access.is_empty()).then(|| crate::backend::AccessMode::from_name(&stored.access));
-        chat.effort = (!stored.effort.is_empty()).then_some(stored.effort);
-        chat.workdir = stored.workdir;
-        chat.worktree = stored.worktree;
-        chat.thread_id = stored.thread_id;
-        chat.checkpoints = stored.checkpoints;
         Some(chat)
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "global_search_context_tests.rs"]
+mod global_search_context_tests;
 
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
