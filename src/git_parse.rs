@@ -2,7 +2,7 @@
 //! the SLOC cap. Everything here is pure: tests feed fixture output without a
 //! real repository.
 
-use crate::git::{Branch, ChangeStatus, Commit, CommitFileDiff, FileChange};
+use crate::git::{Branch, ChangeStatus, Commit, CommitFileDiff, FileChange, StashEntry};
 
 /// Parse `git status --porcelain=v1 -z` output. Entries are NUL-separated
 /// `XY path`; renames/copies append a second field holding the source path.
@@ -148,6 +148,26 @@ pub(crate) fn parse_log(raw: &str) -> Vec<Commit> {
                 rel_time: f.next().unwrap_or_default().to_string(),
                 diff: None,
                 diff_load: 0,
+            })
+        })
+        .collect()
+}
+
+/// Parse `git stash list --format=%gd%x00%gs%x00%cr` output: one entry per
+/// line, fields NUL-separated. `%gs` is always single-line so newlines stay
+/// a safe record separator; malformed lines are skipped.
+pub(crate) fn parse_stash_list(raw: &str) -> Vec<StashEntry> {
+    raw.lines()
+        .filter_map(|line| {
+            let mut f = line.split('\0');
+            let name = f.next()?;
+            if name.is_empty() {
+                return None;
+            }
+            Some(StashEntry {
+                name: name.to_string(),
+                message: f.next().unwrap_or_default().to_string(),
+                rel_time: f.next().unwrap_or_default().to_string(),
             })
         })
         .collect()

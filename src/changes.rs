@@ -7,7 +7,7 @@
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
 
-use crate::git::{Branch, BranchStatus, Commit, FileChange};
+use crate::git::{Branch, BranchStatus, Commit, FileChange, StashEntry};
 use crate::workspace::Workspace;
 
 /// Token source for in-flight row-diff loads — each expand stamps the row
@@ -27,6 +27,7 @@ pub(crate) struct ChangesSnapshot {
     pub changes: Vec<FileChange>,
     pub branch: Option<BranchStatus>,
     pub commits: Vec<Commit>,
+    pub stashes: Vec<StashEntry>,
 }
 
 /// The header's diff-stat rollup — files touched plus summed insertions and
@@ -72,11 +73,17 @@ pub struct ChangesGit {
     /// Recent commits for the "Recent commits" section — refreshed alongside
     /// `branch` by `refresh_changes`, empty on unborn HEADs.
     pub commits: Vec<Commit>,
+    /// Stash entries for the "Stashes" section — refreshed alongside
+    /// `commits` by `refresh_changes`, empty when nothing is stashed.
+    pub stashes: Vec<StashEntry>,
     /// Bumped per `refresh_branches` request; a stale list can't overwrite a
     /// newer one when two fetches land out of order.
     branches_generation: u64,
     /// Commit message input — Enter commits, same as the button.
     pub commit_input: Entity<InputState>,
+    /// Stash message input — Enter stashes, same as the button; an empty
+    /// message falls back to "WIP".
+    pub stash_input: Entity<InputState>,
     /// New-branch name input in the picker — Enter creates and switches.
     pub new_branch_input: Entity<InputState>,
     /// A git op is running on the background executor — buttons stay up but
@@ -104,12 +111,21 @@ impl ChangesGit {
             }
         })
         .detach();
+        let stash_input = cx.new(|cx| InputState::new(window, cx).placeholder("Stash message (optional)…"));
+        cx.subscribe(&stash_input, |this: &mut Workspace, _input, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::PressEnter { .. }) {
+                this.stash_changes(cx);
+            }
+        })
+        .detach();
         Self {
             branch: None,
             branches: Vec::new(),
             commits: Vec::new(),
+            stashes: Vec::new(),
             branches_generation: 0,
             commit_input,
+            stash_input,
             new_branch_input,
             busy: false,
             note: None,
@@ -127,6 +143,10 @@ pub(crate) enum GitOp {
     Checkout(String),
     CreateBranch(String),
     Revert(String),
+    Stash(String),
+    StashPop(String),
+    StashApply(String),
+    StashDrop(String),
 }
 
 impl GitOp {
@@ -142,6 +162,10 @@ impl GitOp {
             Self::Checkout(name) => crate::git::checkout(dir, name),
             Self::CreateBranch(name) => crate::git::create_branch(dir, name),
             Self::Revert(sha) => crate::git::revert(dir, sha),
+            Self::Stash(message) => crate::git::stash_push(dir, message),
+            Self::StashPop(name) => crate::git::stash_pop(dir, name),
+            Self::StashApply(name) => crate::git::stash_apply(dir, name),
+            Self::StashDrop(name) => crate::git::stash_drop(dir, name),
         };
         (self, result)
     }
@@ -205,6 +229,7 @@ impl Workspace {
                         changes: crate::git::collect(&root),
                         branch: crate::git::branch_status(&root),
                         commits: crate::git::log(&root, 20),
+                        stashes: crate::git::stash_list(&root),
                     }
                 })
                 .await;
@@ -223,6 +248,7 @@ impl Workspace {
         self.changes = snapshot.changes;
         self.git.branch = snapshot.branch;
         self.git.commits = snapshot.commits;
+        self.git.stashes = snapshot.stashes;
         cx.notify();
     }
 
@@ -325,9 +351,9 @@ impl Workspace {
 
     /// Publish an op's outcome: the note under the buttons, a cleared commit
     /// box when a commit succeeded (a failed commit keeps the typed message
-    /// so it isn't lost), and a cleared new-branch box when a branch was
-    /// created. Branch ops also re-list branches so an open picker shows the
-    /// switch.
+    /// so it isn't lost), a cleared stash box when a stash succeeded, and a
+    /// cleared new-branch box when a branch was created. Branch ops also
+    /// re-list branches so an open picker shows the switch.
     fn land_git_op(&mut self, op: GitOp, result: Result<String, String>, window: &mut Window, cx: &mut Context<Self>) {
         self.git.busy = false;
         match result {
@@ -337,6 +363,9 @@ impl Workspace {
                 }
                 if matches!(op, GitOp::CreateBranch(_)) {
                     self.git.new_branch_input.update(cx, |s, cx| s.set_value("", window, cx));
+                }
+                if matches!(op, GitOp::Stash(_)) {
+                    self.git.stash_input.update(cx, |s, cx| s.set_value("", window, cx));
                 }
                 if matches!(op, GitOp::Checkout(_) | GitOp::CreateBranch(_)) {
                     self.refresh_branches(cx);

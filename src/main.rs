@@ -45,6 +45,7 @@ mod changes_diff_tests;
 mod changes_git_ui_tests;
 #[cfg(test)]
 mod changes_stale_tests;
+mod changes_stash;
 #[cfg(test)]
 mod changes_tests;
 #[cfg(test)]

@@ -1,8 +1,8 @@
 //! Git action block at the foot of the Changes panel: the branch header
 //! (a picker listing local branches plus a new-branch input), the
-//! commit-message input + Commit button, Push and Create PR, and the last
-//! op's status note. Ops live in `crate::changes`; this file only renders
-//! `Workspace::git`.
+//! commit-message input + Commit button, Push and Create PR, the stash
+//! input + list, and the last op's status note. Ops live in
+//! `crate::changes`; this file only renders `Workspace::git`.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable;
@@ -34,6 +34,7 @@ pub fn git_block(ws: &Workspace, branch: &BranchStatus, cx: &mut Context<Workspa
         .child(branch_row(ws, branch, cx))
         .child(commit_row(ws, cx))
         .child(action_row(ws, cx))
+        .child(crate::views::changes_stash::stash_section(ws, cx))
         .when_some(ws.git.note.clone(), |d, (text, is_error)| {
             d.child(
                 div()

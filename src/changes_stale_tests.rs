@@ -27,6 +27,7 @@ fn stale_refresh_result_is_discarded() {
                     changes: vec![change("stale.rs", ChangeStatus::Added, 5, 0)],
                     branch: None,
                     commits: vec![],
+                    stashes: vec![],
                 },
                 cx,
             );
@@ -37,6 +38,7 @@ fn stale_refresh_result_is_discarded() {
                     changes: vec![change("fresh.rs", ChangeStatus::Added, 5, 0)],
                     branch: None,
                     commits: vec![],
+                    stashes: vec![],
                 },
                 cx,
             );
