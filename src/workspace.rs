@@ -83,6 +83,9 @@ pub struct Workspace {
     /// "Always allow" on a command-run approval — later shell-block runs
     /// this session skip the prompt (see `crate::run_cmd`).
     pub run_approved: bool,
+    /// "Always allow" on an apply-code-block approval — later applies this
+    /// session skip the prompt (see `crate::apply_code`).
+    pub apply_approved: bool,
     /// Reasoning effort for the active thread's turns — `None` sends no
     /// override so the model's `default_effort` applies. Stamped per chat
     /// like `access`; the composer picker writes it via `set_effort`.
@@ -99,6 +102,8 @@ pub struct Workspace {
     pub global_search: Entity<CommandState>,
     /// Cmd-P go-to-file picker's state (see `crate::file_palette`).
     pub file_palette: Entity<CommandState>,
+    /// Apply-code-block picker's state (see `crate::apply_code`).
+    pub apply_palette: Entity<CommandState>,
     /// Files picked via Cmd-P, most recent first — ranks the picker.
     pub recent_files: Vec<SharedString>,
     pub rename: Entity<InputState>,

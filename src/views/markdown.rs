@@ -117,8 +117,9 @@ fn raw_markdown(ix: usize, text: &SharedString, cx: &App) -> AnyElement {
 
 /// Top-right affordance for a fenced code block: the language tag, a Run
 /// button on shell blocks (dispatches `RunShellCommand` — the workspace's
-/// `on_action` runs it), and a copy button that flips to a check for a
-/// moment after copying.
+/// `on_action` runs it), an Apply button on non-shell blocks (dispatches
+/// `ApplyCodeBlock` — writes the block to a project file), and a copy
+/// button that flips to a check for a moment after copying.
 fn code_block_actions(ix: usize, block: &CodeBlock, window: &mut Window, cx: &mut App) -> AnyElement {
     // Span start is unique per block in a message; unspanned blocks share 0 —
     // a cosmetic collision on the copied flag only.
@@ -128,6 +129,7 @@ fn code_block_actions(ix: usize, block: &CodeBlock, window: &mut Window, cx: &mu
     let code = block.code().to_string();
     let lang = block.lang();
     let shell = lang.as_deref().and_then(crate::run_cmd::shell_for);
+    let apply_lang = lang.clone().map(|l| l.to_string());
     div()
         .flex()
         .items_center()
@@ -149,6 +151,24 @@ fn code_block_actions(ix: usize, block: &CodeBlock, window: &mut Window, cx: &mu
                     .child("Run")
                     .on_click(move |_, window, cx| {
                         window.dispatch_action(Box::new(crate::run_cmd::RunShellCommand { command: command.clone(), shell }), cx);
+                    }),
+            )
+        })
+        .when(shell.is_none(), |d| {
+            let code = code.clone();
+            let lang = apply_lang.clone();
+            d.child(
+                div()
+                    .id(ElementId::Name(format!("apply-code-{ix}-{key}").into()))
+                    .test_support()
+                    .cursor_pointer()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(IconName::FilePen)
+                    .child("Apply")
+                    .on_click(move |_, window, cx| {
+                        window.dispatch_action(Box::new(crate::apply_code::ApplyCodeBlock { code: code.clone(), lang: lang.clone() }), cx);
                     }),
             )
         })

@@ -199,6 +199,11 @@ impl Workspace {
             .on_action(cx.listener(|this, _: &MsgNavBottom, window, cx| this.nav_bottom(window, cx)))
             .on_action(cx.listener(|this, _: &MsgNavEnter, window, cx| this.nav_activate(window, cx)))
             .on_action(cx.listener(|this, _: &EscapeKey, window, cx| this.nav_escape(window, cx)))
+            // The code-block Apply button dispatches here — the chat pane
+            // owns it so the write lands on the chat the block belongs to.
+            .on_action(cx.listener(|this, action: &crate::apply_code::ApplyCodeBlock, window, cx| {
+                this.apply_code_block(action.code.clone(), action.lang.clone(), window, cx);
+            }))
             .child(header)
             // Restricted-mode notice for an untrusted folder — the "Trust…"
             // button reopens the trust dialog (see `crate::views::trust`).

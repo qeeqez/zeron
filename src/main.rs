@@ -11,6 +11,11 @@ mod app_setup;
 mod appearance;
 #[cfg(test)]
 mod appearance_tests;
+mod apply_code;
+#[cfg(test)]
+mod apply_code_tests;
+#[cfg(test)]
+mod apply_code_ui_tests;
 mod approval_ops;
 #[cfg(test)]
 mod approval_tests;

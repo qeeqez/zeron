@@ -143,6 +143,7 @@ impl Workspace {
             // untrusted folder via `restrict_untrusted` right after open.
             trusted: true,
             run_approved: false,
+            apply_approved: false,
             effort: None,
             default_model: settings.default_model.clone(),
             default_permissions: (!settings.default_permissions.is_empty())
@@ -157,6 +158,7 @@ impl Workspace {
             palette,
             global_search,
             file_palette,
+            apply_palette: cx.new(|cx| CommandState::new(window, cx)),
             recent_files: Vec::new(),
             chat_search,
             find: crate::chat_find::FindBar::new(crate::chat_find::new_find_input(window, cx)),
