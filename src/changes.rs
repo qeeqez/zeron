@@ -7,7 +7,7 @@
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
 
-use crate::git::{Branch, BranchStatus, Commit, FileChange, StashEntry};
+use crate::git::{Branch, BranchStatus, Commit, FileChange, PrStatus, StashEntry};
 use crate::workspace::Workspace;
 
 /// Token source for in-flight row-diff loads — each expand stamps the row
@@ -31,6 +31,9 @@ pub(crate) struct ChangesSnapshot {
     /// Unmerged paths from `git diff --diff-filter=U` — the conflicts
     /// section's rows; empty when no merge/rebase is mid-conflict.
     pub conflicts: Vec<String>,
+    /// The current branch's PR — `None` without `gh`, outside a repo, or
+    /// when the branch has no PR; the row hides in every case.
+    pub pr: Option<PrStatus>,
 }
 
 /// Git-action state for the Changes panel: the branch header, the commit
@@ -52,6 +55,10 @@ pub struct ChangesGit {
     /// Conflicted (unmerged) paths — refreshed alongside `branch` by
     /// `refresh_changes`; drives the conflicts section's banner and rows.
     pub conflicts: Vec<String>,
+    /// The current branch's PR — refreshed alongside `branch` by
+    /// `refresh_changes` and by the row's own refresh button. `None` hides
+    /// the row (no `gh`, not a repo, or no PR for the branch).
+    pub pr: Option<PrStatus>,
     /// Bumped per `refresh_branches` request; a stale list can't overwrite a
     /// newer one when two fetches land out of order.
     branches_generation: u64,
@@ -107,6 +114,7 @@ impl ChangesGit {
             commits: Vec::new(),
             stashes: Vec::new(),
             conflicts: Vec::new(),
+            pr: None,
             branches_generation: 0,
             commit_input,
             stash_input,
@@ -201,9 +209,13 @@ impl Workspace {
             let snapshot = cx
                 .background_executor()
                 .spawn(async move {
+                    let branch = crate::git::branch_status(&root);
                     ChangesSnapshot {
                         changes: crate::git::collect(&root),
-                        branch: crate::git::branch_status(&root),
+                        // `gh pr view` only makes sense in a repo — skip the
+                        // spawn entirely when there's no branch.
+                        pr: branch.as_ref().and_then(|_| crate::git::pr_status(&root, &[])),
+                        branch,
                         commits: crate::git::log(&root, 20),
                         stashes: crate::git::stash_list(&root),
                         conflicts: crate::changes_conflicts::conflicted_files(&root),
@@ -227,6 +239,7 @@ impl Workspace {
         self.git.commits = snapshot.commits;
         self.git.stashes = snapshot.stashes;
         self.git.conflicts = snapshot.conflicts;
+        self.git.pr = snapshot.pr;
         cx.notify();
     }
 

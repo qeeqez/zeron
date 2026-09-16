@@ -2,7 +2,7 @@
 //! the SLOC cap. Everything here is pure: tests feed fixture output without a
 //! real repository.
 
-use crate::git::{Branch, ChangeStatus, Commit, CommitFileDiff, FileChange, StashEntry};
+use crate::git::{Branch, ChangeStatus, Commit, CommitFileDiff, FileChange, PrChecks, PrState, PrStatus, StashEntry};
 
 /// Parse `git status --porcelain=v1 -z` output. Entries are NUL-separated
 /// `XY path`; renames/copies append a second field holding the source path.
@@ -219,4 +219,55 @@ fn patch_path(section: &str) -> Option<String> {
 fn strip_ab(path: &str) -> &str {
     let path = path.trim().trim_matches('"');
     path.strip_prefix("a/").or_else(|| path.strip_prefix("b/")).unwrap_or(path)
+}
+
+/// Parse `gh pr view --json number,url,state,statusCheckRollup` output into
+/// the panel's PR row. `None` on malformed JSON or a missing/empty URL —
+/// without one the row's Open button has nothing to launch. The rollup is
+/// an array on current `gh`; older versions wrapped it in `{nodes: […]}` —
+/// both shapes parse.
+pub(crate) fn parse_pr_status(raw: &str) -> Option<PrStatus> {
+    let json: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let rollup = match &json["statusCheckRollup"] {
+        serde_json::Value::Array(checks) => checks.clone(),
+        other => other["nodes"].as_array().cloned().unwrap_or_default(),
+    };
+    let mut checks = PrChecks::default();
+    for check in &rollup {
+        match check_outcome(check) {
+            Outcome::Pass => checks.pass += 1,
+            Outcome::Fail => checks.fail += 1,
+            Outcome::Pending => checks.pending += 1,
+        }
+    }
+    Some(PrStatus {
+        number: json["number"].as_u64().unwrap_or(0),
+        url: json["url"].as_str().filter(|u| !u.is_empty())?.to_string(),
+        state: PrState::of(json["state"].as_str().unwrap_or("")),
+        checks,
+    })
+}
+
+/// One rollup entry's verdict. Check runs report `status`+`conclusion`,
+/// status contexts a single `state` — whichever is present decides. Queued,
+/// in-progress, waiting, and expected checks all count as pending.
+enum Outcome {
+    Pass,
+    Fail,
+    Pending,
+}
+
+fn check_outcome(check: &serde_json::Value) -> Outcome {
+    let conclusion = check["conclusion"].as_str().unwrap_or("").to_ascii_uppercase();
+    if matches!(conclusion.as_str(), "SUCCESS" | "NEUTRAL" | "SKIPPED") {
+        return Outcome::Pass;
+    }
+    if matches!(conclusion.as_str(), "FAILURE" | "TIMED_OUT" | "CANCELLED" | "ACTION_REQUIRED" | "STARTUP_FAILURE" | "STALE") {
+        return Outcome::Fail;
+    }
+    match check["state"].as_str().unwrap_or("").to_ascii_uppercase().as_str() {
+        "SUCCESS" => Outcome::Pass,
+        "FAILURE" | "ERROR" => Outcome::Fail,
+        _ => Outcome::Pending,
+    }
 }

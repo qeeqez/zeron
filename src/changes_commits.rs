@@ -1,8 +1,8 @@
 //! Recent-commits state on `Workspace`: expanding a "Recent commits" row to
-//! load its `git show` patch on the background executor, and the revert op
-//! the row's context menu runs. The list itself is collected by
-//! `refresh_changes` in `crate::changes`; rendering lives in
-//! `crate::views::changes_commits`.
+//! load its `git show` patch on the background executor, the revert op the
+//! row's context menu runs, and the PR row's standalone refresh. The list
+//! itself is collected by `refresh_changes` in `crate::changes`; rendering
+//! lives in `crate::views::changes_commits` and `crate::views::changes_pr`.
 
 use gpui_kit::*;
 
@@ -54,5 +54,30 @@ impl Workspace {
     /// the panel refreshes (and re-lists commits) when it lands.
     pub fn revert_commit(&mut self, sha: &str, cx: &mut Context<Self>) {
         self.run_git_op(GitOp::Revert(sha.to_string()), cx);
+    }
+
+    /// Re-fetch the current branch's PR status — the PR row's refresh
+    /// button. One `gh pr view` on the background executor; the result is
+    /// stamped with the changes generation so a full refresh requested
+    /// while it runs (which fetches its own PR status) discards it.
+    pub fn refresh_pr(&mut self, cx: &mut Context<Self>) {
+        let generation = self.changes_generation;
+        let dir = self.project.root().to_path_buf();
+        cx.spawn(async move |this, cx| {
+            let pr = cx.background_executor().spawn(async move { crate::git::pr_status(&dir, &[]) }).await;
+            let _ = this.update(cx, |this, cx| this.land_pr(generation, pr, cx));
+        })
+        .detach();
+    }
+
+    /// Publish a fetched PR status — skipped when a `refresh_changes` was
+    /// requested while the fetch ran, since that refresh's snapshot carries
+    /// its own (newer) PR status. Same guard as `land_commit_diff`.
+    pub(crate) fn land_pr(&mut self, generation: u64, pr: Option<crate::git::PrStatus>, cx: &mut Context<Self>) {
+        if generation != self.changes_generation {
+            return;
+        }
+        self.git.pr = pr;
+        cx.notify();
     }
 }

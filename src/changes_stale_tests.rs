@@ -29,6 +29,7 @@ fn stale_refresh_result_is_discarded() {
                     commits: vec![],
                     stashes: vec![],
                     conflicts: vec![],
+                    pr: None,
                 },
                 cx,
             );
@@ -41,6 +42,7 @@ fn stale_refresh_result_is_discarded() {
                     commits: vec![],
                     stashes: vec![],
                     conflicts: vec![],
+                    pr: None,
                 },
                 cx,
             );

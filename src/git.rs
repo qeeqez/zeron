@@ -1,6 +1,7 @@
 //! Working-tree git changes for the Changes panel — collected by shelling out
 //! to `git` in the project root, plus the panel's write actions (stage,
-//! unstage, commit, push, create-PR) and the branch header. Output parsing
+//! unstage, commit, push) and the branch header. The `gh`-backed PR actions
+//! (create, status) live in `crate::git::pr`, re-exported here. Output parsing
 //! lives in `crate::git_parse` so tests can feed fixtures without a real
 //! repository. Line-level diffs for expanded rows live in `crate::changes_diff`.
 
@@ -313,40 +314,12 @@ pub(crate) fn push(dir: &std::path::Path) -> Result<String, String> {
     git_env(dir, args, &[]).map(|_| "Pushed".to_string())
 }
 
-/// Push, then open a PR via `gh pr create --fill`. Without `gh` on PATH the
-/// push still happens and the note tells the user to open the PR by hand.
-/// `envs` lets tests point PATH at a fake `gh`.
-pub(crate) fn create_pr(dir: &std::path::Path, envs: &[(&str, &str)]) -> Result<String, String> {
-    push(dir)?;
-    match gh_pr_create(dir, envs) {
-        Ok(url) => Ok(if url.is_empty() { "PR created".to_string() } else { format!("PR created: {url}") }),
-        Err(Gh::Missing) => Ok("Pushed — install `gh` to create a PR from here".to_string()),
-        Err(Gh::Failed(e)) => Err(e),
-    }
-}
-
-/// Why `gh pr create` didn't produce a URL: the binary isn't installed, or it
-/// ran and failed (no remote, existing PR, not logged in).
-enum Gh {
-    Missing,
-    Failed(String),
-}
-
-/// `gh pr create --fill` — title/body from the branch's commits. Stdout is
-/// the new PR's URL.
-fn gh_pr_create(dir: &std::path::Path, envs: &[(&str, &str)]) -> Result<String, Gh> {
-    let out = std::process::Command::new("gh")
-        .args(["pr", "create", "--fill"])
-        .current_dir(dir)
-        .envs(envs.iter().copied())
-        .output()
-        .map_err(|_| Gh::Missing)?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-    } else {
-        Err(Gh::Failed(String::from_utf8_lossy(&out.stderr).trim().to_string()))
-    }
-}
+/// `gh`-backed pull-request actions — `create_pr` and `pr_status` — split
+/// into `git_pr.rs` for the SLOC cap; re-exported so callers keep using
+/// `crate::git::create_pr` / `crate::git::pr_status`.
+#[path = "git_pr.rs"]
+pub(crate) mod pr;
+pub(crate) use pr::{PrChecks, PrState, PrStatus, create_pr, pr_status};
 
 /// `git diff` variant with bounded output: reads at most `max_bytes` of
 /// stdout, then kills the child rather than buffering an unbounded diff.

@@ -30,6 +30,7 @@ pub fn git_block(ws: &Workspace, branch: &BranchStatus, cx: &mut Context<Workspa
         .border_t_1()
         .border_color(cx.theme().border)
         .child(super::changes_git_branch::branch_row(ws, branch, cx))
+        .when_some(ws.git.pr.clone(), |d, pr| d.child(super::changes_pr::pr_row(&pr, cx)))
         .child(commit_row(ws, cx))
         .child(action_row(ws, cx))
         .child(crate::views::changes_stash::stash_section(ws, cx))
