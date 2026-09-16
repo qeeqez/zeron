@@ -96,6 +96,8 @@ impl Workspace {
         };
         let mut fork = Chat::new(id, format!("{}{}", src.title, opts.suffix));
         fork.messages = Rc::new(src.messages[..=ix].to_vec());
+        fork.title_generated = src.title_generated;
+        fork.title_custom = src.title_custom;
         fork.folder = src.folder.clone();
         fork.color = src.color;
         if let Some((provider, model)) = opts.bind {

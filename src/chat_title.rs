@@ -4,6 +4,9 @@
 //! the same standalone send+drain pattern as `changes_generate`. The
 //! result replaces the placeholder and the window title; a manual rename
 //! mid-flight wins because the title is re-checked before it lands.
+//! When the backend can't produce a title — no model, no usable reply,
+//! or an error — the title is derived from the first user message
+//! instead (`derive_title`).
 
 use gpui_kit::*;
 
@@ -15,6 +18,10 @@ use crate::workspace::Workspace;
 /// char boundary.
 const MAX_TITLE_CHARS: usize = 60;
 
+/// Longest derived title — the first clause of the user's message,
+/// ellipsized past this.
+const MAX_DERIVED_CHARS: usize = 48;
+
 /// Per-message cap on the excerpt sent for titling — enough for the
 /// backend to grasp the topic, small enough to keep the turn cheap.
 const MAX_EXCERPT_CHARS: usize = 2000;
@@ -25,7 +32,9 @@ struct PendingTitle {
     /// The placeholder the chat carried when the turn was sent — a manual
     /// rename since then wins, so the generated title is dropped.
     expected: SharedString,
-    /// The sanitized title — `None` on backend error or an empty reply.
+    /// The sanitized title — `None` asks the landing side to derive one
+    /// from the first user message (backend error, empty reply, or no
+    /// model to send with).
     title: Option<String>,
 }
 
@@ -34,17 +43,18 @@ impl Workspace {
     /// `had_stream` is the caller's proof a real backend turn ran —
     /// `finish_reply` also fires for local bail-outs (no model, auth
     /// block), which must not title a chat off an error note. No-op when
-    /// the turn failed, the title was already generated or renamed, or no
-    /// model is selected.
+    /// the turn failed or the title was already generated or renamed.
+    /// Without a model — or when the backend turn yields nothing — the
+    /// title falls back to `derive_title` on the first user message.
     pub(crate) fn maybe_generate_title(&mut self, chat_id: u64, had_stream: bool, cx: &mut Context<Self>) {
-        if !had_stream || self.model.is_empty() {
+        if !had_stream {
             return;
         }
         let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
-        if chat.failed_flag || chat.title_generated || !has_placeholder_title(chat) {
+        if chat.failed_flag || chat.title_generated || chat.title_custom || !has_placeholder_title(chat) {
             return;
         }
-        let Some(prompt) = title_prompt(chat) else { return };
+        let prompt = if self.model.is_empty() { None } else { title_prompt(chat) };
         let mut pending = PendingTitle { chat_id, expected: chat.title.clone(), title: None };
         let backend = self.backend.clone();
         let model = self.model.to_string();
@@ -54,8 +64,10 @@ impl Workspace {
             self.effective_access(chat.access.unwrap_or(self.access)),
         );
         cx.spawn(async move |this, cx| {
-            let stream = backend.send(&prompt, &model, "Ask", &ctx);
-            pending.title = collect_title(stream, cx).await;
+            if let Some(prompt) = prompt {
+                let stream = backend.send(&prompt, &model, "Ask", &ctx);
+                pending.title = collect_title(stream, cx).await;
+            }
             let _ = this.update_in(cx, |this, window, cx| this.land_generated_title(pending, window, cx));
         })
         .detach();
@@ -63,15 +75,18 @@ impl Workspace {
 
     /// Publish a generated title. A manual rename committed while the turn
     /// was in flight wins — the title is applied only when the chat still
-    /// carries the placeholder it had at send time. A deleted chat or an
-    /// empty/error reply keeps the old title.
+    /// carries the placeholder it had at send time. A deleted chat keeps
+    /// its title; a missing backend title falls back to `derive_title`,
+    /// and only a chat with no usable first message keeps the placeholder.
     fn land_generated_title(&mut self, pending: PendingTitle, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(title) = pending.title else { return };
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == pending.chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == pending.chat_id) else { return };
-        if chat.title != pending.expected {
+        if chat.title != pending.expected || chat.title_custom {
             return;
         }
+        let Some(title) = pending.title.or_else(|| first_text(&*chat, Role::User).and_then(derive_title)) else {
+            return;
+        };
         chat.title = title.into();
         chat.title_generated = true;
         if is_active {
@@ -99,6 +114,142 @@ fn has_placeholder_title(chat: &Chat) -> bool {
     let Some(first) = chat.messages.iter().find(|m| m.role == Role::User) else { return false };
     let MessageKind::Text(text) = &first.kind else { return false };
     chat.title.as_ref() == provisional_title(text)
+}
+
+/// Title from a raw user message, no backend: the first paragraph with
+/// markdown stripped and whitespace collapsed, cut at the first clause
+/// boundary and ellipsized past `MAX_DERIVED_CHARS`. `None` when nothing
+/// usable remains — the caller keeps the placeholder.
+fn derive_title(text: &str) -> Option<String> {
+    let plain = plain_text(text);
+    let clause = first_clause(&plain);
+    (!clause.is_empty()).then(|| cap_title(clause))
+}
+
+/// The message's first paragraph as flat text: fenced-code markers,
+/// headings, list markers, and quotes dropped; links/images reduced to
+/// their label; emphasis/backtick delimiters removed; whitespace
+/// collapsed to single spaces.
+fn plain_text(text: &str) -> String {
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            // The title comes from the first paragraph — a blank line
+            // ends it (also keeps the "📎 files" attachment footer out).
+            if !lines.is_empty() {
+                break;
+            }
+            continue;
+        }
+        if line.starts_with("```") || line.starts_with("~~~") {
+            continue;
+        }
+        if line.starts_with('#') {
+            // A heading is its own block — it ends the paragraph.
+            lines.push(strip_inline(line.trim_start_matches(['#', ' '])));
+            break;
+        }
+        let line = line.trim_start_matches(['>', ' ']);
+        let line = line
+            .strip_prefix("- ")
+            .or_else(|| line.strip_prefix("* "))
+            .or_else(|| line.strip_prefix("+ "))
+            .unwrap_or(line);
+        // Ordered-list marker — "1. fix the bug" titles as "fix the bug".
+        let line = match line.split_once(' ') {
+            Some((num, rest))
+                if num.len() > 1
+                    && num[..num.len() - 1].chars().all(|c| c.is_ascii_digit())
+                    && matches!(num.chars().last(), Some('.') | Some(')')) =>
+            {
+                rest
+            },
+            _ => line,
+        };
+        lines.push(strip_inline(line));
+    }
+    lines.join(" ").split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Inline markdown out of `line`: `[label](url)` and `![alt](src)` keep
+/// the label, `<tag>`/`<url>` drop, and `*_~` plus backticks are
+/// stripped from token edges (inner `_` stays — `snake_case` survives).
+fn strip_inline(line: &str) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let mut out = String::with_capacity(line.len());
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            '!' if chars.get(i + 1) == Some(&'[') => i += 1,
+            '[' => {
+                let close = chars[i..].iter().position(|c| *c == ']').map(|p| i + p);
+                let open = close.and_then(|c| (chars.get(c + 1) == Some(&'(')).then_some(c + 1));
+                let end = open.and_then(|o| chars[o..].iter().position(|c| *c == ')').map(|p| o + p));
+                match (close, end) {
+                    (Some(c), Some(e)) => {
+                        out.push_str(&strip_inline(&chars[i + 1..c].iter().collect::<String>()));
+                        i = e + 1;
+                    },
+                    (Some(c), None) => {
+                        out.push_str(&strip_inline(&chars[i + 1..c].iter().collect::<String>()));
+                        i = c + 1;
+                    },
+                    _ => {
+                        out.push('[');
+                        i += 1;
+                    },
+                }
+            },
+            '<' if chars.get(i + 1).is_some_and(|c| c.is_ascii_alphanumeric() || *c == '/' || *c == '!' || *c == '?') => {
+                match chars[i..].iter().position(|c| *c == '>') {
+                    Some(p) => i += p + 1,
+                    None => i = chars.len(),
+                }
+            },
+            c => {
+                out.push(c);
+                i += 1;
+            },
+        }
+    }
+    out.split_whitespace()
+        .map(|tok| tok.trim_matches(['*', '_', '~', '`', '"', '\'']))
+        .filter(|tok| !tok.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// `text` up to the first clause boundary: `.`/`!`/`?`/`;`/`:`/`,` at a
+/// word boundary, or `(`/`—`/`–` anywhere. The boundary char itself is
+/// dropped.
+fn first_clause(text: &str) -> &str {
+    for (i, c) in text.char_indices() {
+        let boundary = match c {
+            '(' | '—' | '–' => true,
+            '.' | '!' | '?' | ';' | ':' | ',' => text[i + c.len_utf8()..].chars().next().is_none_or(|n| n.is_whitespace()),
+            _ => false,
+        };
+        if boundary {
+            return text[..i].trim_end();
+        }
+    }
+    text
+}
+
+/// `clause` capped at `MAX_DERIVED_CHARS` — cut back to the last word
+/// boundary when one survives, then an ellipsis marks the truncation.
+fn cap_title(clause: &str) -> String {
+    if clause.chars().count() <= MAX_DERIVED_CHARS {
+        return clause.to_string();
+    }
+    let head: String = clause.chars().take(MAX_DERIVED_CHARS).collect();
+    let head = head.trim_end();
+    let cut = match head.rfind(' ').filter(|ix| *ix > 0) {
+        Some(ix) => head[..ix].trim_end(),
+        None => head,
+    };
+    format!("{cut}…")
 }
 
 /// The one-off prompt: the first user message and first assistant reply

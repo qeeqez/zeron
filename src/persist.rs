@@ -25,6 +25,11 @@ pub(crate) struct StoredChat {
     /// chat titles existed; false lets an old chat still earn one.
     #[serde(default)]
     pub(crate) title_generated: bool,
+    /// The user named this chat — missing in files written before the
+    /// flag existed; false is safe, an old renamed chat still fails the
+    /// placeholder check.
+    #[serde(default)]
+    pub(crate) title_custom: bool,
     /// Missing in early v1 files — fall back to now().
     #[serde(default = "std::time::SystemTime::now")]
     pub(crate) created_at: std::time::SystemTime,
@@ -85,6 +90,7 @@ impl StoredChat {
         chat.folder = self.folder;
         chat.draft = self.draft;
         chat.title_generated = self.title_generated;
+        chat.title_custom = self.title_custom;
         chat.created_at = self.created_at;
         chat.provider = self.provider;
         chat.model = self.model;
@@ -135,6 +141,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             folder: chat.folder.clone(),
             draft: chat.draft.clone(),
             title_generated: chat.title_generated,
+            title_custom: chat.title_custom,
             created_at: chat.created_at,
             provider: chat.provider.clone(),
             model: chat.model.clone(),

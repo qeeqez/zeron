@@ -80,6 +80,7 @@ impl Workspace {
             && let Some(chat) = self.chats.iter_mut().find(|c| c.id == id)
         {
             chat.title = title.into();
+            chat.title_custom = true;
             if is_active {
                 window.set_window_title(&format!("{} — Rixl Code", chat.title));
             }

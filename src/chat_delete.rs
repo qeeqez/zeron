@@ -211,6 +211,8 @@ impl Workspace {
         split.messages = Rc::new(Rc::make_mut(&mut src.messages).split_off(at_ix));
         split.folder = src.folder.clone();
         split.color = src.color;
+        split.title_generated = src.title_generated;
+        split.title_custom = src.title_custom;
         split.provider = src.provider.clone();
         split.model = src.model.clone();
         split.access = src.access;

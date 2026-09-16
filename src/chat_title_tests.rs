@@ -1,6 +1,7 @@
 //! Unit tests for chat-title helpers: sanitizing, placeholder detection,
-//! and persistence of the `title_generated` flag. Headless send-path
-//! coverage lives in `chat_title_ui_tests.rs`.
+//! first-message derivation, and persistence of the `title_generated` /
+//! `title_custom` flags. Headless send-path coverage lives in
+//! `chat_title_ui_tests.rs`.
 
 use crate::model::{Chat, ChatMessage, MessageKind, Role};
 
@@ -31,6 +32,32 @@ fn title_cleanup() {
     assert_eq!(provisional_title(&"x".repeat(50)).chars().count(), 40);
 }
 
+/// `derive_title` is the no-backend fallback: markdown and code fences
+/// stripped, whitespace collapsed, first clause kept, ~48-char cap with
+/// an ellipsis.
+#[test]
+fn title_derivation() {
+    use super::derive_title;
+    // Markdown decoration comes off; the first sentence wins.
+    assert_eq!(derive_title("**Fix** the `login` bug. More detail here."), Some("Fix the login bug".to_string()));
+    assert_eq!(derive_title("```rust\nlet total = items.len\n```"), Some("let total = items.len".to_string()));
+    assert_eq!(derive_title("# Refactor plan\n- step one\n- step two"), Some("Refactor plan".to_string()));
+    // Links keep their label; whitespace collapses across lines.
+    assert_eq!(derive_title("see [the docs](https://x.dev)   for\ncontext"), Some("see the docs for context".to_string()));
+    // Clause boundaries: comma, colon, dash, paren — but not mid-word.
+    assert_eq!(derive_title("fix login, then logout"), Some("fix login".to_string()));
+    assert_eq!(derive_title("refactor: the parser"), Some("refactor".to_string()));
+    assert_eq!(derive_title("use snake_case names"), Some("use snake_case names".to_string()));
+    // Long messages cap at a word boundary with an ellipsis.
+    let long = derive_title(&"word ".repeat(30)).unwrap();
+    assert!(long.ends_with('…'), "truncated titles carry an ellipsis: {long}");
+    assert!(long.chars().count() <= 49, "capped near 48 chars: {long}");
+    assert!(!long.trim_end_matches('…').ends_with(' '), "no dangling space before the ellipsis");
+    // Nothing usable → no title.
+    assert_eq!(derive_title("```\n```"), None);
+    assert_eq!(derive_title("   \n  "), None);
+}
+
 /// Only the placeholder titles qualify for generation — "New chat" or the
 /// truncated first prompt; a user's own title never does.
 #[test]
@@ -47,23 +74,27 @@ fn placeholder_detection() {
     assert!(!has_placeholder_title(&chat), "an empty title is left alone");
 }
 
-/// `title_generated` survives a save/load round-trip; a chat file written
-/// before the flag existed loads `false` so it can still earn a title.
+/// `title_generated` and `title_custom` survive a save/load round-trip;
+/// a chat file written before the flags existed loads both `false` so it
+/// can still earn a title.
 #[test]
-fn generated_flag_persisted() {
+fn title_flags_persisted() {
     let dir = std::env::temp_dir().join(format!("rixlcode-title-persist-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let mut chat = Chat::new(1, "Fix the flaky test");
     chat.title_generated = true;
+    chat.title_custom = true;
     crate::persist::save_chats(&dir, &[chat]);
     let mut next = 10;
     let loaded = crate::persist::load_chats(&dir, &mut next, false);
     assert_eq!(loaded.len(), 1);
-    assert!(loaded[0].title_generated, "flag round-trips");
-    // A legacy file without the field defaults to false.
+    assert!(loaded[0].title_generated, "generated flag round-trips");
+    assert!(loaded[0].title_custom, "custom flag round-trips");
+    // A legacy file without the fields defaults both to false.
     std::fs::write(dir.join("0.json"), r#"{"v":1,"title":"Old chat","messages":[]}"#).unwrap();
     let loaded = crate::persist::load_chats(&dir, &mut next, false);
     assert_eq!(loaded.len(), 1);
     assert!(!loaded[0].title_generated, "missing field defaults false");
+    assert!(!loaded[0].title_custom, "missing field defaults false");
     let _ = std::fs::remove_dir_all(&dir);
 }

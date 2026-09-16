@@ -258,6 +258,10 @@ pub struct Chat {
     /// `crate::chat_title`). Persisted so a manual rename — or a second
     /// turn after a generated title — never triggers another generation.
     pub title_generated: bool,
+    /// The user named this chat themselves (rename committed) — persisted
+    /// so auto-titling never overwrites it, even when the chosen name
+    /// happens to match the placeholder.
+    pub title_custom: bool,
     pub archived: bool,
     pub attachments: Vec<SharedString>,
     /// Provider instance id this thread sends on — stamped at creation from
@@ -349,6 +353,7 @@ impl Chat {
             archived: false,
             unread: false,
             title_generated: false,
+            title_custom: false,
             draft: String::new(),
             provider: String::new(),
             model: String::new(),

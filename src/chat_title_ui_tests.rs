@@ -100,6 +100,15 @@ impl AgentBackend for FakeBackend {
     }
 }
 
+/// One canned turn: a text reply that completes, or a bare error.
+fn reply(text: &str) -> Vec<AgentEvent> {
+    vec![AgentEvent::TextDelta(text.into()), AgentEvent::Done]
+}
+
+fn err(msg: &str) -> Vec<AgentEvent> {
+    vec![AgentEvent::Error(msg.into())]
+}
+
 /// Point the workspace at `backend` with a model selected — sends and
 /// title generation both refuse to run without one.
 fn use_backend(ws: &Entity<Workspace>, backend: impl AgentBackend + 'static, cx: &mut VisualTestContext) {
@@ -179,17 +188,7 @@ fn title_is(title: &'static str) -> impl Fn(&Workspace) -> bool {
 fn first_reply_titles_the_chat(cx: &mut TestAppContext) {
     let prompts: Prompts = Default::default();
     let (ws, cx) = mount(cx);
-    use_backend(
-        &ws,
-        FakeBackend::scripted(
-            &prompts,
-            vec![
-                vec![AgentEvent::TextStart, AgentEvent::TextDelta("Here's the fix.".into()), AgentEvent::Done],
-                vec![AgentEvent::TextDelta("\"Fix the flaky test.\"\n".into()), AgentEvent::Done],
-            ],
-        ),
-        cx,
-    );
+    use_backend(&ws, FakeBackend::scripted(&prompts, vec![reply("Here's the fix."), reply("\"Fix the flaky test.\"\n")]), cx);
     submit(&ws, cx, "the login test flakes on CI");
     until(&ws, cx, title_is("Fix the flaky test"));
     assert!(chat(&ws, cx, |c| c.title_generated), "generated flag set");
@@ -212,7 +211,7 @@ fn first_reply_titles_the_chat(cx: &mut TestAppContext) {
 fn manual_rename_before_send_skips_generation(cx: &mut TestAppContext) {
     let prompts: Prompts = Default::default();
     let (ws, cx) = mount(cx);
-    use_backend(&ws, FakeBackend::scripted(&prompts, vec![vec![AgentEvent::TextDelta("ok".into()), AgentEvent::Done]]), cx);
+    use_backend(&ws, FakeBackend::scripted(&prompts, vec![reply("ok")]), cx);
     let id = ws.read_with(cx, |w, _| w.chats[w.active].id);
     rename(&ws, id, "My custom name", cx);
     submit(&ws, cx, "hello");
@@ -220,6 +219,7 @@ fn manual_rename_before_send_skips_generation(cx: &mut TestAppContext) {
     settle(cx);
     assert_eq!(prompts.lock().len(), 1, "no title turn for a renamed chat");
     assert!(chat(&ws, cx, |c| c.title == "My custom name"), "rename kept");
+    assert!(chat(&ws, cx, |c| c.title_custom), "rename marks the title as the user's");
     assert!(!chat(&ws, cx, |c| c.title_generated));
 }
 
@@ -242,37 +242,57 @@ fn manual_rename_during_generation_wins(cx: &mut TestAppContext) {
     sends.lock()[1].send(AgentEvent::Done).unwrap();
     settle(cx);
     assert!(chat(&ws, cx, |c| c.title == "Parser work"), "rename beats the late title");
+    assert!(chat(&ws, cx, |c| c.title_custom));
     assert!(!chat(&ws, cx, |c| c.title_generated));
 }
 
-/// A backend error keeps the placeholder — and the next successful turn
-/// gets another shot at a title.
+/// A backend error on the title turn falls back to a title derived from
+/// the first user message — and marks the chat so later turns don't
+/// regenerate.
 #[gpui_kit::test]
-fn backend_error_keeps_the_placeholder(cx: &mut TestAppContext) {
+fn backend_error_derives_title(cx: &mut TestAppContext) {
     let prompts: Prompts = Default::default();
     let (ws, cx) = mount(cx);
-    use_backend(
-        &ws,
-        FakeBackend::scripted(
-            &prompts,
-            vec![
-                vec![AgentEvent::TextDelta("reply one".into()), AgentEvent::Done],
-                vec![AgentEvent::Error("boom".into())],
-                vec![AgentEvent::TextDelta("reply two".into()), AgentEvent::Done],
-                vec![AgentEvent::TextDelta("Login Fix".into()), AgentEvent::Done],
-            ],
-        ),
-        cx,
-    );
-    submit(&ws, cx, "fix the login bug");
+    use_backend(&ws, FakeBackend::scripted(&prompts, vec![reply("reply one"), err("boom"), reply("reply two")]), cx);
+    submit(&ws, cx, "fix the login bug. it broke on CI");
     until_prompts(&prompts, 2, cx);
-    settle(cx);
-    assert!(chat(&ws, cx, |c| c.title == "fix the login bug"), "placeholder kept on error");
-    assert!(!chat(&ws, cx, |c| c.title_generated));
-    // The flag was never set, so the next completed turn retries.
+    until(&ws, cx, title_is("fix the login bug"));
+    assert!(chat(&ws, cx, |c| c.title_generated), "derived title marks the chat");
+    // The flag is set, so the next completed turn does not retry.
     submit(&ws, cx, "and the logout bug too");
-    until(&ws, cx, title_is("Login Fix"));
-    assert_eq!(prompts.lock().len(), 4);
+    until(&ws, cx, |w| !w.chats[w.active].running);
+    settle(cx);
+    assert_eq!(prompts.lock().len(), 3, "no second title turn after a derived title");
+    assert!(chat(&ws, cx, |c| c.title == "fix the login bug"), "derived title kept");
+}
+
+/// A title turn that answers with no usable text derives instead of
+/// leaving the raw placeholder.
+#[gpui_kit::test]
+fn empty_title_reply_derives(cx: &mut TestAppContext) {
+    let prompts: Prompts = Default::default();
+    let (ws, cx) = mount(cx);
+    use_backend(&ws, FakeBackend::scripted(&prompts, vec![reply("reply"), reply("   \n")]), cx);
+    submit(&ws, cx, "**Fix** the `login` bug. Details follow.");
+    until(&ws, cx, title_is("Fix the login bug"));
+}
+
+/// Renaming a chat to exactly what the placeholder would be still counts
+/// as the user's title — `title_custom` protects it from generation.
+#[gpui_kit::test]
+fn rename_to_placeholder_still_skips(cx: &mut TestAppContext) {
+    let prompts: Prompts = Default::default();
+    let (ws, cx) = mount(cx);
+    use_backend(&ws, FakeBackend::scripted(&prompts, vec![reply("ok")]), cx);
+    let id = ws.read_with(cx, |w, _| w.chats[w.active].id);
+    rename(&ws, id, "New chat", cx);
+    submit(&ws, cx, "hello");
+    until(&ws, cx, |w| !w.chats[w.active].running);
+    settle(cx);
+    assert_eq!(prompts.lock().len(), 1, "no title turn — the rename is the user's");
+    assert!(chat(&ws, cx, |c| c.title == "New chat"), "the user's title is kept verbatim");
+    assert!(chat(&ws, cx, |c| c.title_custom));
+    assert!(!chat(&ws, cx, |c| c.title_generated));
 }
 
 /// A chat that already carries a real title — resumed, duplicated, or
