@@ -174,6 +174,7 @@ mod setup_script;
 mod shortcuts;
 #[cfg(test)]
 mod shortcuts_tests;
+mod sidebar_filter;
 #[cfg(test)]
 mod sidebar_resize_tests;
 #[cfg(test)]

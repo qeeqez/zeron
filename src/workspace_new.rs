@@ -73,6 +73,7 @@ impl Workspace {
             git: crate::changes::ChangesGit::new(window, cx),
             diff_mode: crate::changes_diff::DiffMode::from_name(&settings.diff_mode),
             search: inputs.search,
+            sidebar_filters: crate::sidebar_filter::SidebarFilters::default(),
             scroller: inputs.scroller,
             model: providers.iter().find(|p| p.id == selected_provider).map_or_else(SharedString::default, |p| {
                 crate::model_catalog::resolve_model(

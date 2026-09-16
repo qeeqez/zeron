@@ -1,8 +1,8 @@
+mod filter;
 mod group;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
-use gpui_kit::component::input::Input;
 
 use gpui_kit::component::sidebar::{Sidebar, SidebarCollapsible};
 use gpui_kit::component::theme::ActiveTheme;
@@ -48,6 +48,16 @@ impl Workspace {
     pub fn render_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let collapsed = self.sidebar_collapsed;
         let tab = self.sidebar_tab;
+        // Computed before the header so the filter row can show "N of M".
+        let query = self.search.read(cx).value().to_lowercase();
+        let filtered = self.sidebar_visible(&query);
+        let archived: Vec<usize> = (0..self.chats.len())
+            .filter(|ix| {
+                self.chats[*ix].archived
+                    && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query))
+                    && self.sidebar_filters.matches(&self.chats[*ix])
+            })
+            .collect();
         let header = div()
             .w_full()
             .flex()
@@ -67,8 +77,12 @@ impl Workspace {
                     .child(tab_button(SidebarTab::Chats, tab, cx))
                     .child(tab_button(SidebarTab::Files, tab, cx)),
             )
-            // The chat search only makes sense on the Chats tab.
-            .when(tab == SidebarTab::Chats, |d| d.child(self.search_row(cx)));
+            // The chat search and its filter chips only make sense on the
+            // Chats tab.
+            .when(tab == SidebarTab::Chats, |d| {
+                d.child(self.search_row(cx))
+                    .child(self.filter_row(filtered.len() + archived.len(), self.chats.len(), cx))
+            });
 
         let new_chat = crate::views::nav_row::NavRow::new("new-chat", "New chat")
             .icon(IconName::Plus)
@@ -87,11 +101,6 @@ impl Workspace {
                 .on_click(cx.listener(|this, _, _, cx| this.toggle_resume(cx)))
         });
 
-        let query = self.search.read(cx).value().to_lowercase();
-        let filtered = self.sidebar_order(&query);
-        let archived: Vec<usize> = (0..self.chats.len())
-            .filter(|ix| self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query)))
-            .collect();
         let ws = cx.entity();
         let mut row_of = |ix: usize| super::sidebar_row::chat_row(&self.chats[ix], ix, self, cx);
         // Folders lead the list (collapsible); unfiled chats fall under
@@ -122,6 +131,12 @@ impl Workspace {
                 .collect();
             let label = if self.sessions_loading { "Resume — loading…" } else { "Resume" };
             groups.insert(0, group::ChatGroup::new(label).children(items));
+        }
+
+        // A narrowing search (query or chips) that matched nothing gets a
+        // muted placeholder row — same shape as the settings nav's.
+        if filtered.is_empty() && archived.is_empty() && (!query.is_empty() || self.sidebar_filters.any()) {
+            groups.push(filter::no_match_group());
         }
 
         // Plan + Scheduled panel rows — their suffixes are the live
@@ -253,27 +268,6 @@ impl Workspace {
     pub fn set_sidebar_tab(&mut self, tab: SidebarTab, cx: &mut Context<Self>) {
         self.sidebar_tab = tab;
         cx.notify();
-    }
-
-    /// The chat-list search field — only mounted on the Chats tab.
-    fn search_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .items_center()
-            .gap_1()
-            .child(div().flex_1().child(Input::new(&self.search).prefix(IconName::Search).appearance(true)))
-            .when(!self.search.read(cx).value().is_empty(), |d| {
-                d.child(
-                    div()
-                        .id("search-clear")
-                        .cursor_pointer()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(IconName::X)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.search.update(cx, |s, cx| s.set_value("", window, cx));
-                        })),
-                )
-            })
     }
 }
 

@@ -74,6 +74,9 @@ pub struct Workspace {
     pub resizing_sidebar: bool,
     pub composer: Entity<TextareaState>,
     pub search: Entity<InputState>,
+    /// Sidebar filter chips under the chat search — ANDed with the title
+    /// query (see `crate::sidebar_filter`). Runtime-only, never persisted.
+    pub sidebar_filters: crate::sidebar_filter::SidebarFilters,
     pub scroller: Entity<MessageScrollerState>,
     pub model: SharedString,
     /// Selected provider instance id — an entry in `providers`. The
