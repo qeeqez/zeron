@@ -198,6 +198,16 @@ impl Workspace {
             // settings selection — the picker shows the active thread.
             this.restore_thread_selection(cx);
         }
+        // Stale-worktree hygiene: drop orphaned `thread-*` checkouts no
+        // chat owns (a deleted chat's cleanup never ran, a crash). Only
+        // clean worktrees go — dirty ones stay for Settings → Project.
+        // Skipped when another window already owns this project: its live
+        // chats aren't all in `this.chats` yet (a worktree chat's file
+        // lands after `git worktree add`), so pruning could eat a
+        // just-created checkout.
+        if crate::lifecycle::project_window(this.project.root(), cx).is_none() {
+            crate::worktree::prune_orphans(this.project.root(), &this.chats);
+        }
         this.apply_theme(window, cx);
         // "system" follows the OS — re-resolve when the appearance flips.
         window

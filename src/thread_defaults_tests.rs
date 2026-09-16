@@ -190,6 +190,39 @@ fn worktree_mode_creates_plumbs_cwd_and_cleans_up() {
 }
 
 #[test]
+fn worktree_mode_delete_keeps_a_dirty_worktree() {
+    let Some(project) = temp_repo("wtdirty") else { return };
+    let root = project.root().to_path_buf();
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app, "wtdirty");
+    cx.update(|_, cx| {
+        ws.update(cx, |this, cx| {
+            this.project = project.clone();
+            this.default_workspace = crate::worktree::WorkspaceMode::Worktree;
+            this.new_chat(cx);
+        });
+    });
+    let wt = cx.update(|_, cx| ws.read(cx).chats[ws.read(cx).active].workdir.clone());
+    let wt = std::path::PathBuf::from(wt);
+    // Uncommitted work in the checkout — delete must not discard it.
+    std::fs::write(wt.join("wip.txt"), "x").unwrap();
+    cx.update(|window, cx| {
+        ws.update(cx, |this, cx| {
+            let ix = this.active;
+            this.delete_chat_now(ix, window, cx);
+            assert!(wt.exists(), "dirty worktree survives the chat delete");
+            let note = this.activity.entries.last().expect("a feed note records the leftover");
+            assert_eq!(note.kind, crate::activity::ActivityKind::Note);
+            assert!(note.body.contains("uncommitted changes"), "note: {}", note.body);
+        });
+    });
+    // The orphan is still registered — `git worktree list` stays honest.
+    let listed = crate::git::git(&root, &["worktree", "list"]).unwrap_or_default();
+    assert!(listed.contains(".worktrees"), "worktree list: {listed}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn effort_is_per_thread_and_reaches_turn_context() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app, "effort");

@@ -17,10 +17,17 @@ impl Workspace {
             return;
         }
         let title = self.chats[index].title.clone();
+        let chat = &self.chats[index];
+        // A dirty worktree survives the delete — say so up front.
+        let detail = if chat.worktree && !crate::worktree::is_clean(std::path::Path::new(&chat.workdir)) {
+            "This cannot be undone. Its worktree has uncommitted changes and will be left on disk."
+        } else {
+            "This cannot be undone."
+        };
         let rx = window.prompt(
             gpui_kit::PromptLevel::Warning,
             &format!("Delete “{title}”?"),
-            Some("This cannot be undone."),
+            Some(detail),
             &[gpui_kit::PromptButton::ok("Delete"), gpui_kit::PromptButton::cancel("Cancel")],
             cx,
         );
@@ -44,10 +51,17 @@ impl Workspace {
             self.renaming = None;
         }
         // A worktree thread's checkout goes with it — remove before the
-        // chat drops so the path is still known.
-        crate::worktree::remove_for(self.project.root(), &self.chats[index]);
+        // chat drops so the path is still known. A dirty checkout survives
+        // (`remove` refuses it); the feed records the leftover.
+        let kept = match crate::worktree::remove_for(self.project.root(), &self.chats[index]) {
+            crate::worktree::Removal::Kept(reason) => Some(Self::worktree_kept_entry(&self.chats[index], &reason)),
+            crate::worktree::Removal::Removed => None,
+        };
         // Chat drop kills the turn: the stream's Drop kills the child.
         self.chats.remove(index);
+        if let Some(entry) = kept {
+            self.push_activity(entry);
+        }
         // Deleting the last (temporary) chat leaves the workspace empty —
         // open a fresh normal chat so there's always something selected.
         if self.chats.is_empty() {
@@ -93,9 +107,11 @@ impl Workspace {
                 return;
             }
             let _ = this.update(cx, |this, cx| {
-                // Worktree threads' checkouts go with their chats.
-                crate::worktree::remove_all(this.project.root(), &this.chats);
+                // Worktree threads' checkouts go with their chats; dirty
+                // ones survive and get a feed note so they aren't lost.
+                let kept = crate::worktree::remove_all(this.project.root(), &this.chats);
                 this.chats.clear();
+                this.note_kept_worktrees(&kept);
                 this.search_match_ix = 0;
                 this.renaming = None;
                 this.new_chat(cx);

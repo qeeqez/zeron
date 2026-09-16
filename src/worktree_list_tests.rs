@@ -117,9 +117,9 @@ fn worktree_rows_list_live_and_orphan_dirs() {
         assert!(window.find("worktree-row-thread-orphan").visible(), "orphan row renders");
         assert!(window.find("worktree-reveal-thread-live").visible(), "every row reveals");
         assert!(window.find("worktree-reveal-thread-orphan").visible());
-        // Deleting a live thread's checkout would break it — orphans only.
-        assert!(window.try_find("worktree-delete-thread-live").is_none(), "live worktree offers no delete");
-        assert!(window.find("worktree-delete-thread-orphan").visible(), "orphan offers delete");
+        // Removing a live thread's checkout would break it — orphans only.
+        assert!(window.try_find("worktree-remove-thread-live").is_none(), "live worktree offers no remove");
+        assert!(window.find("worktree-remove-thread-orphan").visible(), "orphan offers remove");
     });
 }
 
@@ -149,38 +149,43 @@ fn reveal_issues_open_dash_r() {
 }
 
 #[test]
-fn orphan_delete_confirms_then_runs_git_worktree_remove() {
+fn orphan_remove_confirms_then_runs_git_worktree_remove() {
     let mut app = TestAppContext::single();
     let (ws, cx, _live, orphan) = mount_with_worktrees(&mut app, "delete");
     GIT_ARGV.lock().clear();
     cx.update(|window, cx| {
         open_project_section(&ws, window, cx);
-        window.click("worktree-delete-thread-orphan", cx);
+        window.click("worktree-remove-thread-orphan", cx);
     });
     // `cx`'s borrow of `app` ends here — the prompt helpers live on `app`.
-    assert!(app.has_pending_prompt(), "delete asks for confirmation");
-    app.simulate_prompt_answer("Delete");
+    assert!(app.has_pending_prompt(), "remove asks for confirmation");
+    app.simulate_prompt_answer("Remove");
     app.run_until_parked();
     assert!(!orphan.exists(), "the orphan dir is gone");
     let argv = GIT_ARGV.lock();
     let remove = argv.iter().find(|a| a.starts_with(&["worktree".to_string(), "remove".to_string()]));
     let remove = remove.unwrap_or_else(|| panic!("expected `git worktree remove`, got {argv:?}"));
     let argv: Vec<&str> = remove.iter().map(String::as_str).collect();
-    assert_eq!(argv, ["worktree", "remove", "--force", &*orphan.to_string_lossy()], "orphan delete runs git worktree remove --force");
+    assert_eq!(argv, ["worktree", "remove", &*orphan.to_string_lossy()], "orphan remove runs git worktree remove");
 }
 
 #[test]
-fn orphan_delete_cancel_leaves_the_dir() {
+fn orphan_remove_cancel_leaves_the_dir() {
     let mut app = TestAppContext::single();
     let (ws, cx, _live, orphan) = mount_with_worktrees(&mut app, "cancel");
     GIT_ARGV.lock().clear();
     cx.update(|window, cx| {
         open_project_section(&ws, window, cx);
-        window.click("worktree-delete-thread-orphan", cx);
+        window.click("worktree-remove-thread-orphan", cx);
     });
-    assert!(app.has_pending_prompt(), "delete asks for confirmation");
+    assert!(app.has_pending_prompt(), "remove asks for confirmation");
     app.simulate_prompt_answer("Cancel");
     app.run_until_parked();
-    assert!(orphan.exists(), "cancelled delete keeps the dir");
-    assert!(GIT_ARGV.lock().is_empty(), "no git ran on cancel");
+    assert!(orphan.exists(), "cancelled remove keeps the dir");
+    // Rendering the list probes each dir (rev-parse/status) — the check is
+    // that no REMOVAL ran, not that git never ran.
+    assert!(
+        !GIT_ARGV.lock().iter().any(|a| a.starts_with(&["worktree".to_string(), "remove".to_string()])),
+        "no worktree remove on cancel"
+    );
 }

@@ -64,39 +64,117 @@ pub(crate) fn create(project: &crate::project::Project, chat_id: u64) -> Result<
     Ok(dir)
 }
 
+/// What `remove` did with a worktree dir.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Removal {
+    /// The checkout is gone (or was already missing — the registry entry
+    /// is pruned either way).
+    Removed,
+    /// The checkout survives: git refused to remove it (uncommitted work,
+    /// a lock). The string is the user-facing reason.
+    Kept(String),
+}
+
 /// Remove the chat's worktree checkout under `root`, if it has one —
 /// the single cleanup entry point for delete/clear/retention paths.
-pub(crate) fn remove_for(root: &Path, chat: &crate::model::Chat) {
-    if chat.worktree {
-        remove(root, Path::new(&chat.workdir));
-    }
+/// `Kept` means the worktree had uncommitted work and stays on disk.
+pub(crate) fn remove_for(root: &Path, chat: &crate::model::Chat) -> Removal {
+    if chat.worktree { remove(root, Path::new(&chat.workdir)) } else { Removal::Removed }
 }
 
 /// Remove every chat's worktree under `root` — the clear-all path.
-pub(crate) fn remove_all(root: &Path, chats: &[crate::model::Chat]) {
-    for chat in chats {
-        remove_for(root, chat);
+/// Returns the kept dirs (dirty checkouts stay on disk).
+pub(crate) fn remove_all(root: &Path, chats: &[crate::model::Chat]) -> Vec<PathBuf> {
+    chats
+        .iter()
+        .filter_map(|c| match remove_for(root, c) {
+            Removal::Kept(_) => Some(PathBuf::from(&c.workdir)),
+            Removal::Removed => None,
+        })
+        .collect()
+}
+
+/// Remove a thread's worktree — clean checkouts only. `git worktree
+/// remove` (no `--force`) refuses a dirty or locked tree, which is the
+/// `Kept` case: the dir and its registry entry stay for the settings
+/// list. When the dir is already gone the registry entry is pruned so
+/// `git worktree list` stays clean; a leftover dir that isn't a git
+/// worktree at all (a half-created checkout) is deleted directly.
+pub(crate) fn remove(root: &Path, path: &Path) -> Removal {
+    let arg = path.to_string_lossy().into_owned();
+    match git_err(root, &["worktree", "remove", &arg]) {
+        Ok(_) => Removal::Removed,
+        Err(e) if is_git_root(path) => Removal::Kept(kept_reason(&e)),
+        Err(_) => {
+            // Not a registered worktree — a plain leftover dir. Delete it;
+            // `worktree prune` also clears the registry entry when the dir
+            // was already missing.
+            let _ = std::fs::remove_dir_all(path);
+            let _ = git_err(root, &["worktree", "prune"]);
+            Removal::Removed
+        },
     }
 }
 
-/// Remove a thread's worktree. `git worktree remove --force` handles dirty
-/// trees; when the dir is already gone (or git fails) the entry is pruned
-/// so `git worktree list` stays clean.
-pub(crate) fn remove(root: &Path, path: &Path) {
-    let arg = path.to_string_lossy().into_owned();
-    if git_err(root, &["worktree", "remove", "--force", &arg]).is_err() {
-        let _ = std::fs::remove_dir_all(path);
-        let _ = git_err(root, &["worktree", "prune"]);
+/// Drop orphaned thread worktrees under `root` — dirs named `thread-*`
+/// that no chat's `workdir` points at (a deleted chat whose cleanup never
+/// ran, a crash). Only registered git worktrees are touched, and only
+/// clean ones: `remove` keeps a dirty checkout rather than discarding
+/// uncommitted work. Returns the kept orphans. Runs at workspace open.
+pub(crate) fn prune_orphans(root: &Path, chats: &[crate::model::Chat]) -> Vec<PathBuf> {
+    // Clear registry entries whose dirs vanished by other means first.
+    let _ = git_err(root, &["worktree", "prune"]);
+    list_live(root, chats)
+        .into_iter()
+        .filter(|w| w.chat_title.is_none())
+        .filter(|w| w.path.file_name().is_some_and(|n| n.to_string_lossy().starts_with("thread-")))
+        .filter(|w| is_git_root(&w.path))
+        .filter(|w| matches!(remove(root, &w.path), Removal::Kept(_)))
+        .map(|w| w.path)
+        .collect()
+}
+
+/// Safe-to-remove check for the settings list: a dir that isn't a git
+/// worktree has no tracked state to lose; a real worktree is clean when
+/// `git status` reports no modified or untracked files — the same bar
+/// `git worktree remove` applies.
+pub(crate) fn is_clean(path: &Path) -> bool {
+    if !is_git_root(path) {
+        return true;
+    }
+    git_err(path, &["status", "--porcelain"]).is_ok_and(|s| s.trim().is_empty())
+}
+
+/// `path` is the root of a git working tree (main checkout or linked
+/// worktree) — `rev-parse --show-toplevel` resolves to itself. A plain
+/// dir inside a repo reports the PARENT's root instead, so nested repos
+/// and worktrees are detected while leftovers are not.
+fn is_git_root(path: &Path) -> bool {
+    let Ok(me) = path.canonicalize() else { return false };
+    git_err(path, &["rev-parse", "--show-toplevel"]).is_ok_and(|top| Path::new(top.trim()).canonicalize().is_ok_and(|top| top == me))
+}
+
+/// The `Kept` reason for a refused `worktree remove`: dirty/locked trees
+/// read as "uncommitted changes", anything else carries git's first
+/// stderr line.
+fn kept_reason(stderr: &str) -> String {
+    if stderr.contains("modified or untracked") || stderr.contains("locked") {
+        "uncommitted changes".to_string()
+    } else {
+        stderr.lines().next().unwrap_or("unknown reason").to_string()
     }
 }
 
 /// One live worktree dir under `.worktrees/` plus the title of the chat
 /// that owns it — `None` marks an orphan (no chat's `workdir` points at
-/// the dir), the only entries the settings list may delete.
+/// the dir), the only entries the settings list may delete. `clean` is
+/// the safe-to-remove check (`is_clean`): dirty orphans keep their
+/// Remove button disabled.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct WorktreeInfo {
     pub path: PathBuf,
     pub chat_title: Option<String>,
+    pub clean: bool,
 }
 
 /// Scan `<root>/.worktrees/` for live per-thread checkouts, matching each
@@ -116,7 +194,7 @@ pub(crate) fn list_live(root: &Path, chats: &[crate::model::Chat]) -> Vec<Worktr
     dirs.into_iter()
         .map(|path| {
             let chat_title = chats.iter().find(|c| Path::new(&c.workdir) == path).map(|c| c.title.to_string());
-            WorktreeInfo { path, chat_title }
+            WorktreeInfo { clean: is_clean(&path), path, chat_title }
         })
         .collect()
 }
@@ -182,9 +260,9 @@ impl Workspace {
             .unwrap_or_else(|| path.display().to_string());
         let rx = window.prompt(
             PromptLevel::Warning,
-            &format!("Delete worktree “{name}”?"),
+            &format!("Remove worktree “{name}”?"),
             Some("No thread uses this checkout. This cannot be undone."),
-            &[PromptButton::ok("Delete"), PromptButton::cancel("Cancel")],
+            &[PromptButton::ok("Remove"), PromptButton::cancel("Cancel")],
             cx,
         );
         cx.spawn(async move |this, cx| {

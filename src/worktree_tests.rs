@@ -58,6 +58,74 @@ mod tests {
     }
 
     #[test]
+    fn remove_keeps_a_dirty_worktree() {
+        let Some(root) = temp_repo("dirty") else { return };
+        let project = crate::project::Project::open(&root);
+        let dir = crate::worktree::create(&project, 3).unwrap();
+        // Uncommitted work — an untracked file counts, same as git's own
+        // `worktree remove` refusal.
+        std::fs::write(dir.join("uncommitted.txt"), "wip").unwrap();
+        let outcome = crate::worktree::remove(project.root(), &dir);
+        assert!(matches!(outcome, crate::worktree::Removal::Kept(_)), "dirty checkout survives: {outcome:?}");
+        assert!(dir.exists());
+        // Still registered — `git worktree list` keeps pointing at it.
+        let listed = crate::git::git(project.root(), &["worktree", "list"]).unwrap_or_default();
+        assert!(listed.contains("thread-3"), "worktree list: {listed}");
+        // Once clean, removal works.
+        std::fs::remove_file(dir.join("uncommitted.txt")).unwrap();
+        assert_eq!(crate::worktree::remove(project.root(), &dir), crate::worktree::Removal::Removed);
+        assert!(!dir.exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn is_clean_marks_dirty_and_plain_dirs() {
+        let Some(root) = temp_repo("clean") else { return };
+        let project = crate::project::Project::open(&root);
+        let dir = crate::worktree::create(&project, 4).unwrap();
+        assert!(crate::worktree::is_clean(&dir), "fresh worktree is clean");
+        std::fs::write(dir.join("wip.txt"), "x").unwrap();
+        assert!(!crate::worktree::is_clean(&dir), "untracked file makes it dirty");
+        // A plain dir (not a worktree at all) has no tracked state to lose.
+        let plain = project.worktrees_dir().join("thread-leftover");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert!(crate::worktree::is_clean(&plain), "plain leftover dir counts as clean");
+        crate::worktree::remove(project.root(), &dir);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn prune_orphans_drops_clean_keeps_dirty_and_owned() {
+        let Some(root) = temp_repo("prune") else { return };
+        let project = crate::project::Project::open(&root);
+        let clean_orphan = crate::worktree::create(&project, 10).unwrap();
+        let dirty_orphan = crate::worktree::create(&project, 11).unwrap();
+        std::fs::write(dirty_orphan.join("wip.txt"), "x").unwrap();
+        let owned = crate::worktree::create(&project, 12).unwrap();
+        // A plain leftover dir is not a git worktree — prune leaves it for
+        // the settings list's manual Remove.
+        let plain = project.worktrees_dir().join("thread-99");
+        std::fs::create_dir_all(&plain).unwrap();
+        let mut chat = crate::model::Chat::new(12, "live");
+        chat.workdir = owned.to_string_lossy().into_owned();
+        chat.worktree = true;
+
+        let kept = crate::worktree::prune_orphans(project.root(), &[chat]);
+        assert!(!clean_orphan.exists(), "clean orphan removed");
+        assert!(dirty_orphan.exists(), "dirty orphan kept");
+        assert_eq!(kept, vec![dirty_orphan.clone()]);
+        assert!(owned.exists(), "a chat's worktree is never an orphan");
+        assert!(plain.exists(), "plain dirs aren't auto-pruned");
+        // The registry agrees: only the dirty orphan and the owned one.
+        let listed = crate::git::git(project.root(), &["worktree", "list"]).unwrap_or_default();
+        assert!(!listed.contains("thread-10"), "worktree list: {listed}");
+        assert!(listed.contains("thread-11"));
+        assert!(listed.contains("thread-12"));
+        crate::worktree::remove(project.root(), &owned);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn create_fails_outside_a_repo() {
         let dir = std::env::temp_dir().join(format!("rixlcode-wt-{}-norepo", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

@@ -254,7 +254,7 @@ pub fn open_chat_window(project: crate::project::Project, key: crate::chat_windo
 }
 
 /// The open workspace window bound to `root`, if any.
-fn project_window(root: &std::path::Path, cx: &mut App) -> Option<AnyWindowHandle> {
+pub(crate) fn project_window(root: &std::path::Path, cx: &mut App) -> Option<AnyWindowHandle> {
     cx.windows().into_iter().find(|handle| {
         handle
             .update(cx, |view, _, cx| {

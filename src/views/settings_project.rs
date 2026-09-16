@@ -157,8 +157,9 @@ fn setup_script_block(s: &SettingsView, cx: &App) -> impl IntoElement {
 
 /// The "Thread worktrees" block — one row per live dir under
 /// `.worktrees/`, rebuilt every render so opening settings always shows
-/// the current set. Orphans (no chat owns the dir) get a Delete button;
-/// rows for live threads don't — removing one would break the thread.
+/// the current set. Orphans (no chat owns the dir) get a Remove button —
+/// enabled only while the checkout is clean; rows for live threads don't
+/// get one — removing one would break the thread.
 fn worktrees_block(s: &SettingsView, cx: &App) -> impl IntoElement {
     let worktrees = {
         let ws = s.ws.read(cx);
@@ -185,7 +186,8 @@ fn worktrees_block(s: &SettingsView, cx: &App) -> impl IntoElement {
 }
 
 /// One worktree row: the dir name, the owning thread's title (or
-/// "orphan"), the full path, then Reveal — and Delete for orphans only.
+/// "orphan"), the full path, then Reveal — and Remove for orphans only,
+/// disabled while the checkout has uncommitted changes.
 fn worktree_row(info: &WorktreeInfo, s: &SettingsView, cx: &App) -> impl IntoElement {
     let name = info
         .path
@@ -193,6 +195,7 @@ fn worktree_row(info: &WorktreeInfo, s: &SettingsView, cx: &App) -> impl IntoEle
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| info.path.display().to_string());
     let owner = info.chat_title.clone().unwrap_or_else(|| "orphan".to_string());
+    let state = if info.clean { owner } else { format!("{owner} · dirty") };
     let path = info.path.display().to_string();
     let (ws_reveal, ws_delete) = (s.ws.clone(), s.ws.clone());
     let (path_reveal, path_delete) = (info.path.clone(), info.path.clone());
@@ -215,9 +218,7 @@ fn worktree_row(info: &WorktreeInfo, s: &SettingsView, cx: &App) -> impl IntoEle
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
                         .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .child(format!("{owner} · {path}")),
+                        .child(format!("{state} · {path}")),
                 ),
         )
         .child(div().flex_1())
@@ -233,11 +234,17 @@ fn worktree_row(info: &WorktreeInfo, s: &SettingsView, cx: &App) -> impl IntoEle
         )
         .when(info.chat_title.is_none(), |d| {
             d.child(
-                Button::new(SharedString::from(format!("worktree-delete-{name}")))
-                    .label("Delete")
+                Button::new(SharedString::from(format!("worktree-remove-{name}")))
+                    .label("Remove")
                     .icon(IconName::Trash)
                     .small()
                     .danger()
+                    .disabled(!info.clean)
+                    .tooltip(if info.clean {
+                        "Remove this orphaned checkout"
+                    } else {
+                        "Uncommitted changes — clean it up first"
+                    })
                     .on_click(move |_, window, cx| {
                         ws_delete.update(cx, |this, cx| this.remove_orphan_worktree(path_delete.clone(), window, cx));
                     }),

@@ -186,6 +186,7 @@ fn entry_row(ix: usize, entry: &ActivityEntry, cx: &mut Context<Workspace>) -> A
         ActivityKind::TurnFinished => (IconName::CircleCheck, cx.theme().success),
         ActivityKind::Approval => (IconName::ShieldAlert, cx.theme().warning),
         ActivityKind::Error => (IconName::CircleX, cx.theme().danger),
+        ActivityKind::Note => (IconName::TriangleAlert, cx.theme().warning),
     };
     div()
         .id(("activity-entry", ix))

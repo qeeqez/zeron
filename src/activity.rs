@@ -27,6 +27,9 @@ pub enum ActivityKind {
     Approval,
     /// The turn failed.
     Error,
+    /// Housekeeping worth seeing — e.g. a deleted chat's dirty worktree
+    /// left on disk.
+    Note,
 }
 
 /// One feed row. `chat_title`/`body` are snapshots — a later rename or
@@ -179,9 +182,39 @@ impl Workspace {
 
     /// Push an entry and mirror the feed to disk — every mutation persists
     /// so the file always matches what the panel shows.
-    fn push_activity(&mut self, entry: ActivityEntry) {
+    pub(crate) fn push_activity(&mut self, entry: ActivityEntry) {
         self.activity.push(entry);
         self.persist_activity();
+    }
+
+    /// Record that a deleted chat's worktree stayed on disk — `remove`
+    /// refused it (uncommitted work), so the feed keeps a pointer. Built
+    /// before the chat drops: the entry snapshots its title and
+    /// `created_at` link.
+    pub(crate) fn worktree_kept_entry(chat: &Chat, reason: &str) -> ActivityEntry {
+        ActivityEntry::new(ActivityKind::Note, chat, format!("Worktree kept ({reason}): {}", chat.workdir))
+    }
+
+    /// The clear-all variant of `worktree_kept_entry`: every chat is gone,
+    /// so the note is synthetic — `chat_created` matches nothing and the
+    /// row's click is inert.
+    pub(crate) fn note_kept_worktrees(&mut self, kept: &[std::path::PathBuf]) {
+        if kept.is_empty() {
+            return;
+        }
+        let names = kept
+            .iter()
+            .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.push_activity(ActivityEntry {
+            kind: ActivityKind::Note,
+            chat_title: "Worktrees".into(),
+            body: format!("{} worktree(s) left on disk (uncommitted changes): {names}", kept.len()),
+            chat_created: SystemTime::now(),
+            at: SystemTime::now(),
+            unread: true,
+        });
     }
 
     /// Write the feed into the project store.
