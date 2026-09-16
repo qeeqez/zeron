@@ -1,7 +1,11 @@
-//! Per-message operations: recall, copy, retry — plus the queued-message
-//! edit path (a queued item reopens in the composer). Message rating lives
-//! in `crate::feedback`; edit-and-resend of a sent user message lives in
-//! `crate::chat_edit`.
+//! Per-message operations: recall, retry, quote — plus the queued-message
+//! edit path (a queued item reopens in the composer). Copy variants live in
+//! `chat_msg::copy`; message rating lives in `crate::feedback`;
+//! edit-and-resend of a sent user message lives in `crate::chat_edit`.
+
+pub(crate) mod copy;
+#[cfg(test)]
+mod copy_tests;
 
 use std::rc::Rc;
 
@@ -103,21 +107,6 @@ impl Workspace {
             s.set_value(text, window, cx);
             s.focus(window, cx);
         });
-    }
-
-    pub fn copy_message(&self, ix: usize, cx: &mut Context<Self>) {
-        let Some(msg) = self.chats[self.active].messages.get(ix) else { return };
-        let text = match &msg.kind {
-            MessageKind::Text(t) => t.to_string(),
-            MessageKind::Tool(t) => format!("{}: {}\n{}", t.name, t.detail, t.output),
-            MessageKind::Diff(d) => format!("{} (+{} -{})\n{}", d.path, d.added, d.removed, d.hunks),
-            MessageKind::Plan(p) => p.markdown(),
-            MessageKind::Approval(a) => {
-                let outcome = a.decision.map_or("pending", |d| d.label());
-                format!("{}: {} ({})", a.kind.label(), a.detail, outcome)
-            },
-        };
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
     }
 
     /// Re-run the reply for the last assistant message.

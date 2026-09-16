@@ -116,6 +116,24 @@ pub struct ChatMessage {
     pub attachments: Vec<SharedString>,
 }
 
+impl ChatMessage {
+    /// The message's Markdown source — what "Copy as Markdown" writes and
+    /// what a quote reproduces. Text messages already store their source;
+    /// cards serialize to the same Markdown shape `export` writes.
+    pub fn markdown(&self) -> String {
+        match &self.kind {
+            MessageKind::Text(t) => t.to_string(),
+            MessageKind::Tool(t) => format!("`{} {}`\n```\n{}\n```", t.name, t.detail, t.output),
+            MessageKind::Diff(d) => format!("`{}` +{} -{}\n```diff\n{}\n```", d.path, d.added, d.removed, d.hunks),
+            MessageKind::Plan(p) => p.markdown(),
+            MessageKind::Approval(a) => {
+                let outcome = a.decision.map_or("pending", |d| d.label());
+                format!("**{}:** `{}` — {}", a.kind.label(), a.detail, outcome)
+            },
+        }
+    }
+}
+
 /// Token counts from a completed backend turn.
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Usage {
@@ -334,22 +352,4 @@ impl Drop for Agent {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn complete_turn_records_duration() {
-        let mut chat = Chat::new(1, "t");
-        chat.started_at = Some(Instant::now() - std::time::Duration::from_secs(3));
-        chat.complete_turn();
-        assert!(chat.started_at.is_none());
-        assert!(chat.last_turn.is_some_and(|d| d.as_secs() >= 3));
-    }
-
-    #[test]
-    fn complete_turn_without_start_records_nothing() {
-        let mut chat = Chat::new(1, "t");
-        chat.complete_turn();
-        assert!(chat.last_turn.is_none());
-    }
-}
+mod tests;

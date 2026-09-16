@@ -14,6 +14,9 @@ parking_lot = "0.12"
 ureq = { version = "3", features = ["json"] }
 portable-pty = "0.9.0"
 vt100 = "0.16.2"
+# Same Markdown parser gpui-base renders with — copy/quote reuse its AST so
+# copied text matches the rendered bubble (see `chat_msg::copy`).
+markdown = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Sidebar vibrancy: gpui-pre's Blurred window background is hardwired to

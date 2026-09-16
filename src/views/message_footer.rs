@@ -1,5 +1,5 @@
 //! The message row's hover-revealed footer: ghost action icons (copy,
-//! edit, view-raw, retry, rating, read-aloud) plus the turn duration,
+//! quote, edit, view-raw, retry, rating, read-aloud) plus the turn duration,
 //! token usage and timestamp. A thumbs-down also mounts a "what went
 //! wrong" note editor under the row (see `crate::feedback`).
 
@@ -47,9 +47,9 @@ fn action_icon(
         .on_click(on_click)
 }
 
-/// Hover-revealed action row under a message: copy, edit (user messages),
-/// view-raw, retry (last assistant reply only), rating, read-aloud, then
-/// the turn duration, token usage and timestamp.
+/// Hover-revealed action row under a message: copy, quote, edit (user
+/// messages), view-raw, retry (last assistant reply only), rating,
+/// read-aloud, then the turn duration, token usage and timestamp.
 pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Option<Entity<MarkdownState>>, cx: &mut App) -> Div {
     let MsgCtx { ix, is_last, msg, .. } = mc;
     let muted = hsla(0.0, 0.0, 0.55, 1.0);
@@ -60,6 +60,13 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
         let ws = ws.clone();
         row = row.child(action_icon(("copy", ix), IconName::Copy, muted, &group, move |_, _, cx| {
             ws.update(cx, |this, cx| this.copy_message(ix, cx));
+        }));
+    }
+    {
+        // Quote seeds the composer with the message as a `>` reply block.
+        let ws = ws.clone();
+        row = row.child(action_icon(("quote", ix), IconName::Quote, muted, &group, move |_, window, cx| {
+            ws.update(cx, |this, cx| this.quote_message(ix, window, cx));
         }));
     }
     if msg.role == Role::User {

@@ -1,5 +1,5 @@
 use gpui_kit::assets::IconName;
-use gpui_kit::component::menu::ContextMenuExt;
+use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_kit::component::message::{Message, MessageAlignment, MessageContent, MessageFooter, MessageHeader};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -125,6 +125,9 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
     message = message.footer(MessageFooter::new().child(super::message_footer::message_footer(mc, ws, md_state.clone(), cx)));
     let ws_menu = ws.clone();
     let ws_revert = ws.clone();
+    // SharedString clones cheap — the menu closure scans it for fenced
+    // blocks only when the menu actually opens.
+    let source = text.clone();
     let group = SharedString::from(format!("msg-{ix}"));
     div()
         .id(("msg", ix))
@@ -156,52 +159,52 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
             )
         })
         .context_menu(move |menu, _window, cx| {
-            let ws_copy = ws_menu.clone();
-            let ws_retry = ws_menu.clone();
-            let ws_edit = ws_menu.clone();
-            let ws_undo = ws_menu.clone();
-            let menu = menu.item(
-                gpui_kit::component::menu::PopupMenuItem::new("Copy")
-                    .icon(IconName::Copy)
-                    .on_click(move |_, _, cx| {
-                        ws_copy.update(cx, |this, cx| this.copy_message(ix, cx));
-                    }),
-            );
+            // Copy variants stay grouped at the top; Copy Code only appears
+            // when the message actually has fenced blocks.
+            let menu = menu
+                .item(msg_item("Copy", IconName::Copy, &ws_menu, move |this, _w, cx| this.copy_message(ix, cx)))
+                .item(msg_item("Copy as Markdown", IconName::FileCode, &ws_menu, move |this, _w, cx| {
+                    this.copy_message_markdown(ix, cx)
+                }))
+                .when(!crate::chat_msg::copy::code_blocks(&source).is_empty(), |menu| {
+                    menu.item(msg_item("Copy Code", IconName::SquareCode, &ws_menu, move |this, _w, cx| {
+                        this.copy_message_code(ix, cx)
+                    }))
+                })
+                .item(msg_item("Quote", IconName::Quote, &ws_menu, move |this, w, cx| this.quote_message(ix, w, cx)))
+                .separator();
             let menu = if let Some(md) = md_state.clone() {
                 let label = if md.read(cx).raw { "View rendered" } else { "View raw" };
-                menu.item(gpui_kit::component::menu::PopupMenuItem::new(label).icon(IconName::Code).on_click(
+                menu.item(PopupMenuItem::new(label).icon(IconName::Code).on_click(
                     super::message_footer::toggle_raw(md, ws_menu.clone(), ix),
                 ))
             } else if checkpointed {
-                menu.item(gpui_kit::component::menu::PopupMenuItem::new("Undo turn").icon(IconName::Undo2).on_click(
-                    move |_, _, cx| {
-                        ws_undo.update(cx, |this, cx| this.revert_to_checkpoint(ix, cx));
-                    },
-                ))
+                menu.item(msg_item("Undo turn", IconName::Undo2, &ws_menu, move |this, _w, cx| {
+                    this.revert_to_checkpoint(ix, cx)
+                }))
             } else {
                 menu
             };
-            let menu =
-                if role == Role::User {
-                    menu.item(gpui_kit::component::menu::PopupMenuItem::new("Edit").icon(IconName::Pencil).on_click(
-                        move |_, window, cx| {
-                            ws_edit.update(cx, |this, cx| this.edit_message(ix, window, cx));
-                        },
-                    ))
-                } else {
-                    menu
-                };
+            let menu = if role == Role::User {
+                menu.item(msg_item("Edit", IconName::Pencil, &ws_menu, move |this, w, cx| this.edit_message(ix, w, cx)))
+            } else {
+                menu
+            };
             if role == Role::Assistant && mc.is_last {
-                menu.item(
-                    gpui_kit::component::menu::PopupMenuItem::new("Retry")
-                        .icon(IconName::RotateCcw)
-                        .on_click(move |_, _, cx| {
-                            ws_retry.update(cx, |this, cx| this.retry_last(cx));
-                        }),
-                )
+                menu.item(msg_item("Retry", IconName::RotateCcw, &ws_menu, move |this, _w, cx| this.retry_last(cx)))
             } else {
                 menu
             }
         })
         .into_any_element()
+}
+
+/// One context-menu item that runs a `Workspace` method on click.
+fn msg_item(
+    label: &'static str, icon: IconName, ws: &Entity<Workspace>, f: impl Fn(&mut Workspace, &mut Window, &mut Context<Workspace>) + 'static,
+) -> PopupMenuItem {
+    let ws = ws.clone();
+    PopupMenuItem::new(label).icon(icon).on_click(move |_, window, cx| {
+        ws.update(cx, |this, cx| f(this, window, cx));
+    })
 }
