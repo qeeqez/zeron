@@ -60,6 +60,7 @@ impl Workspace {
         self.scroller.update(cx, |s, cx| {
             s.reset(count, cx);
         });
+        crate::dock_badge::update(cx);
         cx.notify();
         self.save();
     }
@@ -84,6 +85,7 @@ impl Workspace {
                 this.search_match_ix = 0;
                 this.renaming = None;
                 this.new_chat(cx);
+                crate::dock_badge::update(cx);
             });
         })
         .detach();

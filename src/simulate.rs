@@ -197,6 +197,7 @@ impl Workspace {
         if !is_active {
             chat.unread = true;
         }
+        crate::dock_badge::update(cx);
         self.record_turn_finished(chat_id);
         if is_active {
             self.scroller.update(cx, |s, cx| s.remeasure(cx));

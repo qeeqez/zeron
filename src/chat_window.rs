@@ -56,6 +56,7 @@ impl Workspace {
         };
         if ix == self.active {
             self.chats[ix].unread = false;
+            crate::dock_badge::update(cx);
             cx.notify();
             return;
         }

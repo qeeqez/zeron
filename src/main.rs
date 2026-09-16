@@ -78,6 +78,7 @@ mod composer_testutil;
 mod continuity_tests;
 #[cfg(test)]
 mod diff_mode_tests;
+mod dock_badge;
 mod export;
 mod feedback;
 #[cfg(test)]

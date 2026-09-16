@@ -166,6 +166,12 @@ pub fn open_workspace_window(cx: &mut gpui_kit::AsyncApp) -> gpui_kit::Result<gp
 /// Spawn the launch window — the first workspace window, opened async so
 /// `main`'s run callback returns before window setup runs.
 pub fn spawn_launch_window(cx: &mut App) {
+    // A badge left on the dock tile outlives the process — drop it on quit.
+    cx.on_app_quit(|_| {
+        crate::dock_badge::clear();
+        async {}
+    })
+    .detach();
     cx.spawn(async move |cx| {
         open_workspace_window(cx).expect("failed to open window");
     })
@@ -200,6 +206,9 @@ pub fn open_workspace_window_for(
         move |window, cx| {
             let view = cx.new(|cx| Workspace::for_project(project.clone(), window, cx));
             let ws = view.clone();
+            // Focusing a window clears the dock badge — its job is pulling
+            // the user back, so it's moot while they're already looking.
+            view.update(cx, |_, cx| crate::dock_badge::clear_on_focus(window, cx));
             let frosted = ws.read(cx).sidebar_frosted;
             let handle = window.window_handle();
             window.on_window_should_close(cx, move |window, cx| crate::window::confirm_close(&ws, handle, window, cx));

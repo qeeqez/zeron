@@ -73,6 +73,7 @@ impl Workspace {
         self.editing = None;
         self.find.match_ix = 0;
         self.chats[index].unread = false;
+        crate::dock_badge::update(cx);
         let draft = self.chats[index].draft.clone();
         self.composer.update(cx, |s, cx| {
             s.set_value(draft, window, cx);
@@ -167,6 +168,7 @@ impl Workspace {
         if !is_active {
             chat.unread = true;
         }
+        crate::dock_badge::update(cx);
         self.record_turn_finished(chat_id);
         // The first completed exchange earns the chat a real title —
         // replaces the placeholder unless the user renamed meanwhile.
