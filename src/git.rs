@@ -377,6 +377,12 @@ pub(crate) use pr::{PrChecks, PrState, PrStatus, create_pr, pr_status};
 pub(crate) mod file_diff;
 pub(crate) use file_diff::{file_diff, tracked};
 
+/// Per-file "Discard changes" — split into `git_discard.rs` for the SLOC
+/// cap; re-exported so callers keep using `crate::git::discard_file`.
+#[path = "git_discard.rs"]
+pub(crate) mod discard;
+pub(crate) use discard::discard_file;
+
 /// `git diff` variant with bounded output: reads at most `max_bytes` of
 /// stdout, then kills the child rather than buffering an unbounded diff.
 /// Returns `(output, hit_cap)`. `None` on spawn failure or an exit code

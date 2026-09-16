@@ -6,6 +6,8 @@
 pub(crate) enum GitOp {
     Stage(String),
     Unstage(String),
+    /// Destructive per-file discard — the row's context menu confirms first.
+    Discard(crate::git::FileChange),
     Commit(String),
     /// `commit --amend` — `None` keeps HEAD's message (`--no-edit`).
     CommitAmend(Option<String>),
@@ -36,6 +38,7 @@ impl GitOp {
         let result = match &self {
             Self::Stage(path) => crate::git::stage(dir, path),
             Self::Unstage(path) => crate::git::unstage(dir, path),
+            Self::Discard(change) => crate::git::discard_file(dir, change),
             Self::Commit(message) => crate::git::commit(dir, message),
             Self::CommitAmend(message) => crate::git::commit_amend(dir, message.as_deref()),
             Self::Push => crate::git::push(dir),
@@ -158,6 +161,35 @@ impl Workspace {
     /// fails and its stderr lands as the note.
     pub fn pull_remote(&mut self, cx: &mut Context<Self>) {
         self.run_git_op(GitOp::Pull, cx);
+    }
+
+    /// Discard one file's changes behind a native confirm — the row's
+    /// context menu. Untracked files are deleted outright, so the prompt
+    /// says so; tracked files revert to HEAD. The op re-lists the panel on
+    /// landing, so the row disappears on its own.
+    pub fn discard_change(&mut self, change: &crate::git::FileChange, window: &mut Window, cx: &mut Context<Self>) {
+        let untracked = change.status == crate::git::ChangeStatus::Added && !change.staged;
+        let rx = window.prompt(
+            PromptLevel::Warning,
+            &format!("Discard changes to “{}”?", change.path),
+            Some(if untracked {
+                "The file is untracked and will be deleted. This cannot be undone."
+            } else {
+                "This cannot be undone."
+            }),
+            &[PromptButton::ok("Discard"), PromptButton::cancel("Cancel")],
+            cx,
+        );
+        let mut change = change.clone();
+        change.diff = None;
+        change.diff_load = 0;
+        cx.spawn(async move |this, cx| {
+            if rx.await != Ok(0) {
+                return;
+            }
+            let _ = this.update(cx, |this, cx| this.run_git_op(GitOp::Discard(change), cx));
+        })
+        .detach();
     }
 
     /// Arm the header's rename input for `name` — prefilled with the current

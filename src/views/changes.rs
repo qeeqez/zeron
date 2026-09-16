@@ -6,7 +6,7 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
-use gpui_kit::component::menu::ContextMenuExt;
+use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -189,8 +189,19 @@ fn change_row(ix: usize, change: &FileChange, ws: &Workspace, cx: &mut Context<W
             let ws = cx.entity();
             let path = change.path.clone();
             let staged = change.staged;
+            let change = change.clone();
             move |menu, window, cx| {
-                crate::open_in::file_menu(&ws, &path, menu, window, cx).item(crate::open_in::copy_diff_item(&ws, &path, staged))
+                // The shared file menu first, then the Changes-only
+                // destructive item — explorer rows keep `file_menu` as-is.
+                let menu = crate::open_in::file_menu(&ws, &path, menu, window, cx)
+                    .item(crate::open_in::copy_diff_item(&ws, &path, staged));
+                let ws = ws.clone();
+                let change = change.clone();
+                menu.separator().item(PopupMenuItem::new("Discard Changes…").icon(IconName::Trash).on_click(
+                    move |_, window, cx| {
+                        ws.update(cx, |this, cx| this.discard_change(&change, window, cx));
+                    },
+                ))
             }
         })
         .into_any_element()

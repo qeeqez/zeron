@@ -367,6 +367,9 @@ mod changes_branch_tests;
 #[path = "changes_copy_tests.rs"]
 mod changes_copy_tests;
 #[cfg(test)]
+#[path = "changes_discard_tests.rs"]
+mod changes_discard_tests;
+#[cfg(test)]
 #[path = "changes_stale_tests.rs"]
 mod changes_stale_tests;
 #[cfg(test)]
