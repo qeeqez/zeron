@@ -1,7 +1,12 @@
 //! Destructive chat operations behind native confirm prompts.
 
+use std::rc::Rc;
+
+use gpui_kit::component::WindowExt;
+use gpui_kit::component::input::Input;
 use gpui_kit::*;
 
+use crate::model::Chat;
 use crate::workspace::Workspace;
 
 impl Workspace {
@@ -147,9 +152,109 @@ impl Workspace {
         self.clear_recall();
         self.rerun_last_prompt(cx);
     }
+
+    /// Split the chat with `chat_id` at message `at_ix`: messages `at_ix..`
+    /// move into a NEW chat titled "<title> (split)" inserted right after
+    /// the source, which keeps `..at_ix`. The split inherits the thread's
+    /// provider/model/access/effort/instructions/color/folder stamps and a
+    /// worktree thread gets its own checkout (sharing the source's would
+    /// break when either chat is deleted). The backend thread id is NOT
+    /// copied — the split starts a fresh thread, like `fork_chat`. No-op
+    /// at index 0 (nothing would stay behind), past the end, on an empty
+    /// chat, or while a reply runs.
+    pub fn split_chat(&mut self, chat_id: u64, at_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(src_ix) = self.chat_index(chat_id) else { return };
+        let src = &self.chats[src_ix];
+        if src.running || at_ix == 0 || at_ix >= src.messages.len() {
+            return;
+        }
+        let id = self.next_chat_id;
+        self.next_chat_id += 1;
+        // A worktree thread's split needs its own worktree — sharing the
+        // source's path unowned would break when either chat is deleted.
+        let (workdir, worktree) = if src.worktree {
+            match crate::worktree::create(&self.project, id) {
+                Ok(dir) => (dir.to_string_lossy().into_owned(), true),
+                Err(_) => (self.project.root().to_string_lossy().into_owned(), false),
+            }
+        } else {
+            (src.workdir.clone(), false)
+        };
+        let mut split = Chat::new(id, format!("{} (split)", src.title));
+        let src = &mut self.chats[src_ix];
+        split.messages = Rc::new(Rc::make_mut(&mut src.messages).split_off(at_ix));
+        split.folder = src.folder.clone();
+        split.color = src.color;
+        split.provider = src.provider.clone();
+        split.model = src.model.clone();
+        split.access = src.access;
+        split.effort = src.effort.clone();
+        split.instructions = src.instructions.clone();
+        split.workdir = workdir;
+        split.worktree = worktree;
+        // A temporary chat's split stays temporary — splitting must not
+        // silently persist content the user marked ephemeral.
+        split.ephemeral = src.ephemeral;
+        // Feedback notes are pinned to message timestamps — each follows
+        // its message into the split or stays in the source.
+        let (moved, kept) = std::mem::take(&mut src.feedback)
+            .into_iter()
+            .partition(|n| split.messages.iter().any(|m| m.at == n.at));
+        split.feedback = moved;
+        src.feedback = kept;
+        // Checkpoints pinned to moved messages can't resolve in the source
+        // (`for_message`'s `at` guard) — prune them like `regenerate_now`.
+        // The split gets none: its first turn snapshots fresh.
+        src.checkpoints.retain(|c| c.ix < at_ix);
+        // The truncated turn earned `last_turn` — don't let the new tail
+        // message inherit its duration label.
+        src.last_turn = None;
+        self.chats.insert(src_ix + 1, split);
+        self.select_chat(src_ix + 1, window, cx);
+    }
+
+    /// "Split chat…" from the ⋯ menu — a small dialog asking for the
+    /// 1-based message number the new chat starts at; OK splits there.
+    pub fn open_split_dialog(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(chat) = self.chats.iter().find(|c| c.id == id) else { return };
+        if chat.messages.len() < 2 {
+            return;
+        }
+        self.split_input.update(cx, |state, cx| state.set_value("", window, cx));
+        let ws = cx.entity();
+        let input = self.split_input.clone();
+        window.open_dialog(cx, move |dialog, _window, _cx| {
+            let ws_ok = ws.clone();
+            dialog
+                .title("Split chat")
+                .overlay_closable(true)
+                .child(Input::new(&input).aria_label("Split at message number"))
+                .on_ok(move |_, window, cx| {
+                    ws_ok.update(cx, |this, cx| this.commit_split(id, window, cx));
+                    true
+                })
+        });
+        self.split_input.update(cx, |state, cx| state.focus(window, cx));
+    }
+
+    /// Dialog OK for "Split chat…" — the typed 1-based message number
+    /// starts the new chat; anything unparseable or out of range no-ops
+    /// inside `split_chat`.
+    fn commit_split(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let n = self.split_input.read(cx).value().trim().parse::<usize>().unwrap_or(0);
+        self.split_chat(id, n.saturating_sub(1), window, cx);
+    }
 }
 
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "chat_split_tests.rs"]
+mod chat_split_tests;
+
+#[cfg(test)]
+#[path = "chat_split_ui_tests.rs"]
+mod chat_split_ui_tests;
+
 #[cfg(test)]
 #[path = "temp_chat_tests.rs"]
 mod temp_chat_tests;

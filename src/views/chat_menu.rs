@@ -25,6 +25,8 @@ pub struct ChatMenuState {
     /// Temporary chat (`Chat.ephemeral`) — disables the items that need a
     /// persisted chat (export, open-in-new-window).
     pub ephemeral: bool,
+    /// The chat has 2+ messages and no reply running — gates "Split chat…".
+    pub can_split: bool,
 }
 
 /// The color-tag dot — one shape for the sidebar row, the titlebar and the
@@ -89,7 +91,7 @@ pub fn temp_badge(id: &'static str, cx: &App) -> AnyElement {
 pub fn chat_menu(
     menu: PopupMenu, ws: &Entity<Workspace>, state: ChatMenuState, window: &mut Window, cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let ChatMenuState { pinned, word_wrap, color, worktree, ephemeral } = state;
+    let ChatMenuState { pinned, word_wrap, color, worktree, ephemeral, can_split } = state;
     let ws_pin = ws.clone();
     let ws_rename = ws.clone();
     let ws_export = ws.clone();
@@ -138,6 +140,15 @@ pub fn chat_menu(
                 let ix = this.active;
                 this.fork_chat(ix, None, window, cx);
             });
+        }))
+        .item(PopupMenuItem::new("Split chat…").icon(IconName::Scissors).disabled(!can_split).on_click({
+            let ws = ws.clone();
+            move |_, window, cx| {
+                ws.update(cx, |this, cx| {
+                    let id = this.chats[this.active].id;
+                    this.open_split_dialog(id, window, cx);
+                });
+            }
         }))
         .item(
             PopupMenuItem::new("Open in New Window")

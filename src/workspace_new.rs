@@ -94,6 +94,7 @@ impl Workspace {
             rename_mode: RenameMode::Inline,
             folder_input: cx.new(|cx| InputState::new(window, cx).placeholder("Folder name")),
             prompt_input: cx.new(|cx| InputState::new(window, cx).placeholder("Prompt name")),
+            split_input: cx.new(|cx| InputState::new(window, cx).placeholder("Message number")),
             chat_instructions_input: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .auto_grow(3, 12)

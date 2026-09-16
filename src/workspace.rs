@@ -117,6 +117,9 @@ pub struct Workspace {
     /// Shared text field for the saved-prompt dialogs — "Save prompt" seeds
     /// it empty, "Rename prompt" with the current name.
     pub prompt_input: Entity<InputState>,
+    /// Shared text field for the "Split chat…" dialog — the 1-based message
+    /// number the split starts the new chat at.
+    pub split_input: Entity<InputState>,
     /// Shared multiline field for the per-chat "Custom instructions…"
     /// dialog — seeded with the chat's current text on open.
     pub chat_instructions_input: Entity<TextareaState>,
