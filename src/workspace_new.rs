@@ -81,6 +81,7 @@ impl Workspace {
         .detach();
 
         let settings = crate::persist::load_settings();
+        let project_state = project.load_state();
         project.migrate_legacy_chats(settings.active_chat);
         let providers = settings.providers.clone();
         let selected_provider = crate::model_catalog::resolve_provider(&providers, &settings.selected_provider)
@@ -205,6 +206,14 @@ impl Workspace {
                 input.set_value(settings.instructions.clone(), window, cx);
                 input
             }),
+            setup_script: project_state.setup_script.clone(),
+            setup_script_input: cx.new(|cx| {
+                let mut input = TextareaState::new(window, cx)
+                    .auto_grow(2, 12)
+                    .placeholder("e.g. \"ln -sf ../.env .env && npm install\"");
+                input.set_value(project_state.setup_script.clone(), window, cx);
+                input
+            }),
             update: crate::update::UpdateState::restored(&settings),
             resume_open: false,
             auth: crate::auth::AuthBook::seeded(),
@@ -218,7 +227,7 @@ impl Workspace {
             this.new_chat(cx);
         } else {
             this.chats = loaded;
-            this.active = this.project.load_state().active_chat.min(this.chats.len().saturating_sub(1));
+            this.active = project_state.active_chat.min(this.chats.len().saturating_sub(1));
             // The resumed thread's own provider/model/access replace the
             // settings selection — the picker shows the active thread.
             this.restore_thread_selection(cx);

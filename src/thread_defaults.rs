@@ -96,6 +96,7 @@ impl Workspace {
         let chat_id = self.chats[self.active].id;
         let chat = &mut self.chats[self.active];
         chat.access = Some(access);
+        let mut worktree = None;
         match workspace_mode {
             crate::worktree::WorkspaceMode::Checkout => {
                 chat.workdir = self.project.root().to_string_lossy().into_owned();
@@ -105,6 +106,7 @@ impl Workspace {
                 Ok(dir) => {
                     chat.workdir = dir.to_string_lossy().into_owned();
                     chat.worktree = true;
+                    worktree = Some(dir);
                 },
                 Err(e) => {
                     chat.workdir = self.project.root().to_string_lossy().into_owned();
@@ -112,6 +114,11 @@ impl Workspace {
                     self.push_note(format!("**Worktree unavailable** — running in the project checkout.\n\n```\n{e}\n```"), cx);
                 },
             },
+        }
+        // The worktree's setup script (spawned by `worktree::create`) lands
+        // its result as a note on this chat once it finishes.
+        if let Some(dir) = worktree {
+            self.watch_setup_script(dir, cx);
         }
         // A fresh thread starts on its model's default effort — the
         // outgoing thread's pick doesn't carry over.

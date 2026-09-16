@@ -50,7 +50,7 @@ fn saved_chats_reopen_on_launch() {
     }]);
     let project = crate::project::Project::current();
     crate::persist::save_chats(&project.chats_dir(), &[first, Chat::new(1, "second chat")]);
-    project.save_state(&crate::project::ProjectState { active_chat: 1 });
+    project.save_state(&crate::project::ProjectState { active_chat: 1, ..Default::default() });
 
     let mut app = TestAppContext::single();
     let (ws, cx) = open_workspace(&mut app);

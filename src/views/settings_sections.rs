@@ -72,6 +72,9 @@ pub struct SettingsView {
     /// The Custom Instructions section's multiline field — owned by the
     /// workspace so typed text survives settings open/close.
     pub instructions_input: Entity<gpui_kit::component::input::TextareaState>,
+    /// The Project section's setup-script field — same workspace-owned
+    /// rationale as `instructions_input`.
+    pub setup_script_input: Entity<gpui_kit::component::input::TextareaState>,
     /// Update-check state for the Profile section's About row.
     pub update: crate::update::UpdateState,
 }
@@ -82,10 +85,11 @@ pub fn section_body(section: Section, s: &SettingsView, cx: &App) -> impl IntoEl
         Section::General => crate::views::settings_general::general_section(s, cx).into_any_element(),
         Section::Instructions => crate::views::settings_instructions::instructions_section(s, cx).into_any_element(),
         Section::Appearance => crate::views::settings_appearance::appearance_section(s, cx).into_any_element(),
+        Section::Profile => crate::views::settings_profile::profile_section(s, cx).into_any_element(),
+        Section::Project => crate::views::settings_project::project_section(s, cx).into_any_element(),
         Section::Providers => crate::views::settings_providers::providers_section(s, cx).into_any_element(),
         Section::Shortcuts => crate::views::settings_shortcuts::shortcuts_section(cx).into_any_element(),
         Section::Voice => crate::views::settings_voice::voice_section(s, cx).into_any_element(),
-        Section::Profile => crate::views::settings_profile::profile_section(s, cx).into_any_element(),
         Section::McpServers => crate::views::settings_mcp::mcp_section(s, cx).into_any_element(),
     };
     div()

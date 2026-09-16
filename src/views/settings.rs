@@ -231,6 +231,7 @@ impl Render for SettingsPanel {
             permissions_select: self.permissions_select.clone(),
             workspace_select: self.workspace_select.clone(),
             instructions_input: s.instructions_input.clone(),
+            setup_script_input: s.setup_script_input.clone(),
         };
         let theme = cx.theme();
         // Left edge sits at the main sidebar's right edge — the sidebar (now

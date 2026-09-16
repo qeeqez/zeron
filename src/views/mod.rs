@@ -51,6 +51,9 @@ pub mod settings_nav;
 pub mod settings_profile;
 #[cfg(test)]
 mod settings_profile_tests;
+pub mod settings_project;
+#[cfg(test)]
+mod settings_project_tests;
 pub mod settings_provider_detail;
 pub mod settings_provider_env;
 pub mod settings_provider_wizard;

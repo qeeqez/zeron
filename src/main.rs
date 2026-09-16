@@ -169,6 +169,7 @@ mod send_queue;
 mod send_tests;
 #[cfg(test)]
 mod settings_providers_tests;
+mod setup_script;
 mod shortcuts;
 #[cfg(test)]
 mod shortcuts_tests;

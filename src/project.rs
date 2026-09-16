@@ -30,11 +30,15 @@ pub struct Project {
 
 /// Per-project UI state, persisted as `<project>/state.json`. Global
 /// `Settings` stays project-agnostic; anything tied to the open folder
-/// (which chat was active) lives here.
-#[derive(Clone, Copy, Default, Serialize, Deserialize)]
+/// (which chat was active, the worktree setup script) lives here.
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProjectState {
     pub active_chat: usize,
+    /// Shell command run (`sh -c`) inside each new thread worktree — the
+    /// desktop counterpart of Codex cloud's environment setup script.
+    /// Empty = no setup step (see `crate::setup_script`).
+    pub setup_script: String,
 }
 
 impl Project {
@@ -175,7 +179,7 @@ impl Project {
             move_legacy(path, &target);
         }
         if !self.dir().join("state.json").exists() {
-            self.save_state(&ProjectState { active_chat: legacy_active });
+            self.save_state(&ProjectState { active_chat: legacy_active, ..Default::default() });
         }
         // Only succeeds once the legacy dir is empty — strays stay put and
         // the marker keeps the next launch retrying them.

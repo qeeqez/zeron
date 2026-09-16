@@ -47,13 +47,16 @@ pub(crate) fn workdir_for(chat: &crate::model::Chat, root: &Path) -> PathBuf {
 }
 
 /// Create a detached-HEAD worktree for chat `id` under the project's
-/// `.worktrees/` dir. Returns the worktree path; `Err` carries git's
-/// stderr (not a repo, unborn HEAD, …) for the caller to surface.
+/// `.worktrees/` dir, then kick off the project's setup script inside it
+/// (see `crate::setup_script` — a no-op when none is configured). Returns
+/// the worktree path; `Err` carries git's stderr (not a repo, unborn
+/// HEAD, …) for the caller to surface.
 pub(crate) fn create(project: &crate::project::Project, chat_id: u64) -> Result<PathBuf, String> {
     let dir = project.worktrees_dir().join(format!("thread-{chat_id}"));
     exclude_worktrees_dir(project.root());
     let path = dir.to_string_lossy().into_owned();
     git_err(project.root(), &["worktree", "add", "--detach", &path])?;
+    crate::setup_script::spawn(project, &dir);
     Ok(dir)
 }
 

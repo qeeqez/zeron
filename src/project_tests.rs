@@ -84,8 +84,10 @@ mod tests {
         sandbox_home();
         let project = Project::open(temp_root("stateful"));
         assert_eq!(project.load_state().active_chat, 0, "missing state defaults to 0");
-        project.save_state(&ProjectState { active_chat: 3 });
-        assert_eq!(project.load_state().active_chat, 3);
+        project.save_state(&ProjectState { active_chat: 3, setup_script: "npm install".into() });
+        let state = project.load_state();
+        assert_eq!(state.active_chat, 3);
+        assert_eq!(state.setup_script, "npm install", "the setup script persists per project");
         // The marker makes the hash-named dir self-describing.
         let marker: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(project.dir().join("project.json")).unwrap()).unwrap();

@@ -204,6 +204,12 @@ pub struct Workspace {
     /// The Custom Instructions settings field — lives on the workspace so
     /// typed text survives settings open/close like the other inputs.
     pub instructions_input: Entity<TextareaState>,
+    /// Per-project setup script run inside each new worktree —
+    /// `ProjectState.setup_script` (see `crate::setup_script`).
+    pub setup_script: String,
+    /// The Project section's setup-script field — same survive-open/close
+    /// rationale as `instructions_input`.
+    pub setup_script_input: Entity<TextareaState>,
     /// Update-check state for the About row and toasts (see `crate::update`).
     pub update: crate::update::UpdateState,
 

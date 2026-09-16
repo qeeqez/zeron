@@ -14,8 +14,17 @@ impl Workspace {
             let dropped = evict_overflow(&mut self.chats, MAX_CHATS, self.project.root(), self.active);
             self.active = self.active.saturating_sub(dropped).min(self.chats.len().saturating_sub(1));
         }
+        // Setup-script runs nobody claimed (forked worktrees) land their
+        // note here — before `save_chats` so the message persists in the
+        // same write.
+        for outcome in crate::setup_script::take_outcomes() {
+            self.note_setup_outcome(outcome);
+        }
         crate::persist::save_chats(&self.project.chats_dir(), &self.chats);
-        self.project.save_state(&crate::project::ProjectState { active_chat: self.active });
+        self.project.save_state(&crate::project::ProjectState {
+            active_chat: self.active,
+            setup_script: self.setup_script.clone(),
+        });
     }
 
     pub(crate) fn save_settings(&mut self) {
@@ -151,6 +160,17 @@ impl Workspace {
     pub(crate) fn save_instructions(&mut self, cx: &mut Context<Self>) {
         let text = self.instructions_input.read(cx).value().to_string();
         self.set_instructions(text, cx);
+    }
+
+    /// The Project section's Save button: copy the setup-script field into
+    /// `setup_script` and persist it to the project's `state.json`.
+    pub(crate) fn save_setup_script(&mut self, cx: &mut Context<Self>) {
+        self.setup_script = self.setup_script_input.read(cx).value().to_string();
+        self.project.save_state(&crate::project::ProjectState {
+            active_chat: self.active,
+            setup_script: self.setup_script.clone(),
+        });
+        cx.notify();
     }
 }
 

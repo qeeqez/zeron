@@ -116,26 +116,29 @@ pub enum Section {
     Appearance,
     Voice,
     Profile,
+    Project,
     Providers,
     Shortcuts,
     McpServers,
 }
 
 impl Section {
-    pub(crate) const ALL: [Section; 8] = [
+    pub(crate) const ALL: [Section; 9] = [
         Self::General,
         Self::Instructions,
         Self::Appearance,
         Self::Voice,
         Self::Profile,
+        Self::Project,
         Self::Providers,
         Self::Shortcuts,
         Self::McpServers,
     ];
     /// (group header, sections) pairs for the rail — matches the Codex
     /// settings sidebar grouping.
-    pub(crate) const GROUPS: [(&'static str, &'static [Section]); 3] = [
+    pub(crate) const GROUPS: [(&'static str, &'static [Section]); 4] = [
         ("Personal", &[Self::General, Self::Instructions, Self::Appearance, Self::Voice, Self::Profile]),
+        ("Project", &[Self::Project]),
         ("Coding", &[Self::Providers, Self::Shortcuts]),
         ("Integrations", &[Self::McpServers]),
     ];
@@ -146,12 +149,12 @@ impl Section {
             Self::Appearance => "appearance",
             Self::Voice => "voice",
             Self::Profile => "profile",
+            Self::Project => "project",
             Self::Shortcuts => "shortcuts",
             Self::McpServers => "mcp",
             Self::Providers => "providers",
         }
     }
-
     pub fn label(self) -> &'static str {
         match self {
             Self::General => "General",
@@ -159,12 +162,12 @@ impl Section {
             Self::Appearance => "Appearance",
             Self::Voice => "Voice",
             Self::Profile => "Profile",
+            Self::Project => "Project",
             Self::Shortcuts => "Shortcuts",
             Self::Providers => "Providers",
             Self::McpServers => "MCP Servers",
         }
     }
-
     pub(crate) fn icon(self) -> IconName {
         match self {
             Self::General => IconName::SlidersHorizontal,
@@ -172,6 +175,7 @@ impl Section {
             Self::Appearance => IconName::Palette,
             Self::Voice => IconName::Mic,
             Self::Profile => IconName::CircleUser,
+            Self::Project => IconName::FolderCog,
             Self::Shortcuts => IconName::Keyboard,
             Self::McpServers => IconName::PlugZap,
             Self::Providers => IconName::Layers,
