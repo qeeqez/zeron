@@ -87,6 +87,7 @@ impl Workspace {
             trusted: true,
             run_approved: false,
             apply_approved: false,
+            approval_rules: project_state.approval_rules.clone(),
             effort: None,
             default_model: settings.default_model.clone(),
             default_permissions: (!settings.default_permissions.is_empty())

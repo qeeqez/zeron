@@ -39,6 +39,10 @@ pub struct ProjectState {
     /// desktop counterpart of Codex cloud's environment setup script.
     /// Empty = no setup step (see `crate::setup_script`).
     pub setup_script: String,
+    /// Durable "always allow" grants from approval cards — a matching
+    /// request auto-approves instead of prompting (see
+    /// `crate::approval_ops`). Per-project, never global.
+    pub approval_rules: Vec<crate::backend::ApprovalRule>,
 }
 
 impl Project {

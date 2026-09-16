@@ -57,6 +57,9 @@ impl Workspace {
             },
             _ => {},
         }
+        // A stored allowlist rule answers the request before the card
+        // exists — computed here because `chat` borrows `self` below.
+        let auto_approved = matches!(&ev, AgentEvent::ApprovalRequest { kind, detail, .. } if self.approval_rule_allows(*kind, detail));
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         match ev {
             AgentEvent::TextStart => {
@@ -105,14 +108,24 @@ impl Workspace {
                 }
             },
             AgentEvent::ApprovalRequest { ix, kind, detail, respond } => {
+                // A matching allowlist rule answers on the spot: the card
+                // lands already decided and the blocked backend thread
+                // gets its Approve without waiting on a click.
+                let (decision, respond) = if auto_approved {
+                    let _ = respond.send(crate::backend::ApprovalDecision::Approve);
+                    (Some(crate::backend::ApprovalDecision::Approve), None)
+                } else {
+                    (None, Some(respond))
+                };
                 Rc::make_mut(&mut chat.messages).push(ChatMessage {
                     role: Role::Assistant,
                     kind: MessageKind::Approval(crate::backend::ApprovalCard {
                         request_ix: ix,
                         kind,
                         detail: detail.clone(),
-                        decision: None,
-                        respond: Some(respond),
+                        decision,
+                        auto_approved,
+                        respond,
                     }),
                     rating: None,
                     bookmarked: false,
@@ -124,7 +137,11 @@ impl Workspace {
                 if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
                     self.scroller.update(cx, |s, cx| s.append(1, cx));
                 }
-                self.record_approval(chat_id, kind, &detail);
+                // The activity feed's approval row means "needs a click" —
+                // a rule-answered request never does.
+                if !auto_approved {
+                    self.record_approval(chat_id, kind, &detail);
+                }
             },
             AgentEvent::Diff { path, added, removed, hunks } => {
                 push_message(chat, MessageKind::Diff(crate::model::DiffCard { path, added, removed, hunks, expanded: false }));

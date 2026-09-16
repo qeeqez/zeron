@@ -86,6 +86,10 @@ pub struct Workspace {
     /// "Always allow" on an apply-code-block approval — later applies this
     /// session skip the prompt (see `crate::apply_code`).
     pub apply_approved: bool,
+    /// Durable "always allow" grants — `ProjectState.approval_rules`,
+    /// loaded at open and persisted on every change (see
+    /// `crate::approval_ops`).
+    pub approval_rules: Vec<crate::backend::ApprovalRule>,
     /// Reasoning effort for the active thread's turns — `None` sends no
     /// override so the model's `default_effort` applies. Stamped per chat
     /// like `access`; the composer picker writes it via `set_effort`.

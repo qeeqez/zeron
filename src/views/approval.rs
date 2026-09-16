@@ -58,13 +58,17 @@ fn approval_footer(ix: usize, card: &ApprovalCard, ws: &Entity<Workspace>, cx: &
             ApprovalDecision::Deny => cx.theme().danger,
             _ => cx.theme().success,
         };
+        // A stored allowlist rule answered this one — say so instead of
+        // showing the plain "Approved" a click would have recorded.
+        let label = if card.auto_approved { "Auto-approved · rule" } else { decision.label() };
         return bar.child(
             div()
                 .id(("approval-outcome", ix))
                 .test_support()
+                .aria_label(label)
                 .text_xs()
                 .text_color(color)
-                .child(decision.label()),
+                .child(label),
         );
     }
     if card.respond.is_none() {

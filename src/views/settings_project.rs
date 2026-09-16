@@ -18,9 +18,87 @@ use crate::views::settings_sections::{SettingsView, group_label};
 use crate::worktree::WorktreeInfo;
 
 /// The Project content pane: the setup-script field with its dirty/saved
-/// state, then the live thread-worktree list.
+/// state, the approval allowlist, then the live thread-worktree list.
 pub(crate) fn project_section(s: &SettingsView, cx: &App) -> impl IntoElement {
-    div().flex().flex_col().gap_3().child(setup_script_block(s, cx)).child(worktrees_block(s, cx))
+    div()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .child(setup_script_block(s, cx))
+        .child(rules_block(s, cx))
+        .child(worktrees_block(s, cx))
+}
+
+/// The "Always allow" rules block — one row per durable grant recorded by
+/// an approval card's Always-allow button, with per-rule Delete. Rules
+/// live in the project's `state.json`; deleting one makes matching
+/// requests prompt again.
+fn rules_block(s: &SettingsView, cx: &App) -> impl IntoElement {
+    let rules = s.ws.read(cx).approval_rules.clone();
+    let mut list = div().id("approval-rule-list").test_support().flex().flex_col().gap_1();
+    if rules.is_empty() {
+        list = list.child(
+            div()
+                .id("approval-rule-empty")
+                .test_support()
+                .p_3()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("No rules — an approval card's Always allow adds one"),
+        );
+    }
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(group_label("Always allow", cx))
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("Approval requests matching a rule auto-approve instead of prompting. Rules are stored per project."),
+        )
+        .child(list.children(rules.iter().enumerate().map(|(ix, rule)| rule_row(ix, rule, s, cx))))
+}
+
+/// One rule row: the gated action's kind and detail, then Delete.
+fn rule_row(ix: usize, rule: &crate::backend::ApprovalRule, s: &SettingsView, cx: &App) -> impl IntoElement {
+    let ws = s.ws.clone();
+    div()
+        .id(("approval-rule", ix))
+        .test_support()
+        .flex()
+        .items_center()
+        .gap_2()
+        .p_2()
+        .rounded_md()
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .min_w_0()
+                .child(div().text_xs().font_semibold().overflow_hidden().child(rule.kind.label()))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .child(rule.detail.clone()),
+                ),
+        )
+        .child(div().flex_1())
+        .child(
+            Button::new(SharedString::from(format!("approval-rule-delete-{ix}")))
+                .label("Delete")
+                .icon(IconName::Trash)
+                .small()
+                .danger()
+                .on_click(move |_, _, cx| {
+                    ws.update(cx, |this, cx| this.remove_approval_rule(ix, cx));
+                }),
+        )
 }
 
 /// The setup-script field: a note on when it runs, the textarea, and the

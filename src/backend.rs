@@ -41,7 +41,7 @@ mod instructions_tests;
 #[cfg(test)]
 mod sessions_tests;
 pub use acp::AcpBackend;
-pub use approval::{ApprovalCard, ApprovalDecision, ApprovalKind, ApprovalResponder, ApprovalRoute};
+pub use approval::{ApprovalCard, ApprovalDecision, ApprovalKind, ApprovalResponder, ApprovalRoute, ApprovalRule};
 pub use claude::ClaudeCliBackend;
 pub(crate) use claude_auth::{auth_status as claude_auth_status, login as claude_login, logout as claude_logout};
 pub use codex::CodexCliBackend;

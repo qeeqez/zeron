@@ -114,7 +114,7 @@ impl Workspace {
         let chat_id = self.chats[self.active].id;
         let access = self.chats[self.active].access.unwrap_or(self.access);
         let run = PendingRun { chat_id, command, shell };
-        if access.auto_allows() || self.run_approved {
+        if access.auto_allows() || self.run_approved || self.approval_rule_allows(ApprovalKind::Command, &run.command) {
             self.spawn_command_run(run, cx);
             return;
         }
@@ -128,6 +128,7 @@ impl Workspace {
                 kind: ApprovalKind::Command,
                 detail: run.command.clone().into(),
                 decision: None,
+                auto_approved: false,
                 respond: Some(respond),
             }),
             rating: None,

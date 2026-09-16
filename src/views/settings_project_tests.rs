@@ -89,3 +89,35 @@ fn setup_script_field_seeds_from_project_state() {
     let value = ws.read_with(cx, |w, app| w.setup_script_input.read(app).value().to_string());
     assert_eq!(value, "make setup");
 }
+
+#[test]
+fn approval_rule_list_deletes_a_rule() {
+    let root = temp_dir("rules-proj");
+    let project = Project::open(&root);
+    project.save_state(&ProjectState {
+        approval_rules: vec![
+            crate::backend::ApprovalRule::for_prompt(crate::backend::ApprovalKind::Command, "rm -rf build/"),
+            crate::backend::ApprovalRule::for_prompt(crate::backend::ApprovalKind::Patch, "Write src/a.rs"),
+        ],
+        ..Default::default()
+    });
+
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app, "rules", project.clone());
+    cx.update(|window, cx| {
+        open_project_section(&ws, window, cx);
+        for ix in 0..2usize {
+            assert!(window.find(("approval-rule", ix)).visible(), "rule {ix} row renders");
+        }
+        window.click("approval-rule-delete-0", cx);
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.try_find(("approval-rule", 1usize)).is_none(), "the deleted row is gone");
+        assert!(window.find(("approval-rule", 0usize)).visible(), "the surviving rule re-indexes");
+    });
+    let rules = ws.read_with(cx, |w, _| w.approval_rules.clone());
+    assert_eq!(rules.len(), 1);
+    assert_eq!(rules[0].detail, "Write src/a.rs");
+    assert_eq!(project.load_state().approval_rules.len(), 1, "the delete persists to state.json");
+}

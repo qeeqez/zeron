@@ -21,12 +21,21 @@ impl Workspace {
             self.note_setup_outcome(outcome);
         }
         crate::persist::save_chats(&self.project.chats_dir(), &self.chats);
-        // `active_chat` indexes the loaded (non-ephemeral) set — count the
-        // persisted chats before `active`; an ephemeral active chat leaves
-        // the index pointing at the next real one.
+        self.save_project_state();
+    }
+
+    /// Persist the project's `state.json` — active chat, setup script and
+    /// the approval allowlist. `active_chat` indexes the loaded
+    /// (non-ephemeral) set: count the persisted chats before `active`; an
+    /// ephemeral active chat leaves the index pointing at the next real
+    /// one.
+    pub(crate) fn save_project_state(&self) {
         let active_chat = self.chats[..self.active.min(self.chats.len())].iter().filter(|c| !c.ephemeral).count();
-        self.project
-            .save_state(&crate::project::ProjectState { active_chat, setup_script: self.setup_script.clone() });
+        self.project.save_state(&crate::project::ProjectState {
+            active_chat,
+            setup_script: self.setup_script.clone(),
+            approval_rules: self.approval_rules.clone(),
+        });
     }
 
     pub(crate) fn save_settings(&mut self) {
@@ -172,10 +181,7 @@ impl Workspace {
     /// `setup_script` and persist it to the project's `state.json`.
     pub(crate) fn save_setup_script(&mut self, cx: &mut Context<Self>) {
         self.setup_script = self.setup_script_input.read(cx).value().to_string();
-        self.project.save_state(&crate::project::ProjectState {
-            active_chat: self.active,
-            setup_script: self.setup_script.clone(),
-        });
+        self.save_project_state();
         cx.notify();
     }
 

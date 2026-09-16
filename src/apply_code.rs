@@ -106,6 +106,7 @@ fn approval_message(detail: String, respond: ApprovalResponder) -> ChatMessage {
             kind: ApprovalKind::Patch,
             detail: detail.into(),
             decision: None,
+            auto_approved: false,
             respond: Some(respond),
         }),
         rating: None,
@@ -205,13 +206,14 @@ impl Workspace {
         let root = crate::worktree::workdir_for(chat, self.project.root());
         let access = self.effective_access(chat.access.unwrap_or(self.access));
         let exists = file_writer().exists(&root, &rel);
-        if !exists && access.writes() || self.apply_approved {
+        let detail = || if exists { format!("Overwrite {rel}") } else { format!("Write {rel}") };
+        if !exists && access.writes() || self.apply_approved || self.approval_rule_allows(ApprovalKind::Patch, &detail()) {
             let result = file_writer().write(&root, &rel, &apply.code);
             self.finish_apply(apply.chat_id, &rel, result, cx);
             return;
         }
         let (respond, rx) = std::sync::mpsc::channel::<ApprovalDecision>();
-        let detail = if exists { format!("Overwrite {rel}") } else { format!("Write {rel}") };
+        let detail = detail();
         Rc::make_mut(&mut self.chats[self.active].messages).push(approval_message(detail.clone(), respond));
         if self.push_visible(cx) {
             self.scroller.update(cx, |s, cx| s.append(1, cx));

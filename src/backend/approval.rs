@@ -49,6 +49,30 @@ impl ApprovalKind {
     }
 }
 
+/// A durable "always allow" grant — the signature of one approval prompt
+/// (its kind plus the normalized detail) stored in the project's
+/// `state.json`. A later request whose signature matches is auto-approved
+/// instead of prompting; the grant is per-project, never global.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ApprovalRule {
+    pub kind: ApprovalKind,
+    /// The prompt's detail with whitespace collapsed — "what will run" is
+    /// the only identity a card carries, so it keys the rule.
+    pub detail: String,
+}
+
+impl ApprovalRule {
+    /// The rule a prompt would match: `kind` plus `detail` trimmed with
+    /// interior whitespace runs collapsed, so "make  install" and
+    /// "make install" share one grant.
+    pub fn for_prompt(kind: ApprovalKind, detail: &str) -> Self {
+        Self {
+            kind,
+            detail: detail.split_whitespace().collect::<Vec<_>>().join(" "),
+        }
+    }
+}
+
 /// Channel back to the backend thread blocked on an approval request.
 /// One answer per prompt — the UI takes it out of the card when clicked.
 pub type ApprovalResponder = std::sync::mpsc::Sender<ApprovalDecision>;
@@ -77,6 +101,10 @@ pub struct ApprovalCard {
     /// The user's choice once clicked; `None` while undecided.
     #[serde(default)]
     pub decision: Option<ApprovalDecision>,
+    /// A stored `ApprovalRule` answered this request — the card renders
+    /// "Auto-approved" instead of the plain outcome label.
+    #[serde(default)]
+    pub auto_approved: bool,
     /// Channel to the waiting backend — skipped on disk; `None` means the
     /// prompt is no longer answerable (answered, stopped, or reloaded).
     #[serde(skip)]
