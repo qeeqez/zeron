@@ -165,6 +165,7 @@ impl Workspace {
                 role: Role::Assistant,
                 kind: MessageKind::Text(compact_digest(&dropped).into()),
                 rating: None,
+                bookmarked: false,
                 usage: None,
                 attachments: vec![],
                 at: SystemTime::now(),

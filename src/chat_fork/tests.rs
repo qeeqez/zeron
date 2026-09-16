@@ -35,6 +35,7 @@ fn seed(ws: &Entity<Workspace>, role: Role, text: &str, cx: &mut VisualTestConte
             role,
             kind: MessageKind::Text(text.into()),
             rating: None,
+            bookmarked: false,
             usage: None,
             attachments: vec![],
             at: std::time::SystemTime::now(),

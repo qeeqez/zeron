@@ -251,6 +251,7 @@ impl Workspace {
                 role: Role::Assistant,
                 kind: MessageKind::Text("".into()),
                 rating: None,
+                bookmarked: false,
                 usage: None,
                 attachments: vec![],
                 at: std::time::SystemTime::now(),
@@ -268,3 +269,21 @@ impl Workspace {
         }
     }
 }
+
+impl Workspace {
+    /// Star/unstar message `ix` — the chat ⋯ menu's Bookmarks submenu lists
+    /// starred rows and jumps back to them. The flag rides on the message,
+    /// so a truncated turn drops its bookmarks with it.
+    pub fn toggle_bookmark(&mut self, ix: usize, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[self.active];
+        let Some(msg) = Rc::make_mut(&mut chat.messages).get_mut(ix) else { return };
+        msg.bookmarked = !msg.bookmarked;
+        cx.notify();
+        self.save();
+    }
+}
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "bookmark_tests.rs"]
+mod bookmark_tests;

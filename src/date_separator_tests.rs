@@ -78,6 +78,7 @@ fn push(ws: &Entity<Workspace>, cx: &mut VisualTestContext, s: &str, at: SystemT
             role: Role::User,
             kind: MessageKind::Text(s.into()),
             rating: None,
+            bookmarked: false,
             usage: None,
             attachments: vec![],
             at,

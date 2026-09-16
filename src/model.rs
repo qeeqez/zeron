@@ -117,6 +117,10 @@ pub struct ChatMessage {
     /// Files attached to this message — preserved for retry.
     #[serde(default)]
     pub attachments: Vec<SharedString>,
+    /// Starred for the chat ⋯ menu's Bookmarks list — missing in files
+    /// written before bookmarks existed.
+    #[serde(default)]
+    pub bookmarked: bool,
 }
 
 impl ChatMessage {

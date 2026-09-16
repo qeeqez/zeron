@@ -11,6 +11,7 @@ mod tests {
             role: Role::Assistant,
             kind,
             rating: None,
+            bookmarked: false,
             usage: None,
             attachments: vec![],
             at: std::time::SystemTime::now(),

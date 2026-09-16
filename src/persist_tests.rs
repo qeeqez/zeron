@@ -24,6 +24,7 @@ mod tests {
             role,
             kind,
             rating: None,
+            bookmarked: false,
             usage: None,
             attachments: vec![],
             at: SystemTime::now(),
@@ -52,6 +53,7 @@ mod tests {
             ),
             ChatMessage {
                 rating: Some(true),
+                bookmarked: false,
                 usage: Some(Usage { input: 12, output: 34 }),
                 ..msg(Role::Assistant, MessageKind::Text("done".into()))
             },

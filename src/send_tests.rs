@@ -72,6 +72,7 @@ fn seeded(i: usize) -> ChatMessage {
         role: if i.is_multiple_of(2) { Role::User } else { Role::Assistant },
         kind: MessageKind::Text(format!("message {i}").into()),
         rating: None,
+        bookmarked: false,
         usage: None,
         attachments: vec![],
         at: std::time::SystemTime::now(),

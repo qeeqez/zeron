@@ -20,6 +20,7 @@ fn msg(text: &str) -> ChatMessage {
         role: Role::User,
         kind: MessageKind::Text(text.into()),
         rating: None,
+        bookmarked: false,
         usage: None,
         attachments: vec![],
         at: std::time::SystemTime::now(),

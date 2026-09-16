@@ -69,6 +69,23 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
             ws.update(cx, |this, cx| this.quote_message(ix, window, cx));
         }));
     }
+    {
+        // Bookmark stars the message for the chat ⋯ menu's Bookmarks list.
+        // A starred row keeps the icon pinned (filled, accent) so the state
+        // reads without hovering; unstarred it hides with the other ghosts.
+        let ws = ws.clone();
+        let bookmarked = msg.bookmarked;
+        let icon = action_icon(
+            ("bookmark", ix),
+            if bookmarked { IconName::StarFill } else { IconName::Star },
+            if bookmarked { accent } else { muted },
+            &group,
+            move |_, _, cx| {
+                ws.update(cx, |this, cx| this.toggle_bookmark(ix, cx));
+            },
+        );
+        row = row.child(icon.when(bookmarked, |el| el.visible()));
+    }
     if msg.role == Role::User {
         // Edit reopens the message inline — commit truncates after it and
         // resends the edited text (see `Workspace::commit_edit`).

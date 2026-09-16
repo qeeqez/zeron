@@ -192,6 +192,7 @@ pub(super) fn history_message(item: &Value) -> Option<ChatMessage> {
         role,
         kind,
         rating: None,
+        bookmarked: false,
         at: std::time::SystemTime::now(),
         usage: None,
         attachments: vec![],

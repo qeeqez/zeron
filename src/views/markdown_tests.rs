@@ -107,6 +107,7 @@ fn user_message_stays_plain_text() {
             role: Role::User,
             kind: MessageKind::Text("**not bold** ```sh\nx\n```".into()),
             rating: None,
+            bookmarked: false,
             usage: None,
             attachments: vec![],
             at: std::time::SystemTime::now(),

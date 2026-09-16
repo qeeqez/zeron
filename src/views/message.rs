@@ -165,6 +165,7 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
     // SharedString clones cheap — the menu closure scans it for fenced
     // blocks only when the menu actually opens.
     let source = text.clone();
+    let bookmarked = msg.bookmarked;
     let group = SharedString::from(format!("msg-{ix}"));
     div()
         .id(("msg", ix))
@@ -217,6 +218,9 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
                         this.quote_selection(&selected, w, cx)
                     }))
                 })
+                .item(msg_item(if bookmarked { "Remove bookmark" } else { "Bookmark" }, IconName::Star, &ws_menu, move |this, _w, cx| {
+                    this.toggle_bookmark(ix, cx)
+                }))
                 .separator()
                 .item(msg_item("Fork here", IconName::GitFork, &ws_menu, move |this, w, cx| {
                     this.fork_chat(this.active, Some(ix), w, cx)

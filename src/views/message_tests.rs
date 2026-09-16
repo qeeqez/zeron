@@ -45,6 +45,7 @@ fn seed_user(ws: &Entity<Workspace>, text: &str, cx: &mut VisualTestContext) {
             role: Role::User,
             kind: MessageKind::Text(text.into()),
             rating: None,
+            bookmarked: false,
             usage: None,
             attachments: vec![],
             at: std::time::SystemTime::now(),
@@ -240,7 +241,7 @@ fn context_menu_lists_copy_variants() {
         // in this message, so Copy Code stays hidden.
         assert_eq!(
             labels,
-            ["Copy", "Copy as Markdown", "Fork here", "Quote", "Retry", "View raw"],
+            ["Bookmark", "Copy", "Copy as Markdown", "Fork here", "Quote", "Retry", "View raw"],
             "menu should list the copy variants: {labels:?}"
         );
         window.within("popup-menu").click(1usize, cx); // Copy as Markdown
@@ -269,7 +270,7 @@ fn context_menu_copy_code_writes_block_contents() {
         labels.sort();
         assert_eq!(
             labels,
-            ["Copy", "Copy Code", "Copy as Markdown", "Fork here", "Quote", "Retry", "View raw"],
+            ["Bookmark", "Copy", "Copy Code", "Copy as Markdown", "Fork here", "Quote", "Retry", "View raw"],
             "Copy Code should join the copy group: {labels:?}"
         );
         window.within("popup-menu").click(2usize, cx); // Copy Code
