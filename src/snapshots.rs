@@ -6,10 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::*;
-
 use crate::checkpoints::{Checkpoint, TurnCheckpoint};
-use crate::workspace::Workspace;
 
 /// Default retention when the user hasn't picked one — snapshots older than
 /// this are pruned on refresh. `0` (the stored "forever" choice) disables it.
@@ -35,13 +32,38 @@ pub struct SnapshotInfo {
     /// Files restore would change vs the current workdir — see above.
     pub changed: Option<usize>,
     pub checkpoint: Checkpoint,
+    /// The expanded row's file list — computed lazily on expand (or on a
+    /// restore click that needs names for the confirm) and cached here.
+    pub files: SnapshotFiles,
+    /// Whether the row shows its file list. UI-only.
+    pub expanded: bool,
+}
+
+/// Load state of a row's expanded file list — `Idle` until the first expand
+/// asks for it, `Failed` when the diff can't be computed (same cases as a
+/// `None` `changed`). `Loaded` survives collapse+re-expand — it's the cache.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum SnapshotFiles {
+    #[default]
+    Idle,
+    Loading,
+    Loaded(Vec<crate::snapshot_store::SnapshotFile>),
+    Failed,
 }
 
 /// Identity for list bookkeeping — a checkpoint is its (chat, message,
 /// timestamp) triple; metadata like `changed` is recomputed per refresh.
 impl PartialEq for SnapshotInfo {
     fn eq(&self, other: &Self) -> bool {
-        (self.chat_id, self.message_ix, self.at) == (other.chat_id, other.message_ix, other.at)
+        self.key() == other.key()
+    }
+}
+
+impl SnapshotInfo {
+    /// The (chat, message, timestamp) triple `PartialEq` compares — also
+    /// how an in-flight file-list load finds its row when it lands.
+    pub(crate) fn key(&self) -> (u64, usize, std::time::SystemTime) {
+        (self.chat_id, self.message_ix, self.at)
     }
 }
 
@@ -102,6 +124,8 @@ pub(crate) fn collect(seeds: &[ChatSeed]) -> Vec<SnapshotInfo> {
                     bytes,
                     changed,
                     checkpoint: turn.checkpoint.clone(),
+                    files: SnapshotFiles::Idle,
+                    expanded: false,
                 }
             })
         })
@@ -128,129 +152,16 @@ pub(crate) fn prune(list: &[SnapshotInfo], max_age: Option<std::time::Duration>,
         .collect()
 }
 
-impl Workspace {
-    /// Toggle the Snapshots panel; opening refreshes the list so the first
-    /// render never shows stale rows.
-    pub fn toggle_snapshots_panel(&mut self, cx: &mut Context<Self>) {
-        self.snapshots.open = !self.snapshots.open;
-        if self.snapshots.open {
-            self.refresh_snapshots(cx);
-        }
-        cx.notify();
-    }
-
-    /// Re-collect snapshot metadata on the background executor — each entry
-    /// shells out to git or walks a copy dir, so it can't run on the UI
-    /// thread. Lands through `land_snapshots`, which applies retention.
-    pub fn refresh_snapshots(&mut self, cx: &mut Context<Self>) {
-        self.snapshots.generation += 1;
-        let generation = self.snapshots.generation;
-        let seeds = seeds(&self.chats, self.project.root());
-        cx.spawn(async move |this, cx| {
-            let list = cx.background_executor().spawn(async move { collect(&seeds) }).await;
-            let _ = this.update(cx, |this, cx| this.land_snapshots(generation, list, cx));
-        })
-        .detach();
-    }
-
-    /// Publish a collected list — skipped when a newer refresh was requested
-    /// while this one ran. Retention prunes before the list lands so stale
-    /// snapshots never render; a prune that removed anything persists the
-    /// shrunken checkpoint lists.
-    pub(crate) fn land_snapshots(&mut self, generation: u64, list: Vec<SnapshotInfo>, cx: &mut Context<Self>) {
-        if generation != self.snapshots.generation {
-            return;
-        }
-        let victims = prune(&list, retention_age(self.snapshots.retention_days), cap_bytes(self.snapshots.cap_mb));
-        let mut removed = false;
-        let kept: Vec<SnapshotInfo> = list
-            .into_iter()
-            .filter(|s| {
-                if !victims.contains(s) {
-                    return true;
-                }
-                let dir = if s.workdir.is_dir() { s.workdir.clone() } else { self.project.root().to_path_buf() };
-                if crate::snapshot_store::delete(&dir, &s.checkpoint).is_ok() {
-                    removed |= self.unpin_checkpoint(s);
-                    return false;
-                }
-                true
-            })
-            .collect();
-        self.snapshots.list = kept;
-        if removed {
-            self.save();
-        }
-        cx.notify();
-    }
-
-    /// Revert the snapshot's chat workdir to it — the same restore the
-    /// per-message "Undo turn" runs, reachable from the panel. The entry
-    /// stays listed: snapshots are a history, not a queue.
-    pub fn restore_snapshot(&mut self, ix: usize, cx: &mut Context<Self>) {
-        let Some(snap) = self.snapshots.list.get(ix) else { return };
-        let checkpoint = snap.checkpoint.clone();
-        let workdir = snap.workdir.clone();
-        match crate::checkpoints::restore(&workdir, &checkpoint) {
-            Ok(()) => {
-                if self.changes_panel_open {
-                    self.refresh_changes(cx);
-                }
-                self.refresh_snapshots(cx);
-            },
-            Err(e) => self.push_note(format!("**Snapshot restore failed:** {e}"), cx),
-        }
-    }
-
-    /// Drop the snapshot at row `ix`: free its storage, unpin the
-    /// checkpoint from its chat (persisted), and refresh the list.
-    pub fn delete_snapshot(&mut self, ix: usize, cx: &mut Context<Self>) {
-        let Some(snap) = self.snapshots.list.get(ix) else { return };
-        let snap = snap.clone();
-        let dir = if snap.workdir.is_dir() { snap.workdir.clone() } else { self.project.root().to_path_buf() };
-        match crate::snapshot_store::delete(&dir, &snap.checkpoint) {
-            Ok(()) => {
-                if self.unpin_checkpoint(&snap) {
-                    self.save();
-                }
-                self.refresh_snapshots(cx);
-            },
-            Err(e) => self.push_note(format!("**Snapshot delete failed:** {e}"), cx),
-        }
-    }
-
-    /// Remove `snap`'s `TurnCheckpoint` from its chat — the entry the
-    /// per-message "Undo turn" looks up. `false` when nothing matched.
-    fn unpin_checkpoint(&mut self, snap: &SnapshotInfo) -> bool {
-        let Some(chat) = self.chats.iter_mut().find(|c| c.id == snap.chat_id) else { return false };
-        let before = chat.checkpoints.len();
-        chat.checkpoints.retain(|c| !(c.ix == snap.message_ix && c.at == snap.at));
-        chat.checkpoints.len() != before
-    }
-
-    /// Set the age half of the retention policy (days; `0` = forever),
-    /// persist it, and re-run collection so the new rule applies now.
-    pub fn set_snapshot_retention(&mut self, days: u32, cx: &mut Context<Self>) {
-        self.snapshots.retention_days = days;
-        self.save_settings();
-        self.refresh_snapshots(cx);
-    }
-
-    /// Set the size half of the retention policy (MiB; `0` = no cap),
-    /// persist it, and re-run collection so the new rule applies now.
-    pub fn set_snapshot_cap(&mut self, mb: u32, cx: &mut Context<Self>) {
-        self.snapshots.cap_mb = mb;
-        self.save_settings();
-        self.refresh_snapshots(cx);
-    }
-}
-
 /// `days` as a `Duration`; `0` disables the age rule.
-fn retention_age(days: u32) -> Option<std::time::Duration> {
+pub(crate) fn retention_age(days: u32) -> Option<std::time::Duration> {
     (days > 0).then(|| std::time::Duration::from_secs(u64::from(days) * 86_400))
 }
 
 /// `mb` as bytes; `0` disables the cap.
-fn cap_bytes(mb: u32) -> Option<u64> {
+pub(crate) fn cap_bytes(mb: u32) -> Option<u64> {
     (mb > 0).then(|| u64::from(mb) * 1024 * 1024)
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[path = "snapshot_ops.rs"]
+mod snapshot_ops;

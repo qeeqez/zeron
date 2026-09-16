@@ -1,13 +1,41 @@
 //! Snapshot storage plumbing for `crate::snapshots`: describing a
-//! checkpoint (size + how many files restoring it would touch) and deleting
-//! its storage. Split from `snapshots.rs` to stay under the SLOC cap.
+//! checkpoint (size + the files restoring it would touch) and deleting its
+//! storage. Split from `snapshots.rs` to stay under the SLOC cap.
 
 use std::path::Path;
 
 use crate::checkpoints::Checkpoint;
 
+/// How a file restore would touch differs between the workdir and the
+/// checkpoint — the same names `git diff --name-status` reports.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SnapshotStatus {
+    /// In the workdir but not the checkpoint — restore deletes it.
+    Added,
+    /// In both with different content (or a file ↔ dir kind change).
+    Modified,
+    /// In the checkpoint but not the workdir — restore recreates it.
+    Deleted,
+}
+
+/// One path `restore` would rewrite or remove, relative to the workdir.
+/// Directory entries carry a trailing `/`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SnapshotFile {
+    pub path: String,
+    pub status: SnapshotStatus,
+}
+
 /// (size, changed-file count) for one snapshot — see `SnapshotInfo`.
 pub(crate) fn describe(workdir: &Path, checkpoint: &Checkpoint) -> (u64, Option<usize>) {
+    let (bytes, files) = describe_files(workdir, checkpoint);
+    (bytes, files.map(|f| f.len()))
+}
+
+/// (size, paths restore would change) — the row's expanded list and the
+/// restore confirm's names. `None` for the files when the diff can't be
+/// computed (a gc'd commit, a deleted copy dir, a missing workdir).
+pub(crate) fn describe_files(workdir: &Path, checkpoint: &Checkpoint) -> (u64, Option<Vec<SnapshotFile>>) {
     match checkpoint {
         Checkpoint::Git(sha) => {
             let (bytes, names) = git_tree(workdir, sha);
@@ -41,22 +69,45 @@ fn git_tree(workdir: &Path, sha: &str) -> (u64, Option<std::collections::HashMap
 /// worktree paths whose content differs from the snapshot; untracked files
 /// the snapshot doesn't contain get removed by its `clean -fd`. HEAD never
 /// enters the comparison — a file committed after the snapshot but matching
-/// it on disk isn't "changed".
-fn git_changed(workdir: &Path, sha: &str, snap: &std::collections::HashMap<String, String>) -> Option<usize> {
+/// it on disk isn't "changed". A rename reports as its two paths: the old
+/// name recreated, the new one removed.
+fn git_changed(workdir: &Path, sha: &str, snap: &std::collections::HashMap<String, String>) -> Option<Vec<SnapshotFile>> {
     let diff = crate::git::git(workdir, &["diff", "--name-status", sha, "--", "."])?;
     let others = crate::git::git(workdir, &["ls-files", "--others", "--exclude-standard"]).unwrap_or_default();
-    let mut count = others.lines().filter(|l| !l.is_empty() && !snap.contains_key(*l)).count();
+    let mut files: Vec<SnapshotFile> = others
+        .lines()
+        .filter(|l| !l.is_empty() && !snap.contains_key(*l))
+        .map(|path| SnapshotFile { path: path.to_string(), status: SnapshotStatus::Added })
+        .collect();
     for line in diff.lines() {
         let Some((status, path)) = line.split_once('\t') else { continue };
-        // A "deleted" path that exists on disk is an untracked file the
-        // snapshot holds — restore only rewrites it when content differs,
-        // so compare blob shas instead of trusting the D.
-        if status == "D" && workdir.join(path).exists() && unchanged_blob(workdir, snap, path) {
-            continue;
+        let Some(&code) = status.as_bytes().first() else { continue };
+        match code {
+            b'A' => files.push(SnapshotFile { path: path.to_string(), status: SnapshotStatus::Added }),
+            b'M' | b'T' => files.push(SnapshotFile { path: path.to_string(), status: SnapshotStatus::Modified }),
+            b'D' => {
+                // A "deleted" path that exists on disk is an untracked file
+                // the snapshot holds — restore only rewrites it when content
+                // differs, so compare blob shas instead of trusting the D.
+                if workdir.join(path).exists() && unchanged_blob(workdir, snap, path) {
+                    continue;
+                }
+                files.push(SnapshotFile { path: path.to_string(), status: SnapshotStatus::Deleted });
+            },
+            b'R' | b'C' => {
+                // `R100\told\tnew` — restore recreates the old name and
+                // removes the new one.
+                let (old, new) = path.split_once('\t').map_or((path, None), |(o, n)| (o, Some(n)));
+                files.push(SnapshotFile { path: old.to_string(), status: SnapshotStatus::Deleted });
+                if let Some(new) = new {
+                    files.push(SnapshotFile { path: new.to_string(), status: SnapshotStatus::Added });
+                }
+            },
+            _ => files.push(SnapshotFile { path: path.to_string(), status: SnapshotStatus::Modified }),
         }
-        count += 1;
     }
-    Some(count)
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Some(files)
 }
 
 /// The on-disk file at `path` hashes to the same blob the snapshot holds.
@@ -76,47 +127,58 @@ fn dir_size(dir: &Path) -> u64 {
 
 /// Files `sync_dir` would copy in or remove to make `workdir` mirror `snap`.
 /// `None` when the snapshot dir was deleted out from under the entry.
-fn copy_changed(snap: &Path, workdir: &Path) -> Option<usize> {
+fn copy_changed(snap: &Path, workdir: &Path) -> Option<Vec<SnapshotFile>> {
     if !snap.is_dir() {
         return None;
     }
-    Some(diff_count(snap, workdir) + extra_count(snap, workdir))
+    let mut files = Vec::new();
+    diff_entries(snap, workdir, "", &mut files);
+    extra_entries(snap, workdir, "", &mut files);
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Some(files)
 }
 
 /// Entries under `snap` missing from `workdir` or differing in kind/content.
-fn diff_count(snap: &Path, workdir: &Path) -> usize {
-    let Ok(entries) = std::fs::read_dir(snap) else { return 0 };
-    entries
-        .flatten()
-        .map(|e| {
-            let dst = workdir.join(e.file_name());
-            let src_dir = e.path().is_dir();
-            match std::fs::symlink_metadata(&dst) {
-                Err(_) => 1,
-                Ok(meta) if meta.is_dir() != src_dir => 1,
-                Ok(_) if src_dir => diff_count(&e.path(), &dst),
-                Ok(_) => usize::from(std::fs::read(e.path()).ok() != std::fs::read(&dst).ok()),
-            }
-        })
-        .sum()
+/// A missing directory lists as one `dir/` entry — restore recreates the
+/// whole subtree — while a differing directory recurses to the files inside.
+fn diff_entries(snap: &Path, workdir: &Path, prefix: &str, out: &mut Vec<SnapshotFile>) {
+    let Ok(entries) = std::fs::read_dir(snap) else { return };
+    for e in entries.flatten() {
+        let dst = workdir.join(e.file_name());
+        let path = format!("{prefix}{}", e.file_name().to_string_lossy());
+        let src_dir = e.path().is_dir();
+        match std::fs::symlink_metadata(&dst) {
+            Err(_) => out.push(SnapshotFile {
+                path: if src_dir { format!("{path}/") } else { path },
+                status: SnapshotStatus::Deleted,
+            }),
+            Ok(meta) if meta.is_dir() != src_dir => out.push(SnapshotFile { path, status: SnapshotStatus::Modified }),
+            Ok(_) if src_dir => diff_entries(&e.path(), &dst, &format!("{path}/"), out),
+            Ok(_) if std::fs::read(e.path()).ok() != std::fs::read(&dst).ok() => {
+                out.push(SnapshotFile { path, status: SnapshotStatus::Modified });
+            },
+            Ok(_) => {},
+        }
+    }
 }
 
 /// Entries under `workdir` that `snap` doesn't have — restore removes them.
-/// A path present in both (even with a different kind) was already counted
-/// by `diff_count`, so it's skipped here.
-fn extra_count(snap: &Path, workdir: &Path) -> usize {
-    let Ok(entries) = std::fs::read_dir(workdir) else { return 0 };
-    entries
-        .flatten()
-        .map(|e| {
-            let src = snap.join(e.file_name());
-            match std::fs::symlink_metadata(&src) {
-                Ok(_) => 0,
-                Err(_) if e.path().is_dir() => 1 + extra_count(&src, &e.path()),
-                Err(_) => 1,
-            }
-        })
-        .sum()
+/// A path present in both (even with a different kind) was already listed
+/// by `diff_entries`, so it's skipped here.
+fn extra_entries(snap: &Path, workdir: &Path, prefix: &str, out: &mut Vec<SnapshotFile>) {
+    let Ok(entries) = std::fs::read_dir(workdir) else { return };
+    for e in entries.flatten() {
+        let src = snap.join(e.file_name());
+        let path = format!("{prefix}{}", e.file_name().to_string_lossy());
+        match std::fs::symlink_metadata(&src) {
+            Ok(_) => {},
+            Err(_) if e.path().is_dir() => {
+                out.push(SnapshotFile { path: format!("{path}/"), status: SnapshotStatus::Added });
+                extra_entries(&src, &e.path(), &format!("{path}/"), out);
+            },
+            Err(_) => out.push(SnapshotFile { path, status: SnapshotStatus::Added }),
+        }
+    }
 }
 
 /// Drop a snapshot's storage: the keep-alive ref (then a best-effort gc so

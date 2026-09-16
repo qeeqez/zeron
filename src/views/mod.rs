@@ -88,6 +88,7 @@ pub mod shortcuts;
 
 pub(crate) mod sidebar;
 mod sidebar_row;
+mod snapshot_files;
 pub(crate) mod snapshots;
 pub(crate) mod terminal;
 mod terminal_blocks;

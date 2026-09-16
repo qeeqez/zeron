@@ -89,63 +89,83 @@ impl Workspace {
 }
 
 /// One snapshot row: relative age + chat title on top, changed/size detail
-/// under it, Restore and Delete trailing.
+/// under it, Restore and Delete trailing. Clicking the row expands the
+/// paths restore would touch — computed lazily, cached on the row.
 fn snapshot_row(ix: usize, snap: &SnapshotInfo, cx: &mut Context<Workspace>) -> AnyElement {
     let theme = cx.theme();
     let changed = snap.changed.map_or("—".to_string(), |n| n.to_string());
-    div()
-        .id(("snapshot-row", ix))
-        .test_support()
-        .flex()
-        .items_center()
-        .gap_2()
-        .px_2()
-        .py_1()
-        .rounded_md()
-        .text_sm()
-        .hover(|d| d.bg(theme.muted))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(div().flex_shrink_0().text_color(theme.muted_foreground).child(IconName::GitCommitHorizontal))
-                        .child(div().flex_shrink_0().text_xs().text_color(theme.muted_foreground).child(rel_time(snap.at)))
-                        .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(snap.chat_title.clone())),
-                )
-                .child(
-                    div()
-                        .pl_6()
-                        .text_xs()
-                        .text_color(theme.muted_foreground)
-                        .child(format!("{changed} changed · {}", fmt_bytes(snap.bytes))),
-                ),
-        )
-        .child(
-            div()
-                .id(("snapshot-restore", ix))
-                .test_support()
-                .cursor_pointer()
-                .text_color(theme.muted_foreground)
-                .child(IconName::Undo2)
-                .on_click(cx.listener(move |this, _, _, cx| this.restore_snapshot(ix, cx))),
-        )
-        .child(
-            div()
-                .id(("snapshot-delete", ix))
-                .test_support()
-                .cursor_pointer()
-                .text_color(theme.muted_foreground)
-                .child(IconName::Trash)
-                .on_click(cx.listener(move |this, _, _, cx| this.delete_snapshot(ix, cx))),
-        )
-        .into_any_element()
+    let mut entry = div().flex().flex_col().child(
+        div()
+            .id(("snapshot-row", ix))
+            .test_support()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_2()
+            .py_1()
+            .rounded_md()
+            .text_sm()
+            .cursor_pointer()
+            .hover(|d| d.bg(theme.muted))
+            .child(div().flex_shrink_0().text_color(theme.muted_foreground).child(if snap.expanded {
+                IconName::ChevronDown
+            } else {
+                IconName::ChevronRight
+            }))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(div().flex_shrink_0().text_color(theme.muted_foreground).child(IconName::GitCommitHorizontal))
+                            .child(div().flex_shrink_0().text_xs().text_color(theme.muted_foreground).child(rel_time(snap.at)))
+                            .child(div().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(snap.chat_title.clone())),
+                    )
+                    .child(
+                        div()
+                            .pl_6()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(format!("{changed} changed · {}", fmt_bytes(snap.bytes))),
+                    ),
+            )
+            .child(
+                div()
+                    .id(("snapshot-restore", ix))
+                    .test_support()
+                    .cursor_pointer()
+                    .text_color(theme.muted_foreground)
+                    .child(IconName::Undo2)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        // Keep the click off the row — it must not toggle the list.
+                        cx.stop_propagation();
+                        this.restore_snapshot(ix, window, cx);
+                    })),
+            )
+            .child(
+                div()
+                    .id(("snapshot-delete", ix))
+                    .test_support()
+                    .cursor_pointer()
+                    .text_color(theme.muted_foreground)
+                    .child(IconName::Trash)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.delete_snapshot(ix, cx);
+                    })),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| this.expand_snapshot(ix, cx))),
+    );
+    if snap.expanded {
+        entry = entry.child(super::snapshot_files::snapshot_files(ix, snap, cx));
+    }
+    entry.into_any_element()
 }
 
 /// Totals plus the retention policy: two dropdown menus whose checked item

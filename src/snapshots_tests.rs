@@ -9,7 +9,7 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     use crate::checkpoints::{Checkpoint, TurnCheckpoint, restore, snapshot};
-    use crate::snapshot_store::delete;
+    use crate::snapshot_store::{SnapshotStatus, delete, describe_files};
     use crate::snapshots::{ChatSeed, collect, prune};
 
     /// A temp git repo with one committed file — `None` when git isn't
@@ -96,6 +96,73 @@ mod tests {
         let _ = std::fs::remove_dir_all(&repo);
     }
 
+    /// The expanded row's path list for a git checkpoint: modified, added
+    /// (untracked — restore deletes it) and deleted paths, sorted.
+    #[test]
+    fn describe_files_lists_git_paths() {
+        let Some(repo) = temp_repo("paths") else { return };
+        std::fs::write(repo.join("gone.txt"), "gone").unwrap();
+        let checkpoint = snapshot(&repo, &temp_dir("store"), "c1-0").unwrap();
+        std::fs::write(repo.join("base.txt"), "edited").unwrap();
+        std::fs::write(repo.join("new.txt"), "new").unwrap();
+        std::fs::remove_file(repo.join("gone.txt")).unwrap();
+        let (_, files) = describe_files(&repo, &checkpoint);
+        let files = files.expect("diff computable");
+        let got: Vec<(&str, SnapshotStatus)> = files.iter().map(|f| (f.path.as_str(), f.status)).collect();
+        assert_eq!(
+            got,
+            [
+                ("base.txt", SnapshotStatus::Modified),
+                ("gone.txt", SnapshotStatus::Deleted),
+                ("new.txt", SnapshotStatus::Added),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// Same list for a copy checkpoint — the dir-compare walk, including a
+    /// nested path and an added directory (listed as `dir/`).
+    #[test]
+    fn describe_files_lists_copy_paths() {
+        let workdir = temp_dir("copy-src");
+        std::fs::create_dir_all(workdir.join("sub")).unwrap();
+        std::fs::write(workdir.join("sub/keep.txt"), "keep").unwrap();
+        std::fs::write(workdir.join("gone.txt"), "gone").unwrap();
+        let checkpoint = snapshot(&workdir, &temp_dir("copy-store"), "c1-0").unwrap();
+        std::fs::write(workdir.join("sub/keep.txt"), "edited").unwrap();
+        std::fs::remove_file(workdir.join("gone.txt")).unwrap();
+        std::fs::create_dir_all(workdir.join("added")).unwrap();
+        std::fs::write(workdir.join("added/new.txt"), "new").unwrap();
+        let (_, files) = describe_files(&workdir, &checkpoint);
+        let files = files.expect("diff computable");
+        let got: Vec<(&str, SnapshotStatus)> = files.iter().map(|f| (f.path.as_str(), f.status)).collect();
+        assert_eq!(
+            got,
+            [
+                ("added/", SnapshotStatus::Added),
+                ("added/new.txt", SnapshotStatus::Added),
+                ("gone.txt", SnapshotStatus::Deleted),
+                ("sub/keep.txt", SnapshotStatus::Modified),
+            ]
+        );
+        // A deleted copy dir reports `None` — the row shows "—".
+        let Checkpoint::Copy(dir) = &checkpoint else { panic!("copy checkpoint") };
+        std::fs::remove_dir_all(dir).unwrap();
+        assert_eq!(describe_files(&workdir, &checkpoint).1, None);
+        let _ = std::fs::remove_dir_all(&workdir);
+    }
+
+    /// A snapshot matching the workdir lists no files — the row's restore
+    /// stays one-click.
+    #[test]
+    fn describe_files_empty_when_clean() {
+        let Some(repo) = temp_repo("clean") else { return };
+        let checkpoint = snapshot(&repo, &temp_dir("store"), "c1-0").unwrap();
+        let (_, files) = describe_files(&repo, &checkpoint);
+        assert_eq!(files, Some(vec![]));
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
     #[test]
     fn delete_frees_copy_snapshot() {
         let workdir = temp_dir("copy-src");
@@ -142,136 +209,7 @@ mod tests {
     }
 }
 
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
-mod ui {
-    use std::path::PathBuf;
-
-    use gpui_kit::component::Root;
-    use gpui_kit::test::TestWindowExt;
-    use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext};
-
-    use crate::checkpoints::{TurnCheckpoint, snapshot};
-    use crate::workspace::Workspace;
-
-    fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
-        let dir = std::env::temp_dir().join(format!("rixlcode-snap-ui-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        // SAFETY: nextest runs each test in its own process.
-        unsafe { std::env::set_var("HOME", &dir) };
-        cx.update(gpui_kit::init);
-        let mut ws = None;
-        let (root, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|cx| Workspace::new(window, cx));
-            ws = Some(view.clone());
-            Root::new(view, window, cx)
-        });
-        let _ = root;
-        (ws.unwrap(), cx)
-    }
-
-    /// A temp git repo standing in for the chat's workdir — keeps snapshot
-    /// refs out of the real project repo.
-    fn temp_repo() -> Option<PathBuf> {
-        let dir = std::env::temp_dir().join(format!("rixlcode-snap-ui-repo-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let git = |args: &[&str]| {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(&dir)
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        };
-        if !git(&["init", "-q"]) {
-            let _ = std::fs::remove_dir_all(&dir);
-            return None;
-        }
-        std::fs::write(dir.join("base.txt"), "base").unwrap();
-        assert!(git(&["add", "."]));
-        assert!(git(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]));
-        Some(dir)
-    }
-
-    /// Drive background-executor collections (snapshot refresh) to landing.
-    fn settle(cx: &mut VisualTestContext) {
-        for _ in 0..50 {
-            cx.executor().advance_clock(std::time::Duration::from_millis(50));
-            cx.run_until_parked();
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-    }
-
-    /// Give the active chat a workdir + one recorded checkpoint, then open
-    /// the panel and let the collection land.
-    fn open_panel_with_snapshot(ws: &Entity<Workspace>, repo: &std::path::Path, cx: &mut VisualTestContext) {
-        let store = ws.read_with(cx, |w, _| w.project.dir().join("checkpoints"));
-        let checkpoint = snapshot(repo, &store, "c0-0").unwrap();
-        ws.update(cx, |this, cx| {
-            let chat = &mut this.chats[this.active];
-            chat.workdir = repo.to_string_lossy().into_owned();
-            chat.checkpoints.push(TurnCheckpoint { ix: 0, at: std::time::SystemTime::now(), checkpoint });
-            this.snapshots.open = true;
-            this.refresh_snapshots(cx);
-        });
-        settle(cx);
-    }
-
-    #[test]
-    fn panel_lists_restores_and_deletes() {
-        let Some(repo) = temp_repo() else { return };
-        let mut app = TestAppContext::single();
-        let (ws, cx) = mount(&mut app);
-        open_panel_with_snapshot(&ws, &repo, cx);
-        cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
-            assert!(window.find(("snapshot-row", 0usize)).visible(), "checkpoint listed");
-        });
-        // The "turn" edits the workdir; Restore reverts it.
-        std::fs::write(repo.join("agent.txt"), "agent").unwrap();
-        std::fs::write(repo.join("base.txt"), "agent").unwrap();
-        cx.update(|window, cx| {
-            window.click(("snapshot-restore", 0usize), cx);
-        });
-        settle(cx);
-        assert!(!repo.join("agent.txt").exists(), "restore removed the new file");
-        assert_eq!(std::fs::read_to_string(repo.join("base.txt")).unwrap(), "base");
-        // The entry survives a restore — snapshots are a history.
-        cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
-            assert!(window.find(("snapshot-row", 0usize)).visible(), "restore keeps the entry");
-            window.click(("snapshot-delete", 0usize), cx);
-        });
-        settle(cx);
-        ws.read_with(cx, |w, _| {
-            assert!(w.snapshots.list.is_empty(), "delete dropped the entry");
-            assert!(w.chats[0].checkpoints.is_empty(), "checkpoint unpinned from the chat");
-        });
-        cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
-            assert!(window.try_find(("snapshot-row", 0usize)).is_none(), "row gone after delete");
-        });
-        let _ = std::fs::remove_dir_all(&repo);
-    }
-
-    #[test]
-    fn toggle_opens_and_closes_panel() {
-        let mut app = TestAppContext::single();
-        let (ws, cx) = mount(&mut app);
-        cx.update(|window, cx| {
-            cx.bind_keys([gpui_kit::KeyBinding::new("cmd-shift-s", crate::ToggleSnapshots, Some("workspace"))]);
-            window.draw(cx).clear(cx);
-            assert!(window.try_find("snapshots-panel").is_none(), "panel starts closed");
-
-            window.press("cmd-shift-s", cx);
-            window.draw(cx).clear(cx);
-            assert!(window.find("snapshots-panel").visible(), "cmd-shift-s opens the panel");
-            assert!(ws.read(cx).snapshots.open);
-
-            window.click("close-snapshots", cx);
-            window.draw(cx).clear(cx);
-            assert!(window.try_find("snapshots-panel").is_none(), "close button hides the panel");
-            assert!(!ws.read(cx).snapshots.open);
-        });
-    }
-}
+#[path = "snapshots_ui_tests.rs"]
+mod ui;
