@@ -49,8 +49,13 @@ impl Workspace {
 
     /// Change the active thread's Agent-mode access level and persist it.
     /// Called from the settings picker; the stamp lands on the active chat
-    /// so switching threads restores each thread's own mode.
+    /// so switching threads restores each thread's own mode. A no-op while
+    /// the folder is untrusted — restricted mode forces `Supervised`.
     pub fn set_access(&mut self, access: crate::backend::AccessMode, cx: &mut Context<Self>) {
+        if !self.trusted {
+            cx.notify();
+            return;
+        }
         self.access = access;
         self.chats.get_mut(self.active).map(|chat| chat.access = Some(access)).unwrap_or_default();
         self.save_settings();
@@ -85,7 +90,7 @@ impl Workspace {
                 self.select_model(&dm.provider_instance_id, &first, cx);
             }
         }
-        let access = self.default_permissions().unwrap_or(self.access);
+        let access = self.effective_access(self.default_permissions().unwrap_or(self.access));
         self.access = access;
         let workspace_mode = self.default_workspace();
         let chat_id = self.chats[self.active].id;
@@ -131,7 +136,7 @@ impl Workspace {
             self.select_model(&provider, &first, cx);
         }
         if let Some(access) = access {
-            self.access = access;
+            self.access = self.effective_access(access);
         }
         // The thread's own effort stamp replaces the workspace selection;
         // `None` (legacy or untouched) follows the model's default.
@@ -145,8 +150,10 @@ impl Workspace {
     /// turn resumes it.
     pub(crate) fn turn_context(&self) -> crate::backend::TurnContext {
         let chat = &self.chats[self.active];
-        let mut ctx =
-            crate::backend::TurnContext::at(crate::worktree::workdir_for(chat, self.project.root()), chat.access.unwrap_or(self.access));
+        let mut ctx = crate::backend::TurnContext::at(
+            crate::worktree::workdir_for(chat, self.project.root()),
+            self.effective_access(chat.access.unwrap_or(self.access)),
+        );
         ctx.thread_id = if chat.thread_id.is_empty() { None } else { Some(chat.thread_id.clone()) };
         ctx.effort = chat.effort.clone().or_else(|| self.effort.clone());
         // Custom instructions: the global setting merged with the project

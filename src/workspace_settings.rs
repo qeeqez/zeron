@@ -46,7 +46,10 @@ impl Workspace {
             selected_provider: self.selected_provider.clone(),
             selected_model: self.model.to_string(),
             mode: self.mode.to_string(),
-            access: self.access.name().into(),
+            // While untrusted the workspace access is clamped to Supervised
+            // — the file keeps the user's configured mode so trusting the
+            // folder restores it instead of persisting the clamp.
+            access: if self.trusted { self.access.name().into() } else { prev.access },
             default_model: self.default_model.clone(),
             default_permissions: self.default_permissions.map_or_else(String::new, |a| a.name().to_string()),
             default_workspace: self.default_workspace.name().into(),
@@ -77,6 +80,10 @@ impl Workspace {
             update_last_check: prev.update_last_check,
             update_latest: prev.update_latest,
             update_skip: prev.update_skip,
+            // Trusted folders are written by `crate::trust`, not this
+            // window — keep the file's list so an unrelated save can't
+            // drop a folder the user trusted in another window.
+            trusted_folders: prev.trusted_folders,
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
             terminal_open: self.terminal.open,

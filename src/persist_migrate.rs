@@ -53,6 +53,7 @@ impl Default for Settings {
             update_last_check: None,
             update_latest: String::new(),
             update_skip: String::new(),
+            trusted_folders: Vec::new(),
         }
     }
 }

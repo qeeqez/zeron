@@ -74,6 +74,12 @@ pub struct Workspace {
     /// Plan/Ask are always read-only. Passed to the backend via
     /// `TurnContext` at send time; each chat stamps its own on creation.
     pub access: crate::backend::AccessMode,
+    /// Whether the project folder is trusted — untrusted folders run
+    /// restricted: `access` is forced to `Supervised` (read-only, every
+    /// action asks) until the user trusts the folder (see `crate::trust`).
+    /// `for_project` assumes trusted; `lifecycle::open_workspace_window_for`
+    /// downgrades untrusted folders at open.
+    pub trusted: bool,
     /// "Always allow" on a command-run approval — later shell-block runs
     /// this session skip the prompt (see `crate::run_cmd`).
     pub run_approved: bool,

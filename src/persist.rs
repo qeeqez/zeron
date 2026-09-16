@@ -333,6 +333,10 @@ pub struct Settings {
     /// Release tag the user dismissed — it won't notify again, though a
     /// newer tag still does.
     pub update_skip: String,
+    /// Canonicalized project roots the user has trusted — untrusted folders
+    /// open in restricted mode (see `crate::trust`).
+    #[serde(default = "Vec::new")]
+    pub trusted_folders: Vec<String>,
 }
 
 fn settings_path() -> PathBuf {

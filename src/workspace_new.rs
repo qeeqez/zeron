@@ -139,6 +139,9 @@ impl Workspace {
                 "Agent".into()
             },
             access: crate::backend::AccessMode::from_name(&settings.access),
+            // Assumed trusted — `open_workspace_window_for` downgrades an
+            // untrusted folder via `restrict_untrusted` right after open.
+            trusted: true,
             run_approved: false,
             effort: None,
             default_model: settings.default_model.clone(),

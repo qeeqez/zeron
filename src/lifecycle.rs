@@ -169,6 +169,8 @@ pub fn open_workspace_window_for(
     project: crate::project::Project, cx: &mut gpui_kit::AsyncApp,
 ) -> gpui_kit::Result<gpui_kit::WindowHandle<Root>> {
     crate::recent_projects::record(project.root());
+    let trusted = crate::trust::is_trusted(project.root());
+    let root_path = project.root().to_path_buf();
     let handle = cx.open_window(
         WindowOptions {
             window_min_size: Some(Size { width: px(800.), height: px(600.) }),
@@ -200,6 +202,21 @@ pub fn open_workspace_window_for(
             })
         },
     )?;
+    // Workspace trust: a folder not in the trusted list opens restricted —
+    // `restrict_untrusted` forces read-only/ask access — behind the trust
+    // dialog. "Trust" persists the folder; "Don't trust" (or dismissing the
+    // dialog) leaves the restriction in place until the banner's Trust…
+    // button reopens the prompt.
+    if !trusted {
+        let _ = handle.update(cx, |root, window, cx| {
+            if let Ok(ws) = root.view().clone().downcast::<Workspace>() {
+                ws.update(cx, |this, cx| this.restrict_untrusted(cx));
+                // `window.open_dialog` would re-borrow Root — we're already
+                // inside its update, so feed the builder to it directly.
+                root.open_dialog(crate::views::trust::trust_dialog(root_path, ws), window, cx);
+            }
+        });
+    }
     Ok(handle)
 }
 

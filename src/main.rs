@@ -166,6 +166,9 @@ mod terminal_tests;
 mod thread_defaults;
 #[cfg(test)]
 mod thread_defaults_tests;
+mod trust;
+#[cfg(test)]
+mod trust_tests;
 #[cfg(test)]
 mod ui_tests;
 mod update;

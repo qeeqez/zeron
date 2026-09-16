@@ -200,6 +200,9 @@ impl Workspace {
             .on_action(cx.listener(|this, _: &MsgNavEnter, window, cx| this.nav_activate(window, cx)))
             .on_action(cx.listener(|this, _: &EscapeKey, window, cx| this.nav_escape(window, cx)))
             .child(header)
+            // Restricted-mode notice for an untrusted folder — the "Trust…"
+            // button reopens the trust dialog (see `crate::views::trust`).
+            .when(!self.trusted, |d| d.child(crate::views::trust::restricted_banner(cx)))
             .when(self.chat_search_open, |d| {
                 d.child(
                     div()
