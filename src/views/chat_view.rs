@@ -194,6 +194,13 @@ impl Workspace {
             .on_action(cx.listener(|this, action: &crate::apply_code::ApplyCodeBlock, window, cx| {
                 this.apply_code_block(action.code.clone(), action.lang.clone(), window, cx);
             }))
+            // File drop covers the whole chat pane — messages included.
+            // `attach_incoming` routes images to chips and other files to
+            // @-mentions; `drag_over` tints the pane while files hover.
+            .drag_over::<ExternalPaths>(|style, _, _, cx| style.bg(cx.theme().tokens.drop_target))
+            .on_drop::<ExternalPaths>(cx.listener(|this, paths: &ExternalPaths, window, cx| {
+                this.attach_incoming(paths.0.to_vec(), window, cx);
+            }))
             .child(header)
             // Restricted-mode notice for an untrusted folder — the "Trust…"
             // button reopens the trust dialog (see `crate::views::trust`).

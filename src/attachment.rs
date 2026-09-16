@@ -3,7 +3,9 @@
 //! backend as image inputs (codex `localImage`, ACP `resource_link`) instead
 //! of only a path mention. Attach via the picker, drag-drop, or paste —
 //! clipboard images are written under the project's store dir so the backend
-//! gets a real path.
+//! gets a real path. Dropped/pasted files route by kind: images attach as
+//! chips, anything else lands in the draft as an `@path` mention — the same
+//! reference the explorer click and @-picker produce.
 
 use gpui_kit::*;
 
@@ -27,6 +29,33 @@ pub(crate) fn image_paths(attachments: &[SharedString]) -> Vec<std::path::PathBu
         .iter()
         .filter(|a| is_image_path(a.as_str()))
         .map(|a| std::path::PathBuf::from(a.as_str()))
+        .collect()
+}
+
+/// Where an incoming (dropped or pasted) path lands in the composer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AttachRoute {
+    /// Image files attach as chips — they ride the backend's image inputs.
+    Chip(std::path::PathBuf),
+    /// Everything else becomes an `@path` mention in the draft text. Paths
+    /// under `root` relativize so the mention matches the @-picker's format.
+    Mention(String),
+}
+
+/// Classify incoming paths: images → chips, other files → mentions.
+pub(crate) fn route_attach_paths(root: &std::path::Path, paths: &[std::path::PathBuf]) -> Vec<AttachRoute> {
+    paths
+        .iter()
+        .map(|path| {
+            if is_image_path(&path.to_string_lossy()) {
+                return AttachRoute::Chip(path.clone());
+            }
+            let mention = match path.strip_prefix(root) {
+                Ok(rel) if !rel.as_os_str().is_empty() => rel.to_string_lossy().into_owned(),
+                _ => path.to_string_lossy().into_owned(),
+            };
+            AttachRoute::Mention(mention)
+        })
         .collect()
 }
 
@@ -57,6 +86,38 @@ impl Workspace {
         .detach();
     }
 
+    /// Route dropped/pasted paths: images attach as chips, other files
+    /// append `@path` mentions to the draft (project-relative when the file
+    /// lives under the root). Mentions focus the composer so the user sees
+    /// where the reference landed.
+    pub(crate) fn attach_incoming(&mut self, paths: Vec<std::path::PathBuf>, window: &mut Window, cx: &mut Context<Self>) {
+        let mut chips = Vec::new();
+        let mut mentions = Vec::new();
+        for route in route_attach_paths(self.project.root(), &paths) {
+            match route {
+                AttachRoute::Chip(path) => chips.push(path),
+                AttachRoute::Mention(path) => mentions.push(path),
+            }
+        }
+        if !mentions.is_empty() {
+            let mut text = self.composer.read(cx).value().to_string();
+            for path in &mentions {
+                text = crate::views::explorer::mention_text(&text, path);
+            }
+            self.composer.update(cx, |s, cx| {
+                s.set_value(text, window, cx);
+                s.focus(window, cx);
+            });
+            // `set_value` suppresses Change — nudge so the mention menu closes.
+            cx.notify();
+        }
+        // Chips attach after the composer update: focusing the input stashes
+        // the outgoing chat's draft state, which would drop fresh chips.
+        if !chips.is_empty() {
+            self.add_attachments(chips, cx);
+        }
+    }
+
     /// Append unique file paths to the active chat's attachments.
     pub(crate) fn add_attachments(&mut self, paths: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
         let chat = &mut self.chats[self.active];
@@ -77,10 +138,11 @@ impl Workspace {
     }
 
     /// Capture-phase `Paste` on the composer: clipboard images are saved to
-    /// disk and attached, copied file paths attach as chips — both stop the
-    /// paste so no raw path text lands in the input. A plain-text clipboard
-    /// propagates to the input's own paste handler untouched.
-    pub(crate) fn paste_attachments(&mut self, cx: &mut Context<Self>) {
+    /// disk and attached, copied file paths route like dropped ones (images
+    /// as chips, the rest as mentions) — both stop the paste so no raw path
+    /// text lands in the input. A plain-text clipboard propagates to the
+    /// input's own paste handler untouched.
+    pub(crate) fn paste_attachments(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(item) = cx.read_from_clipboard() else { return };
         let dir = self.project.dir().join("attachments");
         let mut paths: Vec<std::path::PathBuf> = Vec::new();
@@ -97,13 +159,14 @@ impl Workspace {
             return;
         }
         cx.stop_propagation();
-        self.add_attachments(paths, cx);
+        self.attach_incoming(paths, window, cx);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{image_paths, is_image_path};
+    use super::{AttachRoute, image_paths, is_image_path, route_attach_paths};
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn image_extensions_detect_images() {
@@ -119,7 +182,41 @@ mod tests {
     fn image_paths_filters_to_images() {
         let all = vec!["/tmp/a.png".into(), "/tmp/b.rs".into(), "/tmp/c.webp".into()];
         let images = image_paths(&all);
-        assert_eq!(images, vec![std::path::PathBuf::from("/tmp/a.png"), std::path::PathBuf::from("/tmp/c.webp")]);
+        assert_eq!(images, vec![PathBuf::from("/tmp/a.png"), PathBuf::from("/tmp/c.webp")]);
         assert!(image_paths(&[]).is_empty());
+    }
+
+    #[test]
+    fn route_attach_paths_splits_images_from_mentions() {
+        let root = Path::new("/repo");
+        let routes = route_attach_paths(
+            root,
+            &[
+                PathBuf::from("/repo/src/main.rs"),
+                PathBuf::from("/repo/shot.png"),
+                PathBuf::from("/elsewhere/notes.txt"),
+                PathBuf::from("/elsewhere/pic.JPEG"),
+            ],
+        );
+        assert_eq!(
+            routes,
+            vec![
+                AttachRoute::Mention("src/main.rs".into()),
+                AttachRoute::Chip(PathBuf::from("/repo/shot.png")),
+                AttachRoute::Mention("/elsewhere/notes.txt".into()),
+                AttachRoute::Chip(PathBuf::from("/elsewhere/pic.JPEG")),
+            ]
+        );
+    }
+
+    #[test]
+    fn route_attach_paths_edge_cases() {
+        let root = Path::new("/repo");
+        // A path that IS the root can't relativize to a usable mention —
+        // keep the absolute form rather than a bare "@".
+        assert_eq!(route_attach_paths(root, &[PathBuf::from("/repo")]), vec![AttachRoute::Mention("/repo".into())]);
+        // Extension-less and non-image files mention; empty input routes nothing.
+        assert_eq!(route_attach_paths(root, &[PathBuf::from("/repo/Makefile")]), vec![AttachRoute::Mention("Makefile".into())]);
+        assert!(route_attach_paths(root, &[]).is_empty());
     }
 }

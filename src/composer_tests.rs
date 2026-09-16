@@ -9,7 +9,7 @@
 
 use gpui_kit::component::input::Paste;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{ClipboardItem, Image, ImageFormat, TestAppContext};
+use gpui_kit::{ClipboardItem, ExternalPaths, FileDropEvent, Image, ImageFormat, InputEvent, TestAppContext, point, px};
 
 use crate::composer_testutil::{composer_value, open_workspace, type_and_send, until, use_sim};
 use crate::model::MessageKind;
@@ -133,4 +133,28 @@ fn paste_text_still_reaches_the_composer(cx: &mut TestAppContext) {
     cx.dispatch_action(Paste);
     assert_eq!(composer_value(&workspace, cx), "plain text");
     assert!(workspace.read_with(cx, |ws, _| ws.chats[ws.active].attachments.is_empty()));
+}
+
+/// Dropping files on the chat pane routes by kind: images attach as chips,
+/// other files land in the draft as `@path` mentions (project-relative when
+/// the file lives under the root).
+#[gpui_kit::test]
+fn file_drop_routes_images_to_chips_and_files_to_mentions(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    let root = workspace.read_with(cx, |ws, _| ws.project.root().to_path_buf());
+    let dropped = ExternalPaths([root.join("src/main.rs"), root.join("shot.png")].into_iter().collect());
+    cx.update(|window, cx| window.render_frame(cx));
+    // Middle of the window lands on the chat pane, not the sidebar.
+    let at = point(px(600.), px(400.));
+    cx.update(|window, cx| {
+        window.dispatch_event(FileDropEvent::Entered { position: at, paths: dropped }.to_platform_input(), cx);
+        window.dispatch_event(FileDropEvent::Submit { position: at }.to_platform_input(), cx);
+    });
+    let attachments = workspace.read_with(cx, |ws, _| ws.chats[ws.active].attachments.clone());
+    assert_eq!(
+        attachments,
+        vec![gpui_kit::SharedString::from(root.join("shot.png").to_string_lossy().into_owned())],
+        "image drop attaches as a chip"
+    );
+    assert_eq!(composer_value(&workspace, cx), "@src/main.rs ", "non-image drop mentions the project-relative path");
 }
