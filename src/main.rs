@@ -112,6 +112,7 @@ mod palette_tests;
 mod persist;
 mod persist_migrate;
 mod persist_model_cache;
+mod persist_settings;
 #[cfg(test)]
 mod persist_tests;
 mod plan_panel;
