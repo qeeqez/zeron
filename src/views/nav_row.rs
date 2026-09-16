@@ -34,6 +34,9 @@ pub(crate) struct NavRow {
     icon: Option<IconName>,
     label: SharedString,
     active: bool,
+    /// Multi-select member: a subtler accent wash than `active` — the
+    /// sidebar's bulk-op selection, not the open chat.
+    selected: bool,
     /// False drops the hover wash — the settings nav's "No settings match"
     /// placeholder is a label, not a clickable row.
     hoverable: bool,
@@ -61,6 +64,7 @@ impl NavRow {
             icon: None,
             label: label.into(),
             active: false,
+            selected: false,
             hoverable: true,
             collapsed: false,
             group: None,
@@ -81,6 +85,13 @@ impl NavRow {
     /// Selected state: medium weight on the sidebar-accent fill.
     pub(crate) fn active(mut self, active: bool) -> Self {
         self.active = active;
+        self
+    }
+
+    /// Multi-select member: a faint accent wash under the hover state —
+    /// distinct from `active`'s solid selected-chat fill.
+    pub(crate) fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
         self
     }
 
@@ -185,6 +196,7 @@ impl SidebarItem for NavRow {
             .test_support()
             .overflow_x_hidden()
             .flex_shrink_0()
+            .when(self.selected && !self.active, |this| this.bg(accent.opacity(0.5)))
             .p_2()
             .gap_x_2()
             .rounded(radius)

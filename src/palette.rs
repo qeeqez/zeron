@@ -122,6 +122,13 @@ impl Workspace {
             cx.notify();
             return;
         }
+        // A sidebar multi-selection drops next — it's a lighter state than
+        // the side panels, so Esc peels it before they close.
+        if !self.selected_chats.is_empty() {
+            self.selected_chats.clear();
+            cx.notify();
+            return;
+        }
         if self.agents_panel_open {
             self.agents_panel_open = false;
             cx.notify();
@@ -136,6 +143,29 @@ impl Workspace {
     /// rendered by `Workspace::render` while `shortcuts_open` is set.
     pub fn shortcuts_help(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.shortcuts_open = !self.shortcuts_open;
+        cx.notify();
+    }
+}
+
+impl Workspace {
+    pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+        self.sidebar_collapsed = !self.sidebar_collapsed;
+        self.save_settings();
+        cx.notify();
+    }
+
+    pub fn toggle_agents_panel(&mut self, cx: &mut Context<Self>) {
+        self.agents_panel_open = !self.agents_panel_open;
+        cx.notify();
+    }
+
+    /// Toggle the Changes panel; opening refreshes the change list so the
+    /// first render never shows stale rows.
+    pub fn toggle_changes_panel(&mut self, cx: &mut Context<Self>) {
+        self.changes_panel_open = !self.changes_panel_open;
+        if self.changes_panel_open {
+            self.refresh_changes(cx);
+        }
         cx.notify();
     }
 }

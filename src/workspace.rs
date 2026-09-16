@@ -81,6 +81,10 @@ pub struct Workspace {
     /// Sidebar filter chips under the chat search — ANDed with the title
     /// query (see `crate::sidebar_filter`). Runtime-only, never persisted.
     pub sidebar_filters: crate::sidebar_filter::SidebarFilters,
+    /// Cmd-clicked chat ids in the sidebar's multi-selection — drives the
+    /// accent rows and the bulk Archive/Delete bar. Runtime-only; ids are
+    /// pruned as chats are deleted.
+    pub selected_chats: std::collections::HashSet<u64>,
     pub scroller: Entity<MessageScrollerState>,
     pub model: SharedString,
     /// Selected provider instance id — an entry in `providers`. The

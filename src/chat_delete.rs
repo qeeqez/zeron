@@ -50,6 +50,7 @@ impl Workspace {
         if self.renaming == Some(self.chats[index].id) {
             self.renaming = None;
         }
+        self.selected_chats.remove(&self.chats[index].id);
         // A worktree thread's checkout goes with it — remove before the
         // chat drops so the path is still known. A dirty checkout survives
         // (`remove` refuses it); the feed records the leftover.
@@ -106,19 +107,24 @@ impl Workspace {
             if rx.await != Ok(0) {
                 return;
             }
-            let _ = this.update(cx, |this, cx| {
-                // Worktree threads' checkouts go with their chats; dirty
-                // ones survive and get a feed note so they aren't lost.
-                let kept = crate::worktree::remove_all(this.project.root(), &this.chats);
-                this.chats.clear();
-                this.note_kept_worktrees(&kept);
-                this.search_match_ix = 0;
-                this.renaming = None;
-                this.new_chat(cx);
-                crate::dock_badge::update(cx);
-            });
+            let _ = this.update(cx, |this, cx| this.delete_all_chats_now(cx));
         })
         .detach();
+    }
+
+    /// The confirmed wipe shared by `clear_all_chats` and a bulk delete
+    /// that selected every chat: worktree checkouts go with their chats
+    /// (dirty ones survive and get a feed note), then a fresh chat opens
+    /// so the workspace is never empty.
+    pub(crate) fn delete_all_chats_now(&mut self, cx: &mut Context<Self>) {
+        let kept = crate::worktree::remove_all(self.project.root(), &self.chats);
+        self.chats.clear();
+        self.note_kept_worktrees(&kept);
+        self.search_match_ix = 0;
+        self.renaming = None;
+        self.selected_chats.clear();
+        self.new_chat(cx);
+        crate::dock_badge::update(cx);
     }
 
     /// Regenerate the reply at message `ix`: drop it and everything after,

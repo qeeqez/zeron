@@ -2,6 +2,7 @@ pub(crate) mod budget;
 mod colors;
 mod folders;
 pub(crate) mod instructions;
+mod select;
 
 use std::rc::Rc;
 
@@ -51,6 +52,7 @@ impl Workspace {
         self.clear_recall();
         self.search_match_ix = 0;
         self.editing = None;
+        self.selected_chats.clear();
         self.find.match_ix = 0;
         self.scroller.update(cx, |s, cx| {
             s.reset(0, cx);
@@ -83,6 +85,7 @@ impl Workspace {
         self.search_match_ix = 0;
         self.editing = None;
         self.find.match_ix = 0;
+        self.selected_chats.clear();
         self.chats[index].unread = false;
         self.mark_chat_activity_read(self.chats[index].created_at);
         crate::dock_badge::update(cx);
@@ -300,27 +303,6 @@ impl Workspace {
 }
 
 impl Workspace {
-    pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
-        self.sidebar_collapsed = !self.sidebar_collapsed;
-        self.save_settings();
-        cx.notify();
-    }
-
-    pub fn toggle_agents_panel(&mut self, cx: &mut Context<Self>) {
-        self.agents_panel_open = !self.agents_panel_open;
-        cx.notify();
-    }
-
-    /// Toggle the Changes panel; opening refreshes the change list so the
-    /// first render never shows stale rows.
-    pub fn toggle_changes_panel(&mut self, cx: &mut Context<Self>) {
-        self.changes_panel_open = !self.changes_panel_open;
-        if self.changes_panel_open {
-            self.refresh_changes(cx);
-        }
-        cx.notify();
-    }
-
     pub fn running_agents(&self) -> usize {
         self.agents.iter().filter(|a| a.status == crate::model::AgentStatus::Running).count()
     }
