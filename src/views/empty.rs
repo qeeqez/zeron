@@ -75,12 +75,6 @@ fn onboarding_card(ws: &Entity<Workspace>, panel: Entity<crate::views::settings:
 /// project affordances (Open Project… + recent folders).
 fn chat_empty(ws: Entity<Workspace>, current: &std::path::Path, cx: &mut App) -> impl IntoElement {
     let recents: Vec<std::path::PathBuf> = crate::recent_projects::list().into_iter().filter(|p| p.as_path() != current).take(5).collect();
-    let suggestions = [
-        "Explain this codebase",
-        "Fix the failing tests",
-        "Refactor the parser module",
-        "Write docs for the public API",
-    ];
     div()
         .flex()
         .flex_col()
@@ -99,34 +93,11 @@ fn chat_empty(ws: Entity<Workspace>, current: &std::path::Path, cx: &mut App) ->
         )
         .child(div().text_lg().font_weight(FontWeight::MEDIUM).child("What should we work on?"))
         .child(
-            div()
-                .flex()
-                .flex_wrap()
-                .justify_center()
-                .gap_2()
-                .max_w(px(520.))
-                .children(suggestions.iter().map(|s| {
-                    let ws = ws.clone();
-                    let prompt = *s;
-                    div()
-                        .id(SharedString::from(format!("suggestion-{prompt}")))
-                        .cursor_pointer()
-                        .px_3()
-                        .py_1p5()
-                        .rounded_full()
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .hover(|style| style.bg(cx.theme().secondary).text_color(cx.theme().foreground))
-                        .child(prompt)
-                        .on_click(move |_, window, cx| {
-                            ws.update(cx, |this, cx| {
-                                this.composer.update(cx, |s, cx| s.set_value(prompt, window, cx));
-                                this.send(window, cx);
-                            });
-                        })
-                })),
+            div().id("starter-prompts").test_support().flex().flex_col().gap_2().children(
+                STARTERS
+                    .chunks(2)
+                    .map(|row| div().flex().gap_2().children(row.iter().map(|s| starter_chip(s, &ws, cx)))),
+            ),
         )
         .child(
             div()
@@ -164,5 +135,79 @@ fn chat_empty(ws: Entity<Workspace>, current: &std::path::Path, cx: &mut App) ->
                             .map(|root| crate::views::project_switcher::recent_row("empty-recent", root.clone(), cx)),
                     ),
             )
+        })
+}
+
+/// One starter prompt: the chip's stable test id, icon, label, and hint —
+/// plus the canned text a click loads into the composer and sends. Prompts
+/// stay generic about the project so they work on any open folder.
+struct Starter {
+    id: &'static str,
+    icon: IconName,
+    label: &'static str,
+    hint: &'static str,
+    prompt: &'static str,
+}
+
+static STARTERS: [Starter; 4] = [
+    Starter {
+        id: "explain",
+        icon: IconName::BookOpen,
+        label: "Explain this codebase",
+        hint: "Tour the structure and entry points",
+        prompt: "Explain the structure of this codebase and what it does.",
+    },
+    Starter {
+        id: "fix-bug",
+        icon: IconName::Bug,
+        label: "Find and fix a bug",
+        hint: "Hunt down a likely defect and patch it",
+        prompt: "Find a likely bug in this project, explain it, and fix it.",
+    },
+    Starter {
+        id: "add-tests",
+        icon: IconName::FlaskConical,
+        label: "Add tests for a file",
+        hint: "Cover an untested source file",
+        prompt: "Pick an important source file that lacks tests and add a test suite for it.",
+    },
+    Starter {
+        id: "refactor",
+        icon: IconName::WandSparkles,
+        label: "Refactor for readability",
+        hint: "Simplify a tangled spot",
+        prompt: "Find a tangled part of this codebase and refactor it for readability without changing behavior.",
+    },
+];
+
+/// One suggestion chip — a bordered card (the app's `card_frame` idiom)
+/// with an icon, a short label, and a one-line hint. Clicking loads the
+/// canned prompt into the composer and runs the normal `send` path, so
+/// queueing, slash dispatch, and attachments behave exactly like typed
+/// input.
+fn starter_chip(s: &'static Starter, ws: &Entity<Workspace>, cx: &App) -> impl IntoElement {
+    let ws = ws.clone();
+    crate::views::cards::card_frame(cx)
+        .id(SharedString::from(format!("starter-{}", s.id)))
+        .test_support()
+        .cursor_pointer()
+        .w(px(260.))
+        .gap_1()
+        .p_3()
+        .hover(|style| style.bg(cx.theme().secondary))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(Icon::new(s.icon).size_4().text_color(cx.theme().muted_foreground))
+                .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(s.label)),
+        )
+        .child(div().text_xs().text_color(cx.theme().muted_foreground).child(s.hint))
+        .on_click(move |_, window, cx| {
+            ws.update(cx, |this, cx| {
+                this.composer.update(cx, |composer, cx| composer.set_value(s.prompt, window, cx));
+                this.send(window, cx);
+            });
         })
 }

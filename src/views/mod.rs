@@ -95,3 +95,6 @@ mod onboarding_tests;
 #[cfg(test)]
 #[path = "../settings_mcp_tests.rs"]
 mod settings_mcp_tests;
+#[cfg(test)]
+#[path = "../starter_prompts_tests.rs"]
+mod starter_prompts_tests;
