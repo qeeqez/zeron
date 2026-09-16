@@ -9,6 +9,10 @@ use crate::send_queue::Queued;
 use crate::slash::{is_slash, runs_now};
 use crate::workspace::Workspace;
 
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[path = "composer_history.rs"]
+pub(crate) mod composer_history;
+
 /// Outcome of one queue-drain attempt for a chat.
 pub(crate) enum Drain {
     /// A queued item was consumed — a message sent or a command ran.
@@ -46,6 +50,8 @@ impl Workspace {
         if text.is_empty() {
             return;
         }
+        self.record_prompt(text);
+        self.clear_recall();
         self.send_or_queue(text, window, cx);
         self.clear_composer(window, cx);
     }
@@ -101,8 +107,7 @@ impl Workspace {
         chat.running = true;
         chat.failed_flag = false;
         chat.started_at = Some(std::time::Instant::now());
-        self.recall_ix = None;
-        self.recall_saved = None;
+        self.clear_recall();
         self.start_reply(&prompt, cx);
     }
 

@@ -1,6 +1,6 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::input::{Paste, Textarea};
+use gpui_kit::component::input::{MoveDown, MoveUp, Paste, Textarea};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::{Disableable, Sizable};
 use gpui_kit::prelude::*;
@@ -165,6 +165,12 @@ impl Workspace {
             // Capture-phase so clipboard images/files attach as chips before
             // the input's own paste handler can insert their paths as text.
             .capture_action::<Paste>(cx.listener(|this, _, _, cx| this.paste_attachments(cx)))
+            // Up/Down recall the chat's prompt history — capture-phase so a
+            // consumed keystroke never reaches the textarea's own cursor
+            // move. `history_recall` propagates when recall doesn't apply
+            // (mid-text cursor, no history), keeping multi-line moves intact.
+            .capture_action::<MoveUp>(cx.listener(|this, _, window, cx| this.history_recall(true, window, cx)))
+            .capture_action::<MoveDown>(cx.listener(|this, _, window, cx| this.history_recall(false, window, cx)))
             .child(
                 div()
                     .flex()

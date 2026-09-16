@@ -55,6 +55,10 @@ pub(crate) struct StoredChat {
     /// written before message feedback existed.
     #[serde(default)]
     pub(crate) feedback: Vec<crate::feedback::FeedbackNote>,
+    /// Composer prompt history (Up/Down recall) — missing in files written
+    /// before history existed.
+    #[serde(default)]
+    prompt_history: Vec<String>,
 }
 
 /// Chats dir for the current project — kept for `RevealChats` in root.rs.
@@ -90,6 +94,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             thread_id: chat.thread_id.clone(),
             checkpoints: chat.checkpoints.clone(),
             feedback: chat.feedback.clone(),
+            prompt_history: chat.prompt_history.clone(),
         };
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
@@ -202,6 +207,7 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
             chat.checkpoints = stored.checkpoints;
             chat.thread_id = stored.thread_id;
             chat.feedback = stored.feedback;
+            chat.prompt_history = stored.prompt_history;
             Some(chat)
         })
         .collect()

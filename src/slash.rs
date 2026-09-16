@@ -136,8 +136,7 @@ impl Workspace {
         let chat = &mut self.chats[self.active];
         Rc::make_mut(&mut chat.messages).clear();
         chat.last_turn = None;
-        self.recall_ix = None;
-        self.recall_saved = None;
+        self.clear_recall();
         self.search_match_ix = 0;
         let count = self.filtered_count(cx);
         self.scroller.update(cx, |s, cx| s.reset(count, cx));
@@ -172,8 +171,7 @@ impl Workspace {
             },
         );
         chat.last_turn = None;
-        self.recall_ix = None;
-        self.recall_saved = None;
+        self.clear_recall();
         self.search_match_ix = 0;
         let count = self.filtered_count(cx);
         self.scroller.update(cx, |s, cx| s.reset(count, cx));

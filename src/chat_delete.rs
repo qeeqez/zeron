@@ -46,8 +46,7 @@ impl Workspace {
         } else if index < self.active {
             self.active -= 1;
         }
-        self.recall_ix = None;
-        self.recall_saved = None;
+        self.clear_recall();
         if was_active {
             // Composer still holds the deleted chat's draft — restore the
             // newly-active chat's draft instead.

@@ -126,6 +126,12 @@ pub struct Workspace {
     /// Composer text stashed when a recall cycle starts — restored when the
     /// cycle steps past the newest message.
     pub recall_saved: Option<String>,
+    /// Index into `Chat::prompt_history` for Up/Down recall — `Some` while
+    /// a history session is live (see `crate::send::composer_history`).
+    pub history_ix: Option<usize>,
+    /// Composer text stashed when a history session starts — restored when
+    /// the session steps past either end. Runtime-only, not persisted.
+    pub draft_before_recall: String,
     /// A user message open in the inline editor — commit truncates the
     /// transcript after it and resends (see `crate::chat_edit`).
     pub editing: Option<crate::chat_edit::EditMessage>,

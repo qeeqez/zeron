@@ -27,6 +27,8 @@ impl Workspace {
         if text.is_empty() {
             return;
         }
+        self.record_prompt(text);
+        self.clear_recall();
         // Slash commands run locally or queue — never injected mid-turn.
         // `send_or_queue` also covers the not-running case.
         if crate::slash::is_slash(text) || !self.chats[self.active].running {

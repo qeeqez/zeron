@@ -33,8 +33,7 @@ impl Workspace {
             InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
             // `set_value` suppresses Change, so this only fires on real edits.
             InputEvent::Change => {
-                this.recall_ix = None;
-                this.recall_saved = None;
+                this.clear_recall();
                 cx.notify();
             },
             _ => {},
@@ -170,6 +169,8 @@ impl Workspace {
             chat_search_open: false,
             search_match_ix: 0,
             recall_saved: None,
+            history_ix: None,
+            draft_before_recall: String::new(),
             editing: None,
             feedback: crate::feedback::FeedbackState::new(window, cx),
             close_confirmed: std::cell::Cell::new(false),

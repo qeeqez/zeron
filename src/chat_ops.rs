@@ -35,8 +35,7 @@ impl Workspace {
         self.next_chat_id += 1;
         self.chats.push(Chat::new(id, "New chat"));
         self.active = self.chats.len() - 1;
-        self.recall_ix = None;
-        self.recall_saved = None;
+        self.clear_recall();
         self.search_match_ix = 0;
         self.editing = None;
         self.find.match_ix = 0;
@@ -67,8 +66,7 @@ impl Workspace {
         // The incoming thread's own provider/model/access replace the
         // workspace selection — legacy chats (no stamp) keep it.
         self.restore_thread_selection(cx);
-        self.recall_ix = None;
-        self.recall_saved = None;
+        self.clear_recall();
         self.search_match_ix = 0;
         self.editing = None;
         self.find.match_ix = 0;

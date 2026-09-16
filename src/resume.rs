@@ -71,8 +71,7 @@ impl Workspace {
         self.active = self.chats.len() - 1;
         // Bind the new thread to the live provider/model/access selection.
         self.stamp_thread();
-        self.recall_ix = None;
-        self.recall_saved = None;
+        self.clear_recall();
         self.search_match_ix = 0;
         self.composer.update(cx, |s, cx| {
             s.set_value("", window, cx);

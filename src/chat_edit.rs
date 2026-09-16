@@ -87,8 +87,7 @@ impl Workspace {
             // tail message inherit its duration label.
             chat.last_turn = None;
         }
-        self.recall_ix = None;
-        self.recall_saved = None;
+        self.clear_recall();
         self.search_match_ix = 0;
         let count = self.filtered_count(cx);
         self.scroller.update(cx, |s, cx| s.reset(count, cx));

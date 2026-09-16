@@ -26,10 +26,11 @@ impl Workspace {
             return;
         };
         // Stash the in-progress composer text — recall_next past the newest
-        // restores it instead of clearing. Kept if a stash already exists
-        // (e.g. a recall cycle that already saved one).
+        // restores it instead of clearing. A live history session's stash is
+        // the real draft (the composer holds a recalled entry); otherwise
+        // keep an existing stash (e.g. a recall cycle that already saved one).
         if self.recall_saved.is_none() {
-            self.recall_saved = Some(self.composer.read(cx).value().to_string());
+            self.recall_saved = Some(self.take_history_draft().unwrap_or_else(|| self.composer.read(cx).value().to_string()));
         }
         self.recall_ix = Some(0);
         self.composer.update(cx, |s, cx| {
@@ -41,8 +42,7 @@ impl Workspace {
     /// Cmd+Shift+Up: cycle backward through user messages (oldest first).
     /// Resets when the composer is edited or a message is sent.
     pub fn recall_prev(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let chat = &self.chats[self.active];
-        let user_ixs: Vec<usize> = chat
+        let user_ixs: Vec<usize> = self.chats[self.active]
             .messages
             .iter()
             .enumerate()
@@ -58,13 +58,14 @@ impl Workspace {
             None => 0,
         };
         // Stash the in-progress composer text on first recall — recall_next
-        // past the newest restores it instead of clearing.
+        // past the newest restores it instead of clearing. A live history
+        // session's stash is the real draft, not the recalled entry.
         if self.recall_saved.is_none() {
-            self.recall_saved = Some(self.composer.read(cx).value().to_string());
+            self.recall_saved = Some(self.take_history_draft().unwrap_or_else(|| self.composer.read(cx).value().to_string()));
         }
         self.recall_ix = Some(next);
         let ix = user_ixs[user_ixs.len() - 1 - next];
-        let MessageKind::Text(t) = &chat.messages[ix].kind else { return };
+        let MessageKind::Text(t) = &self.chats[self.active].messages[ix].kind else { return };
         let text = t.to_string();
         self.composer.update(cx, |s, cx| {
             s.set_value(text, window, cx);
@@ -76,7 +77,9 @@ impl Workspace {
     /// Past the newest, the composer clears.
     pub fn recall_next(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(cur) = self.recall_ix else {
-            // Not cycling — just clear the composer.
+            // Not cycling — just clear the composer. A live history session
+            // ends too; its stash is already superseded by the clear.
+            self.history_ix = None;
             self.composer.update(cx, |s, cx| s.set_value("", window, cx));
             return;
         };
@@ -182,6 +185,7 @@ impl Workspace {
             return;
         };
         self.chats[self.active].attachments = item.attachments.clone();
+        self.clear_recall();
         self.composer.update(cx, |s, cx| {
             s.set_value(item.text.clone(), window, cx);
             s.focus(window, cx);
@@ -198,6 +202,7 @@ impl Workspace {
         let attachments = std::mem::take(&mut self.chats[self.active].attachments);
         let Some(edit) = self.send_queue.commit_edit(text, attachments) else { return };
         self.chats[self.active].attachments = edit.saved_attachments;
+        self.clear_recall();
         self.composer.update(cx, |s, cx| {
             s.set_value(edit.saved_text.clone(), window, cx);
             s.focus(window, cx);
