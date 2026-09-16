@@ -59,6 +59,8 @@ pub(crate) mod sidebar;
 mod sidebar_row;
 pub(crate) mod snapshots;
 pub(crate) mod terminal;
+#[cfg(test)]
+mod tool_group_tests;
 pub(crate) mod trust;
 
 pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_item, slash_item, usage_indicator};

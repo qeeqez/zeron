@@ -6,6 +6,126 @@ use gpui_kit::*;
 use crate::model::{ChatMessage, DiffCard, MessageKind, PlanCard, PlanStatus, ToolCall, ToolStatus};
 use crate::workspace::Workspace;
 
+/// A run of consecutive `Tool` messages — `head` is the first message's
+/// index, `len` the run length. Runs of one aren't groups: `tool_group`
+/// returns `None` for them so lone calls keep their plain card.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ToolGroup {
+    pub head: usize,
+    pub len: usize,
+}
+
+/// Group consecutive tool calls at render time: returns the run covering
+/// message `ix` when it holds 2+ calls, else `None`. Any non-tool message —
+/// text, plan, diff, approval — breaks the run.
+pub(crate) fn tool_group(messages: &[ChatMessage], ix: usize) -> Option<ToolGroup> {
+    if !matches!(messages.get(ix)?.kind, MessageKind::Tool(_)) {
+        return None;
+    }
+    let mut head = ix;
+    while head > 0 && matches!(messages[head - 1].kind, MessageKind::Tool(_)) {
+        head -= 1;
+    }
+    let mut end = ix + 1;
+    while end < messages.len() && matches!(messages[end].kind, MessageKind::Tool(_)) {
+        end += 1;
+    }
+    (end - head > 1).then_some(ToolGroup { head, len: end - head })
+}
+
+/// Flip a group's collapsed state and re-measure every row it covers —
+/// expanding reveals the member rows below the summary, collapsing hides
+/// them again.
+fn toggle_tool_group(ws: Entity<Workspace>, g: ToolGroup) -> impl Fn(&ClickEvent, &mut Window, &mut App) {
+    move |_, _, cx| {
+        ws.update(cx, |this, cx| {
+            let chat = &mut this.chats[this.active];
+            let Some(head) = chat.messages.get(g.head) else { return };
+            let key = (g.head, head.at);
+            if !chat.expanded_tool_groups.remove(&key) {
+                chat.expanded_tool_groups.insert(key);
+            }
+            let start = this.filtered_pos(g.head, cx);
+            this.scroller.update(cx, |s, cx| s.remeasure_items(start..start + g.len, cx));
+            cx.notify();
+        });
+    }
+}
+
+/// Header + optional detail of one tool call — shared by the standalone
+/// card and the group's head row, which embeds its first call unframed.
+fn tool_card_body(ix: usize, tool: &ToolCall, ws: &Entity<Workspace>, cx: &mut App) -> Div {
+    let (icon, status_color) = match tool.status {
+        ToolStatus::Running => (IconName::LoaderCircle, cx.theme().info),
+        ToolStatus::Done => (IconName::CircleCheck, cx.theme().success),
+        ToolStatus::Failed => (IconName::CircleX, cx.theme().danger),
+    };
+
+    let header = card_header(("tool", ix))
+        .child(div().text_color(status_color).child(icon))
+        .child(IconName::SquareTerminal)
+        .child(tool.name.clone())
+        .child(div().text_color(cx.theme().muted_foreground).child(tool.detail.clone()))
+        .child(div().flex_1())
+        .child(div().text_color(cx.theme().muted_foreground).child(chevron(tool.expanded)))
+        .on_click(toggle_expanded(ws.clone(), ix))
+        .test_support();
+
+    let mut body = div().flex().flex_col().child(header);
+    if tool.expanded && !tool.output.is_empty() {
+        body = body.child(detail_block(&tool.output, cx)).child(tool_output_bar(ix, ws, cx));
+    }
+    body
+}
+
+pub fn render_tool_call(ix: usize, tool: &ToolCall, ws: Entity<Workspace>, cx: &mut App) -> impl IntoElement {
+    card_frame(cx).child(tool_card_body(ix, tool, &ws, cx))
+}
+
+/// Collapsed summary for a run of tool calls: "N tool calls" plus the tool
+/// names, spinning while any member runs. Expanding reveals the run's own
+/// calls — the head's card embeds here, the rest render in their rows.
+pub fn render_tool_group(g: ToolGroup, messages: &[ChatMessage], expanded: bool, ws: Entity<Workspace>, cx: &mut App) -> impl IntoElement {
+    let members = &messages[g.head..g.head + g.len];
+    let names = members
+        .iter()
+        .filter_map(|m| match &m.kind {
+            MessageKind::Tool(t) => Some(t.name.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" · ");
+    let running = members.iter().any(|m| matches!(&m.kind, MessageKind::Tool(t) if t.status == ToolStatus::Running));
+    let status = if running {
+        (IconName::LoaderCircle, cx.theme().info)
+    } else {
+        (IconName::CircleCheck, cx.theme().success)
+    };
+
+    let header = card_header(("tool-group", g.head))
+        .aria_label(format!("{} tool calls", g.len))
+        .child(div().text_color(status.1).child(status.0))
+        .child(IconName::SquareTerminal)
+        .child(format!("{} tool calls", g.len))
+        .child(
+            div()
+                .flex_1()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_color(cx.theme().muted_foreground)
+                .child(names),
+        )
+        .child(div().text_color(cx.theme().muted_foreground).child(chevron(expanded)))
+        .on_click(toggle_tool_group(ws.clone(), g))
+        .test_support();
+
+    let mut card = card_frame(cx).child(header);
+    if expanded && let MessageKind::Tool(tool) = &members[0].kind {
+        card = card.child(div().border_t_1().border_color(cx.theme().border).child(tool_card_body(g.head, tool, &ws, cx)));
+    }
+    card
+}
+
 fn toggle_expanded(ws: Entity<Workspace>, ix: usize) -> impl Fn(&ClickEvent, &mut Window, &mut App) {
     move |_, _, cx| {
         ws.update(cx, |this, cx| {
@@ -51,29 +171,6 @@ fn chevron(expanded: bool) -> IconName {
     if expanded { IconName::ChevronDown } else { IconName::ChevronRight }
 }
 
-pub fn render_tool_call(ix: usize, tool: &ToolCall, ws: Entity<Workspace>, cx: &mut App) -> impl IntoElement {
-    let (icon, status_color) = match tool.status {
-        ToolStatus::Running => (IconName::LoaderCircle, cx.theme().info),
-        ToolStatus::Done => (IconName::CircleCheck, cx.theme().success),
-        ToolStatus::Failed => (IconName::CircleX, cx.theme().danger),
-    };
-
-    let header = card_header(("tool", ix))
-        .child(div().text_color(status_color).child(icon))
-        .child(IconName::SquareTerminal)
-        .child(tool.name.clone())
-        .child(div().text_color(cx.theme().muted_foreground).child(tool.detail.clone()))
-        .child(div().flex_1())
-        .child(div().text_color(cx.theme().muted_foreground).child(chevron(tool.expanded)))
-        .on_click(toggle_expanded(ws.clone(), ix));
-
-    let mut card = card_frame(cx).child(header);
-    if tool.expanded && !tool.output.is_empty() {
-        card = card.child(detail_block(&tool.output, cx)).child(tool_output_bar(ix, &ws, cx));
-    }
-    card
-}
-
 fn tool_output_bar(ix: usize, ws: &Entity<Workspace>, cx: &mut App) -> Div {
     let ws = ws.clone();
     div()
@@ -87,6 +184,7 @@ fn tool_output_bar(ix: usize, ws: &Entity<Workspace>, cx: &mut App) -> Div {
         .child(
             div()
                 .id(("copy-tool", ix))
+                .test_support()
                 .cursor_pointer()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)

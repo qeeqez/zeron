@@ -237,6 +237,10 @@ pub struct Chat {
     /// "What went wrong" notes attached to thumbs-down ratings, pinned to
     /// each message's `at` timestamp (see `crate::feedback`). Persisted.
     pub feedback: Vec<crate::feedback::FeedbackNote>,
+    /// Tool-call groups the user expanded — keyed by the run's head message
+    /// index + timestamp so truncation can't reopen a different group.
+    /// Runtime state, not persisted; groups start collapsed.
+    pub expanded_tool_groups: std::collections::HashSet<(usize, SystemTime)>,
 }
 
 impl Chat {
@@ -269,6 +273,7 @@ impl Chat {
             usage: crate::usage::ChatUsage::default(),
             checkpoints: Vec::new(),
             feedback: Vec::new(),
+            expanded_tool_groups: std::collections::HashSet::new(),
         }
     }
 }

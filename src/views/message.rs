@@ -5,22 +5,59 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::model::{MessageKind, Role};
+use crate::model::{MessageKind, Role, ToolCall};
 
 use crate::views::approval::render_approval;
-use crate::views::cards::{MsgCtx, render_diff, render_plan, render_tool_call};
+use crate::views::cards::{MsgCtx, render_diff, render_plan, render_tool_call, render_tool_group, tool_group};
 use crate::workspace::Workspace;
 
 pub fn render_message(mc: MsgCtx, focused: bool, ws: &Entity<Workspace>, window: &mut Window, cx: &mut App) -> AnyElement {
     let MsgCtx { ix, msg, .. } = mc;
     let el = match &msg.kind {
         MessageKind::Text(_) => render_text(mc, ws, window, cx),
-        MessageKind::Tool(tool) => render_tool_call(ix, tool, ws.clone(), cx).into_any_element(),
+        MessageKind::Tool(tool) => render_tool(mc, tool, ws, cx),
         MessageKind::Diff(diff) => render_diff(ix, diff, ws.clone(), cx).into_any_element(),
         MessageKind::Plan(plan) => render_plan(ix, plan, cx).into_any_element(),
         MessageKind::Approval(card) => render_approval(ix, card, ws.clone(), cx).into_any_element(),
     };
     crate::msg_nav::wrap_nav_focus(el, focused, cx)
+}
+
+/// A tool message renders one of three ways: a lone call keeps its plain
+/// card; the head of a 2+ run shows the collapsible "N tool calls" summary
+/// (embedding its own call when open); later members render indented cards
+/// only while the group is expanded — collapsed they leave an empty row.
+/// Grouping is skipped under a chat-search filter so every match stays
+/// visible.
+fn render_tool(mc: MsgCtx, tool: &ToolCall, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {
+    let MsgCtx { ix, msg, .. } = mc;
+    enum Row {
+        Single,
+        Head(crate::views::cards::ToolGroup, bool, std::rc::Rc<Vec<crate::model::ChatMessage>>),
+        Member(bool),
+    }
+    let row = {
+        let ws = ws.read(cx);
+        let chat = &ws.chats[ws.active];
+        let filtered = ws.chat_search_open && !ws.chat_search.read(cx).value().is_empty();
+        match (!filtered).then(|| tool_group(&chat.messages, ix)).flatten() {
+            None => Row::Single,
+            Some(g) if g.head == ix => {
+                let expanded = chat.expanded_tool_groups.contains(&(g.head, msg.at));
+                Row::Head(g, expanded, chat.messages.clone())
+            },
+            Some(g) => {
+                let expanded = chat.messages.get(g.head).is_some_and(|h| chat.expanded_tool_groups.contains(&(g.head, h.at)));
+                Row::Member(expanded)
+            },
+        }
+    };
+    match row {
+        Row::Single => render_tool_call(ix, tool, ws.clone(), cx).into_any_element(),
+        Row::Head(g, expanded, messages) => render_tool_group(g, &messages, expanded, ws.clone(), cx).into_any_element(),
+        Row::Member(true) => div().pl_4().child(render_tool_call(ix, tool, ws.clone(), cx)).into_any_element(),
+        Row::Member(false) => div().into_any_element(),
+    }
 }
 
 fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut App) -> AnyElement {
