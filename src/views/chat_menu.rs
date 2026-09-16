@@ -88,6 +88,41 @@ pub fn temp_badge(id: &'static str, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
+/// The context-window meter on the chat titlebar — `NN%` of the window
+/// used (Codex-style; the tooltip carries the exact counts), muted under
+/// 80%, warning at 80%+, danger at 95%+. Token backends report no window
+/// size, so the chip falls back to the chat's cumulative token count and
+/// stays muted. `None` until the first usage report — a fresh chat or a
+/// backend without usage (sim) shows nothing.
+pub fn context_chip(id: &'static str, usage: &crate::usage::ChatUsage, cx: &App) -> Option<AnyElement> {
+    use crate::usage::{ContextMeter, MeterTier};
+    let meter = usage.meter()?;
+    let color = match meter {
+        ContextMeter::Fill { tier: MeterTier::Warning, .. } => cx.theme().warning,
+        ContextMeter::Fill { tier: MeterTier::Danger, .. } => cx.theme().danger,
+        _ => cx.theme().muted_foreground,
+    };
+    let tip = meter.detail();
+    Some(
+        div()
+            .id(id)
+            .test_support()
+            .aria_label(tip.clone())
+            .flex()
+            .items_center()
+            .gap_1()
+            .px_2()
+            .py_0p5()
+            .rounded_md()
+            .text_xs()
+            .text_color(color)
+            .child(IconName::CircleGauge)
+            .child(meter.label())
+            .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+            .into_any_element(),
+    )
+}
+
 /// Pin/rename/export/copy/snapshots/word-wrap — the ⋯ menu on the chat
 /// titlebar. Worktree chats also get reveal/open items for their checkout.
 pub fn chat_menu(

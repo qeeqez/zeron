@@ -150,6 +150,30 @@ fn acp_usage_reports_fill_the_context_meter() {
     });
 }
 
+#[test]
+fn titlebar_meter_shows_fill_or_token_fallback() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.try_find("context-meter").is_none(), "no reports yet — chip stays hidden");
+    });
+    // Token backend: no window size → the chip shows cumulative tokens.
+    seed_usage(&ws, cx, 0, "gpt-5", &[UsageReport::tokens(100, 40)]);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        let chip = window.find("context-meter");
+        assert!(chip.visible());
+        assert_eq!(chip.label(), Some("140 tokens this chat"), "aria label carries the exact count");
+    });
+    // Occupancy backend: the chip switches to the window's fill percent.
+    seed_usage(&ws, cx, 0, "gpt-5", &[UsageReport::occupancy(170_000, 200_000)]);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert_eq!(window.find("context-meter").label(), Some("170,000 / 200,000 tokens"));
+    });
+}
+
 /// Seed a chat's usage without driving a backend — the popover reads the
 /// folded state, not the stream.
 fn seed_usage(ws: &Entity<Workspace>, cx: &mut VisualTestContext, chat: usize, model: &str, reports: &[UsageReport]) {

@@ -117,6 +117,9 @@ impl Workspace {
                 .when(worktree, |d| d.child(crate::views::chat_menu::worktree_badge("worktree-badge", &workdir, cx)))
                 .when(ephemeral, |d| d.child(crate::views::chat_menu::temp_badge("temp-badge", cx)))
                 .when(chat.instructions.is_some(), |d| d.child(crate::chat_ops::instructions::instructions_badge("instructions-badge", cx)))
+                // Context-window meter — the latest usage report's occupancy,
+                // or cumulative tokens when the backend reports no window.
+                .when_some(crate::views::chat_menu::context_chip("context-meter", &chat.usage, cx), |d, chip| d.child(chip))
                 .child(div().flex_1())
                 .child(
                     div()

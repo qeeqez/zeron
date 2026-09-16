@@ -182,11 +182,12 @@ impl ChatUsage {
     }
 
     /// Context-window fill as a 0..=1 fraction — `None` when no backend
-    /// has reported a window size.
+    /// has reported a window size. The titlebar chip reads `meter()`.
     pub fn fill(&self) -> Option<f32> {
-        let size = self.context?;
-        let used = self.context_used.unwrap_or(self.total);
-        Some((used as f32 / size as f32).clamp(0., 1.))
+        match self.meter() {
+            Some(ContextMeter::Fill { fill, .. }) => Some(fill),
+            _ => None,
+        }
     }
 
     /// Compact meter text: `+{turn} · {used} / {limit}` with a known
@@ -216,6 +217,12 @@ pub struct SessionUsage {
     /// Some chat has tokens but no known pricing — `cost` is a lower bound.
     pub cost_partial: bool,
 }
+
+/// The titlebar chip's meter state — a submodule so this file stays under
+/// the SLOC cap. Re-exported: callers keep using `crate::usage::*`.
+#[path = "usage_meter.rs"]
+pub(crate) mod meter;
+pub use meter::{ContextMeter, MeterTier};
 
 /// Workspace-wide aggregation for the usage dashboard — a submodule so
 /// this file stays under the SLOC cap. Re-exported: callers keep using
