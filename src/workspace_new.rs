@@ -112,6 +112,7 @@ impl Workspace {
             nav: None,
             nav_focus: cx.focus_handle(),
             pending_g: None,
+            pill_anchor: None,
             chat_search_open: false,
             search_match_ix: 0,
             recall_saved: None,

@@ -154,6 +154,9 @@ pub struct Workspace {
     pub nav: Option<crate::msg_nav::MsgNav>,
     pub nav_focus: FocusHandle,
     pub pending_g: Option<std::time::Instant>,
+    /// Visible-row count when the transcript left the tail — the "N new"
+    /// count on the jump-to-latest pill (see `crate::chat_search`).
+    pub pill_anchor: Option<usize>,
     /// Named reusable prompts — the composer ★ popover lists them and
     /// `/save` adds to them; persisted per project as `prompts.json`.
     pub prompts: crate::prompts::PromptStore,

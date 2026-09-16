@@ -57,6 +57,11 @@ impl Workspace {
         // None = unfiltered — avoids allocating 0..n every render.
         let filtered: Option<Vec<usize>> =
             (!query.is_empty()).then(|| (0..msg_count).filter(|&ix| crate::chat_search::msg_matches(&messages[ix], &query)).collect());
+        // Rows the scroller shows — the pill's "N new" counts arrivals
+        // after this snapshot while the transcript is scrolled up.
+        let visible_count = filtered.as_ref().map_or(msg_count, Vec::len);
+        crate::chat_search::update_pill_anchor(&self.scroller, &mut self.pill_anchor, visible_count, cx);
+        let unseen = visible_count.saturating_sub(self.pill_anchor.unwrap_or(visible_count));
         // Find bar state: matching message indices plus the current match's
         // message — the scroller rows read both for the highlight.
         let find: Option<crate::chat_find::FindMarks> = self.find.open.then(|| self.find_marks(cx));
@@ -85,8 +90,7 @@ impl Workspace {
             let el = crate::chat_find::wrap_find_hit(el, real_ix, find.as_ref(), cx);
             crate::views::date_separator::separator_row(real_ix, at, prev_at, el, cx)
         })
-        .jump_button(true)
-        .with_jump_button_label("Jump to latest");
+        .with_jump_button_renderer(crate::chat_search::pill_renderer(ws_empty.clone(), unseen));
 
         // The header doubles as the window titlebar: it drags the window and
         // answers double-click. Interactive children stop mousedown so they

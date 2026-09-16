@@ -1,3 +1,5 @@
+use gpui_kit::component::button::Button;
+use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::*;
 
 use crate::model::{ChatMessage, MessageKind};
@@ -106,6 +108,50 @@ impl Workspace {
         self.scroller.update(cx, |s, cx| s.scroll_to_item(pos, cx));
     }
 }
+
+impl Workspace {
+    /// The pill's click: jump to the live edge and mark the chat read.
+    /// `scroll_to_end` rather than `scroll_to_message` — it also resumes
+    /// tail-following, so the transcript stays pinned as replies stream.
+    pub(crate) fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
+        self.pill_anchor = None;
+        self.chats[self.active].unread = false;
+        crate::dock_badge::update(cx);
+        self.scroller.update(cx, |s, cx| s.scroll_to_end(cx));
+        cx.notify();
+    }
+}
+
+/// Refresh the pill's anchor from the scroller's tail state — called from
+/// `render_chat`, which re-runs on every scroller `cx.notify`. `anchor`
+/// snapshots the visible-row count when the transcript leaves the tail so
+/// the pill can count rows appended while scrolled up; returning to the
+/// tail clears it. `MessageScrollerState` exposes `is_scrolled_up` but no
+/// visible range, so "new" counts arrivals since the scroll-away, not rows
+/// below the fold.
+pub(crate) fn update_pill_anchor(scroller: &Entity<MessageScrollerState>, anchor: &mut Option<usize>, visible_count: usize, cx: &App) {
+    if scroller.read(cx).is_scrolled_up() {
+        if anchor.is_none() {
+            *anchor = Some(visible_count);
+        }
+    } else {
+        *anchor = None;
+    }
+}
+
+/// The scroller's built-in jump button as the "↓ N new" pill — the kit
+/// owns its bottom-center overlay, fade transition and auto-hide; this
+/// renderer only supplies the label and the click. `unseen` is the count
+/// of rows appended since the transcript left the tail.
+pub(crate) fn pill_renderer(ws: Entity<Workspace>, unseen: usize) -> impl FnOnce(Button) -> Button + 'static {
+    let label = if unseen > 0 { format!("{unseen} new") } else { "Latest".to_string() };
+    move |button| {
+        button.label(label).on_click(move |_, _, cx| {
+            ws.update(cx, |this, cx| this.jump_to_latest(cx));
+        })
+    }
+}
+
 impl Workspace {
     pub fn open_chat_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.chat_search_open = !self.chat_search_open;
@@ -191,3 +237,8 @@ pub(crate) fn focus_new_chat(composer: &Entity<gpui_kit::component::input::Texta
     });
     window.set_window_title("New chat — Rixl Code");
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "scroll_pill_tests.rs"]
+mod scroll_pill_tests;
