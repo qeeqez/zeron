@@ -26,6 +26,7 @@ mod approval_ops;
 mod approval_tests;
 mod attachment;
 mod auth;
+mod automations;
 mod backend;
 mod backend_apply;
 mod backend_parse;
@@ -185,8 +186,6 @@ mod snapshots;
 mod snapshots_tests;
 mod speech;
 mod steer;
-#[cfg(test)]
-mod steer_tests;
 mod terminal;
 #[cfg(test)]
 mod terminal_tests;

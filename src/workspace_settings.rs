@@ -113,6 +113,7 @@ impl Workspace {
             sidebar_collapsed: self.sidebar_collapsed,
             terminal_open: self.terminal.open,
             plan_panel_open: self.plan_panel.open,
+            scheduled_panel_open: self.scheduled_panel_open,
             theme,
             ..Default::default()
         });

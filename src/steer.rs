@@ -49,3 +49,8 @@ impl Workspace {
         self.clear_composer(window, cx);
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "steer_tests.rs"]
+mod steer_tests;

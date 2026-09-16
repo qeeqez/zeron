@@ -14,11 +14,15 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     /// Spawn the ticker and the file scan. Called once from `Workspace::new`.
+    /// The ticker's second job is the scheduled-prompt check — due
+    /// automations fire through the normal send path (see
+    /// `crate::automations`).
     pub(crate) fn start_background(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_secs(1)).await;
                 let _ = this.update(cx, Self::tick);
+                let _ = this.update_in(cx, |this, window, cx| this.fire_due_automations(window, cx));
             }
         })
         .detach();

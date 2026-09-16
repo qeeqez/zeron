@@ -98,12 +98,24 @@ impl Workspace {
     /// the caller already cleared the live composer list. Caller guarantees
     /// the chat is idle and clears the composer.
     pub(crate) fn send_text(&mut self, item: Queued, window: &mut Window, cx: &mut Context<Self>) {
+        let chat_id = self.chats[self.active].id;
+        self.send_text_in(chat_id, item, window, cx);
+    }
+
+    /// `send_text` for a chat that may not be active — scheduled prompts
+    /// fire into their own chat without stealing the selection. Composer
+    /// state (recall, the pending edit) belongs to the active chat, so
+    /// it's only touched when `chat_id` is the one on screen.
+    pub(crate) fn send_text_in(&mut self, chat_id: u64, item: Queued, window: &mut Window, cx: &mut Context<Self>) {
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         // A new send abandons a pending message edit — the inline editor
         // unmounts and the transcript stays as it was.
-        self.editing = None;
+        if is_active {
+            self.editing = None;
+        }
         let prompt = build_prompt(&item.text, &item.attachments);
-        self.push_user_message(item, window, cx);
-        self.begin_turn(&prompt, cx);
+        self.push_user_message_in(chat_id, item, window, cx);
+        self.begin_turn_in(chat_id, &prompt, cx);
     }
 
     /// Send `prompt` to the backend while the transcript shows `display` —
@@ -112,31 +124,39 @@ impl Workspace {
     pub(crate) fn send_prompt_as(&mut self, display: &str, prompt: String, window: &mut Window, cx: &mut Context<Self>) {
         self.editing = None;
         self.push_user_message(Queued::new(display.to_string(), Vec::new()), window, cx);
-        self.begin_turn(&prompt, cx);
+        let chat_id = self.chats[self.active].id;
+        self.begin_turn_in(chat_id, &prompt, cx);
     }
 
-    /// Shared tail of `send_text`/`send_prompt_as`: mark the active chat
-    /// running and start the reply turn.
-    fn begin_turn(&mut self, prompt: &str, cx: &mut Context<Self>) {
-        let chat = &mut self.chats[self.active];
+    /// Shared tail of `send_text_in`/`send_prompt_as`: mark the chat
+    /// running and start the reply turn. Composer recall belongs to the
+    /// active chat — only cleared when `chat_id` is the one on screen.
+    fn begin_turn_in(&mut self, chat_id: u64, prompt: &str, cx: &mut Context<Self>) {
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.running = true;
         chat.failed_flag = false;
         chat.started_at = Some(std::time::Instant::now());
-        self.clear_recall();
-        self.start_reply(prompt, cx);
+        if is_active {
+            self.clear_recall();
+        }
+        self.start_reply_in(chat_id, prompt, cx);
     }
 
-    /// Append `item` as a user message on the active chat — shared by
-    /// `send_text` (new turn) and `send_steer` (mid-turn injection). Sets
-    /// the title on a fresh chat and grows the scroller.
-    pub(crate) fn push_user_message(&mut self, item: Queued, window: &mut Window, cx: &mut Context<Self>) {
+    /// `push_user_message` for a chat that may not be active — the title
+    /// placeholder still resolves, but the window title and scroller only
+    /// move when the chat is on screen; a background chat goes unread.
+    pub(crate) fn push_user_message_in(&mut self, chat_id: u64, item: Queued, window: &mut Window, cx: &mut Context<Self>) {
         let Queued { text, attachments, .. } = item;
-        let chat = &mut self.chats[self.active];
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         if chat.messages.is_empty() && chat.title == "New chat" && !chat.title_custom {
             // The placeholder stands until the first reply completes —
             // `maybe_generate_title` replaces it with a real title.
             chat.title = crate::chat_title::provisional_title(&text).into();
-            window.set_window_title(&format!("{} — Rixl Code", chat.title));
+            if is_active {
+                window.set_window_title(&format!("{} — Rixl Code", chat.title));
+            }
         }
         let display = if attachments.is_empty() {
             text.clone()
@@ -154,11 +174,24 @@ impl Workspace {
             alternatives: vec![],
             at: SystemTime::now(),
         });
-        if self.push_visible(cx) {
-            self.scroller.update(cx, |s, cx| s.append(1, cx));
+        if is_active {
+            if self.push_visible(cx) {
+                self.scroller.update(cx, |s, cx| s.append(1, cx));
+            }
+        } else {
+            chat.unread = true;
+            crate::dock_badge::update(cx);
         }
         cx.notify();
         self.save();
+    }
+
+    /// Append `item` as a user message on the active chat — shared by
+    /// `send_text` (new turn) and `send_steer` (mid-turn injection). Sets
+    /// the title on a fresh chat and grows the scroller.
+    pub(crate) fn push_user_message(&mut self, item: Queued, window: &mut Window, cx: &mut Context<Self>) {
+        let chat_id = self.chats[self.active].id;
+        self.push_user_message_in(chat_id, item, window, cx);
     }
 
     /// Poll the queue on a timer and drain it when the turn ends. Spawned on
@@ -212,16 +245,30 @@ impl Workspace {
     /// A provider with no catalog has no model to send — the turn becomes
     /// an error note instead of a synthetic "default".
     pub(crate) fn start_reply(&mut self, prompt: &str, cx: &mut Context<Self>) {
-        if self.model.is_empty() {
-            let chat_id = self.chats[self.active].id;
-            self.push_note("**Error:** the selected provider has no models — pick a provider with a catalog.".into(), cx);
+        let chat_id = self.chats[self.active].id;
+        self.start_reply_in(chat_id, prompt, cx);
+    }
+
+    /// `start_reply` for a chat that may not be active — the turn resolves
+    /// the chat's own stamped provider/model (see `turn_target`), so a
+    /// scheduled prompt runs on the thread's configuration, not whatever
+    /// the workspace selection happens to be.
+    pub(crate) fn start_reply_in(&mut self, chat_id: u64, prompt: &str, cx: &mut Context<Self>) {
+        let target = self.turn_target(chat_id);
+        if target.model.is_empty() {
+            let note = "**Error:** the selected provider has no models — pick a provider with a catalog.".to_string();
+            if self.chats.get(self.active).is_some_and(|c| c.id == chat_id) {
+                self.push_note(note, cx);
+            } else {
+                self.note_in(chat_id, note, cx);
+            }
             self.finish_reply(chat_id, cx);
             return;
         }
-        if self.backend.name() == "sim" {
-            crate::simulate::simulate_reply(self, cx);
+        if target.backend.name() == "sim" {
+            crate::simulate::simulate_reply(self, chat_id, cx);
         } else {
-            crate::backend_run::run_backend(self, prompt, cx);
+            crate::backend_run::run_backend(self, chat_id, target, prompt, cx);
         }
     }
 

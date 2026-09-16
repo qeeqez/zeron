@@ -157,12 +157,46 @@ impl Workspace {
         self.reconcile_effort();
     }
 
-    /// The `TurnContext` for the active chat's next backend turn — its
-    /// worktree or the project root, plus its access mode and effort. A
-    /// chat bound to a past session carries its backend thread id so the
-    /// turn resumes it.
-    pub(crate) fn turn_context(&self) -> crate::backend::TurnContext {
-        let chat = &self.chats[self.active];
+    /// The `TurnContext` for `chat_id`'s next backend turn — its worktree
+    /// or the project root, plus its access mode and effort. A chat bound
+    /// to a past session carries its backend thread id so the turn resumes
+    /// it. `None` when `chat_id` is gone.
+    pub(crate) fn turn_context_for(&self, chat_id: u64) -> Option<crate::backend::TurnContext> {
+        self.chats.iter().find(|c| c.id == chat_id).map(|chat| self.turn_context_of(chat))
+    }
+
+    /// The backend + model + provider a turn on `chat_id` runs on. The
+    /// active chat follows the live workspace selection (its stamps are
+    /// only written on switch-away); a background chat uses its own
+    /// stamps, falling back to the live selection when they're empty or
+    /// the stamped instance is gone — the same rule
+    /// `restore_thread_selection` applies on select.
+    pub(crate) fn turn_target(&self, chat_id: u64) -> TurnTarget {
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
+        let stamped = self
+            .chats
+            .iter()
+            .find(|c| c.id == chat_id)
+            .filter(|c| !is_active && !c.provider.is_empty() && !c.model.is_empty())
+            .and_then(|c| self.providers.iter().find(|p| p.id == c.provider && p.enabled).map(|p| (p, c.model.clone())));
+        match stamped {
+            Some((p, model)) => TurnTarget {
+                backend: crate::backend::backend_for(p),
+                model,
+                provider_id: p.id.clone(),
+            },
+            None => TurnTarget {
+                backend: self.backend.clone(),
+                model: self.model.to_string(),
+                provider_id: self.selected_provider.clone(),
+            },
+        }
+    }
+
+    /// The `TurnContext` for `chat`'s next backend turn — its worktree or
+    /// the project root, plus its access mode and effort. A chat bound to
+    /// a past session carries its backend thread id so the turn resumes it.
+    fn turn_context_of(&self, chat: &crate::model::Chat) -> crate::backend::TurnContext {
         let mut ctx = crate::backend::TurnContext::at(
             crate::worktree::workdir_for(chat, self.project.root()),
             self.effective_access(chat.access.unwrap_or(self.access)),
@@ -184,4 +218,14 @@ impl Workspace {
             .unwrap_or_default();
         ctx
     }
+}
+
+/// What a turn on one chat runs on — resolved by `turn_target` so a
+/// background chat's scheduled prompt uses its own stamped provider and
+/// model rather than the workspace's live selection.
+pub(crate) struct TurnTarget {
+    pub backend: std::sync::Arc<dyn crate::backend::AgentBackend>,
+    pub model: String,
+    /// The instance the backend was built from — the auth gate checks it.
+    pub provider_id: String,
 }

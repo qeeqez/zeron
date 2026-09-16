@@ -33,6 +33,20 @@ pub struct Workspace {
     /// Plan panel state — the active chat's checklist side panel (see
     /// `crate::plan_panel`). `open` persists via `Settings`.
     pub plan_panel: crate::plan_panel::PlanPanel,
+    /// Scheduled prompts — this project's automations, persisted as
+    /// `automations.json` (see `crate::automations`).
+    pub automations: Vec<crate::automations::Automation>,
+    /// Monotonic id source for automations — survives deletions.
+    pub next_automation_id: u64,
+    /// Scheduled panel open/closed — persisted as
+    /// `Settings.scheduled_panel_open`.
+    pub scheduled_panel_open: bool,
+    /// Shared multiline field for the "Schedule prompt…" dialog — seeded
+    /// with the chat's draft on open.
+    pub schedule_prompt_input: Entity<TextareaState>,
+    /// The interval chip last picked in the schedule dialog — reset to
+    /// `H1` on each open.
+    pub schedule_interval: crate::automations::AutomationInterval,
     /// Snapshots panel + retention policy (see `crate::snapshots`).
     pub snapshots: crate::snapshots::SnapshotsState,
     /// The activity-center dropdown is open — see `crate::activity`.

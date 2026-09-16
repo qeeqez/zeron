@@ -292,6 +292,12 @@ pub fn load_prompts(dir: &std::path::Path) -> crate::prompts::PromptStore {
         .map_or_else(crate::prompts::PromptStore::default, |s| crate::prompts::PromptStore { prompts: s.prompts })
 }
 
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[path = "persist_automations.rs"]
+mod persist_automations;
+
 pub use crate::persist_settings::{DefaultModel, Settings, load_settings, save_settings};
 
 pub use crate::persist_model_cache::{load_model_cache, save_model_cache};
+
+pub use persist_automations::{load_automations, save_automations};

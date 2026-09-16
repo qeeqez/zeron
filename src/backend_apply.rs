@@ -153,8 +153,14 @@ impl Workspace {
             AgentEvent::Usage { input, output } => {
                 // acp's `usage_update` reports context occupancy (used of
                 // size), not turn tokens — it feeds the meter's fill, not
-                // the counters. Token backends carry input/output.
-                let occupancy = self.backend.name() == "acp";
+                // the counters. Token backends carry input/output. The
+                // turn's own backend name lives on its agent row — the
+                // workspace selection can differ (scheduled prompts run
+                // on the chat's stamped provider).
+                let occupancy = chat
+                    .run_agent
+                    .and_then(|id| self.agents.iter().find(|a| a.id == id))
+                    .is_some_and(|a| a.name == "acp");
                 let report = if occupancy {
                     crate::usage::UsageReport::occupancy(input, output)
                 } else {

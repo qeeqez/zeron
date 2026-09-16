@@ -124,14 +124,16 @@ impl Workspace {
             groups.insert(0, group::ChatGroup::new(label).children(items));
         }
 
-        // Plan panel row — its suffix is the "plan active" indicator.
+        // Plan + Scheduled panel rows — their suffixes are the live
+        // indicators (plan progress, enabled-automation count).
         let plan_row = super::plan_panel::plan_nav_row(self, cx);
+        let scheduled_row = super::scheduled_panel::scheduled_nav_row(self, cx);
 
         let mut actions = group::ChatGroup::new("").child(new_chat).child(search_all);
         if let Some(resume) = resume {
             actions = actions.child(resume);
         }
-        let actions = actions.child(plan_row);
+        let actions = actions.child(plan_row).child(scheduled_row);
 
         let footer = div()
             .flex()

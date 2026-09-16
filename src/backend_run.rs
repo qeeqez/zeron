@@ -5,27 +5,36 @@ use gpui_kit::*;
 use crate::backend::{AgentEvent, ReplyStream};
 use crate::workspace::Workspace;
 
-/// Drive a real `AgentBackend` reply: spawn the backend, pump its event
-/// stream on a thread, and apply events on the UI thread via a channel.
-pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspace>) {
-    let chat_id = this.chats[this.active].id;
+/// Drive a real `AgentBackend` reply on chat `chat_id`: spawn the backend,
+/// pump its event stream on a thread, and apply events on the UI thread
+/// via a channel. The chat needn't be active — scheduled prompts fire
+/// into background chats; `target` carries the turn's resolved backend,
+/// model and provider (see `turn_target`).
+pub fn run_backend(
+    this: &mut Workspace, chat_id: u64, target: crate::thread_defaults::TurnTarget, prompt: &str, cx: &mut Context<Workspace>,
+) {
     // A signed-out provider can't take a turn — surface the sign-in
     // prompt instead of the backend's opaque auth error.
-    if let Some(reason) = this.auth_block_note() {
-        this.push_note(format!("**Error:** {reason}"), cx);
+    if let Some(reason) = this.auth_block_note_for(&target.provider_id) {
+        let note = format!("**Error:** {reason}");
+        if this.chats.get(this.active).is_some_and(|c| c.id == chat_id) {
+            this.push_note(note, cx);
+        } else {
+            this.note_in(chat_id, note, cx);
+        }
         this.finish_reply(chat_id, cx);
         return;
     }
-    let model = this.model.to_string();
+    let model = target.model;
     let mode = this.mode.to_string();
     // The thread's workdir (project root or its worktree) and access mode
     // travel with the turn — a mid-turn settings change can't alter them.
-    let ctx = this.turn_context();
+    let Some(ctx) = this.turn_context_for(chat_id) else { return };
     // Snapshot the workdir before the backend can touch it — the turn's
     // "Undo" restores this checkpoint.
     this.record_turn_checkpoint(chat_id, &ctx.cwd);
-    let mut stream = this.backend.send(prompt, &model, &mode, &ctx);
-    this.spawn_run_agent(crate::agents::RunAgentSpec { chat_id, name: this.backend.name(), lane: &model }, cx);
+    let mut stream = target.backend.send(prompt, &model, &mode, &ctx);
+    this.spawn_run_agent(crate::agents::RunAgentSpec { chat_id, name: target.backend.name(), lane: &model }, cx);
     drive_stream(this, chat_id, &mut stream, cx);
     if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
         chat.stream = Some(stream);
@@ -43,7 +52,7 @@ pub fn run_compact(this: &mut Workspace, cx: &mut Context<Workspace>) -> bool {
         this.finish_reply(chat_id, cx);
         return true;
     }
-    let ctx = this.turn_context();
+    let Some(ctx) = this.turn_context_for(chat_id) else { return false };
     let Some(mut stream) = this.backend.compact(&ctx) else { return false };
     this.spawn_run_agent(crate::agents::RunAgentSpec { chat_id, name: this.backend.name(), lane: "compact" }, cx);
     let chat = &mut this.chats[this.active];

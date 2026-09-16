@@ -230,7 +230,14 @@ impl Workspace {
     /// `SignedOut` gates; `Unknown` stays permissive so a broken status
     /// probe can't lock the user out.
     pub(crate) fn auth_block_note(&self) -> Option<String> {
-        let p = self.providers.iter().find(|p| p.id == self.selected_provider)?;
+        self.auth_block_note_for(&self.selected_provider)
+    }
+
+    /// `auth_block_note` for an explicit provider instance — a scheduled
+    /// prompt's turn resolves its chat's stamped provider, which may not
+    /// be the workspace selection.
+    pub(crate) fn auth_block_note_for(&self, provider_id: &str) -> Option<String> {
+        let p = self.providers.iter().find(|p| p.id == provider_id)?;
         if let Some(key) = env_key(p) {
             return match std::env::var(key) {
                 Ok(v) if !v.is_empty() => None,

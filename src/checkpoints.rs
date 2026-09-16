@@ -205,11 +205,12 @@ impl crate::workspace::Workspace {
     /// last user message is always the turn's first. No-op when the chat
     /// has no user message yet or the workdir can't be snapshotted.
     pub(crate) fn record_turn_checkpoint(&mut self, chat_id: u64, workdir: &Path) {
-        let turn = self.chats[self.active]
-            .messages
-            .iter()
-            .rposition(|m| m.role == crate::model::Role::User)
-            .and_then(|ix| self.chats[self.active].messages.get(ix).map(|m| (ix, m.at)));
+        let turn = self.chats.iter().find(|c| c.id == chat_id).and_then(|chat| {
+            chat.messages
+                .iter()
+                .rposition(|m| m.role == crate::model::Role::User)
+                .map(|ix| (ix, chat.messages[ix].at))
+        });
         if let Some((ix, at)) = turn
             && let Some(checkpoint) = snapshot(workdir, &store_dir(&self.project), &format!("chat{chat_id}-{ix}"))
             && let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id)

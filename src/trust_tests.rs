@@ -77,7 +77,7 @@ fn untrusted_folder_opens_restricted() {
         assert!(!this.trusted);
         assert_eq!(this.access, AccessMode::Supervised, "untrusted forces read-only/ask");
         assert!(this.chats.iter().all(|c| c.access == Some(AccessMode::Supervised)), "thread stamps are clamped too");
-        assert_eq!(this.turn_context().access, AccessMode::Supervised, "turns run restricted");
+        assert_eq!(this.turn_context_for(this.chats[this.active].id).unwrap().access, AccessMode::Supervised, "turns run restricted");
     });
 }
 
@@ -96,7 +96,7 @@ fn trust_persists_and_restores_access() {
     ws.read_with(cx, |this, _| {
         assert!(this.trusted);
         assert_eq!(this.access, AccessMode::FullAccess, "trust restores the configured mode");
-        assert_eq!(this.turn_context().access, AccessMode::FullAccess);
+        assert_eq!(this.turn_context_for(this.chats[this.active].id).unwrap().access, AccessMode::FullAccess);
     });
     assert!(crate::trust::is_trusted(project.root()));
     let stored = crate::persist::load_settings().trusted_folders;
@@ -116,7 +116,7 @@ fn dont_trust_keeps_read_only() {
     ws.read_with(cx, |this, _| {
         assert!(!this.trusted);
         assert_eq!(this.access, AccessMode::Supervised, "set_access can't escape restricted mode");
-        assert_eq!(this.turn_context().access, AccessMode::Supervised);
+        assert_eq!(this.turn_context_for(this.chats[this.active].id).unwrap().access, AccessMode::Supervised);
     });
     assert!(!crate::trust::is_trusted(project.root()), "nothing was persisted");
 }

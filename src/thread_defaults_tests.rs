@@ -233,14 +233,14 @@ fn effort_is_per_thread_and_reaches_turn_context() {
             let t1 = this.chats[this.active].id;
             this.new_chat(cx);
             assert_eq!(this.effort, None, "a fresh thread starts on the model default");
-            assert_eq!(this.turn_context().effort, None);
+            assert_eq!(this.turn_context_for(this.chats[this.active].id).unwrap().effort, None);
 
             // Switching back restores thread 1's pick — and the turn
             // context carries it to the backend.
             let ix1 = this.chat_index(t1);
             this.select_chat(ix1.unwrap(), window, cx);
             assert_eq!(this.effort.as_deref(), Some("high"));
-            assert_eq!(this.turn_context().effort.as_deref(), Some("high"));
+            assert_eq!(this.turn_context_for(this.chats[this.active].id).unwrap().effort.as_deref(), Some("high"));
         });
     });
 }

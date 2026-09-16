@@ -52,6 +52,7 @@ mod project_switcher;
 pub(crate) mod rate_limit;
 mod retry_menu;
 mod saved_prompts;
+mod scheduled_panel;
 pub mod settings;
 pub mod settings_appearance;
 pub mod settings_default_model;

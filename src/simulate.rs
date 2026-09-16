@@ -19,9 +19,9 @@ pub(crate) struct AgentSpec {
 
 /// Simulated agent reply: a tool call that runs, a diff card, then a
 /// streamed text answer. Replaced by the real backend event stream later
-/// (docs/todo/backend.md).
-pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
-    let chat_id = this.chats[this.active].id;
+/// (docs/todo/backend.md). `chat_id` needn't be the active chat —
+/// scheduled prompts simulate into background chats too.
+pub fn simulate_reply(this: &mut Workspace, chat_id: u64, cx: &mut Context<Workspace>) {
     this.spawn_agent(AgentSpec { name: "explorer", lane: "rixl/explore", steps_total: 4 }, cx);
     this.spawn_agent(AgentSpec { name: "reviewer", lane: "rixl/review", steps_total: 3 }, cx);
     if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
@@ -43,7 +43,7 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
             at: SystemTime::now(),
         });
     }
-    if this.push_visible(cx) {
+    if this.chats.get(this.active).is_some_and(|c| c.id == chat_id) && this.push_visible(cx) {
         this.scroller.update(cx, |s, cx| s.append(1, cx));
     }
     cx.notify();

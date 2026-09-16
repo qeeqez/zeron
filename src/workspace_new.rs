@@ -56,6 +56,15 @@ impl Workspace {
             resizing_sidebar: false,
             agents_panel_open: false,
             plan_panel: crate::plan_panel::PlanPanel { open: settings.plan_panel_open },
+            automations: crate::persist::load_automations(project.dir()),
+            next_automation_id: 0,
+            scheduled_panel_open: settings.scheduled_panel_open,
+            schedule_prompt_input: cx.new(|cx| {
+                TextareaState::new(window, cx)
+                    .auto_grow(2, 8)
+                    .placeholder("Prompt to send on every run — e.g. \"Summarize new commits on main.\"")
+            }),
+            schedule_interval: crate::automations::AutomationInterval::H1,
             snapshots: crate::snapshots::SnapshotsState::default(),
             changes: Vec::new(),
             changes_generation: 0,
@@ -189,6 +198,9 @@ impl Workspace {
         // Command (and re-runs `search`) on every render.
         cx.observe(&search_filters, |_, _, cx| cx.notify()).detach();
         this.snapshots.retention_days = settings.snapshot_retention_days.unwrap_or(crate::snapshots::DEFAULT_RETENTION_DAYS);
+        // Loaded automations keep their ids — the counter resumes past the
+        // highest so a new schedule never reuses one.
+        this.next_automation_id = this.automations.iter().map(|a| a.id + 1).max().unwrap_or(0);
         this.git.ignore_ws = settings.diff_ignore_ws;
         this.snapshots.cap_mb = settings.snapshot_cap_mb.unwrap_or(0);
         let loaded = crate::persist::load_chats(&this.project.chats_dir(), &mut this.next_chat_id, !crate::lifecycle::any_turn_running(cx));
