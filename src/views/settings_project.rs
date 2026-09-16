@@ -51,7 +51,7 @@ fn rules_block(s: &SettingsView, cx: &App) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap_2()
-        .child(group_label("Always allow", cx))
+        .child(group_label("Always allow", &s.search, cx))
         .child(
             div()
                 .text_xs()
