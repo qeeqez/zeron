@@ -236,7 +236,17 @@ pub(crate) fn parse_pr_status(raw: &str) -> Option<PrStatus> {
     for check in &rollup {
         match check_outcome(check) {
             Outcome::Pass => checks.pass += 1,
-            Outcome::Fail => checks.fail += 1,
+            Outcome::Fail => {
+                checks.fail += 1;
+                // CheckRun entries name under `name`, StatusContext under
+                // `context`. The cap keeps a mass failure's tooltip sane.
+                if checks.failures.len() < MAX_FAILURE_NAMES
+                    && let Some(name) = check_name(check)
+                    && !checks.failures.contains(&name)
+                {
+                    checks.failures.push(name);
+                }
+            },
             Outcome::Pending => checks.pending += 1,
         }
     }
@@ -255,6 +265,20 @@ enum Outcome {
     Pass,
     Fail,
     Pending,
+}
+
+/// Most failing-check names kept for the chip's tooltip — past this the
+/// list reads as noise; `detail` reports the overflow as "+N more".
+const MAX_FAILURE_NAMES: usize = 8;
+
+/// A rollup entry's display name — `name` on CheckRun, `context` on
+/// StatusContext. `None` for entries carrying neither.
+fn check_name(check: &serde_json::Value) -> Option<String> {
+    check["name"]
+        .as_str()
+        .or_else(|| check["context"].as_str())
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
 }
 
 fn check_outcome(check: &serde_json::Value) -> Outcome {

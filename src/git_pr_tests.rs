@@ -6,7 +6,7 @@
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use crate::git::{self, PrState};
+    use crate::git::{self, CheckVerdict, PrState};
     use crate::git_parse::parse_pr_status;
 
     /// A `bin` dir under `parent` whose `gh` runs `body` — a shell script
@@ -47,6 +47,52 @@ mod tests {
         assert_eq!(pr.url, "https://example.test/pr/42");
         assert_eq!(pr.state, PrState::Open);
         assert_eq!((pr.checks.pass, pr.checks.fail, pr.checks.pending), (2, 1, 2));
+        assert_eq!(pr.checks.failures, ["lint"], "the failing check is named");
+    }
+
+    /// The chip's verdict: fail beats pending beats pass; failing names
+    /// come from `name` (CheckRun) or `context` (StatusContext).
+    #[test]
+    fn pr_checks_verdict_and_failure_names() {
+        let raw = r#"{"number":1,"url":"https://u","state":"OPEN","statusCheckRollup":[
+            {"__typename":"CheckRun","name":"build","status":"COMPLETED","conclusion":"FAILURE"},
+            {"__typename":"StatusContext","context":"ci/merge","state":"FAILURE"},
+            {"__typename":"CheckRun","name":"test","status":"IN_PROGRESS","conclusion":null}
+        ]}"#;
+        let checks = parse_pr_status(raw).unwrap().checks;
+        assert_eq!(checks.verdict(), Some(CheckVerdict::Fail), "a failure beats pending");
+        assert_eq!(checks.verdict_count(), 2);
+        assert_eq!(checks.failures, ["build", "ci/merge"]);
+        assert_eq!(checks.detail(), "Failed: build, ci/merge\n2 failed · 1 pending");
+
+        let pending = r#"{"number":1,"url":"https://u","state":"OPEN","statusCheckRollup":[
+            {"status":"COMPLETED","conclusion":"SUCCESS"},{"status":"QUEUED","conclusion":null}]}"#;
+        let checks = parse_pr_status(pending).unwrap().checks;
+        assert_eq!(checks.verdict(), Some(CheckVerdict::Pending));
+        assert_eq!(checks.detail(), "1 pending · 1 passed");
+
+        let green = r#"{"number":1,"url":"https://u","state":"OPEN","statusCheckRollup":[
+            {"status":"COMPLETED","conclusion":"SUCCESS"}]}"#;
+        assert_eq!(parse_pr_status(green).unwrap().checks.verdict(), Some(CheckVerdict::Pass));
+
+        let bare = r#"{"number":1,"url":"https://u","state":"OPEN"}"#;
+        assert_eq!(parse_pr_status(bare).unwrap().checks.verdict(), None, "no checks → no chip");
+    }
+
+    /// The stubbed `gh` path carries failure names through — a mixed
+    /// rollup lands as a Fail verdict with the check's name.
+    #[test]
+    fn pr_status_rolls_up_failing_checks() {
+        let dir = scratch("mixed");
+        let body = format!(
+            "echo '{}'",
+            r#"{"number":9,"url":"https://example.test/pr/9","state":"OPEN","statusCheckRollup":[{"name":"build","status":"COMPLETED","conclusion":"FAILURE"},{"name":"test","status":"IN_PROGRESS","conclusion":null}]}"#
+        );
+        let path = fake_gh_path(&dir, &body);
+        let pr = git::pr_status(&dir, &[("PATH", path.as_str())]).expect("stub answered");
+        assert_eq!(pr.checks.verdict(), Some(CheckVerdict::Fail));
+        assert_eq!(pr.checks.failures, ["build"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

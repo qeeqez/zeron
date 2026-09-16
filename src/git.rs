@@ -325,7 +325,7 @@ pub(crate) fn push(dir: &std::path::Path) -> Result<String, String> {
 /// `crate::git::create_pr` / `crate::git::pr_status`.
 #[path = "git_pr.rs"]
 pub(crate) mod pr;
-pub(crate) use pr::{PrChecks, PrState, PrStatus, create_pr, pr_status};
+pub(crate) use pr::{CheckVerdict, PrChecks, PrState, PrStatus, create_pr, pr_status};
 
 /// `file_diff` — one path's unified diff for the row menu's "Copy Diff" —
 /// split into `git_file_diff.rs` for the SLOC cap; re-exported so callers

@@ -17,11 +17,68 @@ pub struct PrStatus {
 
 /// Check-rollup tallies for a PR — completed checks split into pass/fail,
 /// everything still running (queued, in progress, waiting) under `pending`.
+/// `failures` names the failing checks for the chip's tooltip, capped by
+/// the parser so a red row never carries an unbounded list.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PrChecks {
     pub pass: u32,
     pub fail: u32,
     pub pending: u32,
+    pub failures: Vec<String>,
+}
+
+/// The chip's single verdict: any failure wins over pending, pending over
+/// all-pass — matching `gh pr checks`'s own precedence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CheckVerdict {
+    Pass,
+    Fail,
+    Pending,
+}
+
+impl PrChecks {
+    /// The row's verdict — `None` when no checks reported, so the chip
+    /// hides rather than claiming a green run that never happened.
+    pub(crate) fn verdict(&self) -> Option<CheckVerdict> {
+        if self.fail > 0 {
+            Some(CheckVerdict::Fail)
+        } else if self.pending > 0 {
+            Some(CheckVerdict::Pending)
+        } else {
+            (self.pass > 0).then_some(CheckVerdict::Pass)
+        }
+    }
+
+    /// The dominant group's count — the number beside the chip's icon.
+    pub(crate) fn verdict_count(&self) -> u32 {
+        match self.verdict() {
+            Some(CheckVerdict::Fail) => self.fail,
+            Some(CheckVerdict::Pending) => self.pending,
+            _ => self.pass,
+        }
+    }
+
+    /// The chip's tooltip: failing check names first (with "+N more" when
+    /// the parser's cap or an unnamed check hides some), then the tallies.
+    pub(crate) fn detail(&self) -> String {
+        let mut parts = Vec::new();
+        if self.fail > 0 {
+            parts.push(format!("{} failed", self.fail));
+        }
+        if self.pending > 0 {
+            parts.push(format!("{} pending", self.pending));
+        }
+        if self.pass > 0 {
+            parts.push(format!("{} passed", self.pass));
+        }
+        let mut tip = parts.join(" · ");
+        if !self.failures.is_empty() {
+            let extra = self.fail.saturating_sub(self.failures.len() as u32);
+            let more = if extra > 0 { format!(" +{extra} more") } else { String::new() };
+            tip = format!("Failed: {}{more}\n{tip}", self.failures.join(", "));
+        }
+        tip
+    }
 }
 
 /// A PR's lifecycle state as `gh` reports it — anything unrecognized reads
