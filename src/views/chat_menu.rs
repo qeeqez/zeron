@@ -3,8 +3,10 @@
 
 mod bookmarks;
 mod color;
+mod continue_with;
 use bookmarks::bookmarks_submenu;
 use color::color_submenu;
+use continue_with::continue_with_submenu;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
@@ -205,6 +207,9 @@ pub fn chat_menu(
                     });
                 }),
         );
+    // "Continue with" — fork the transcript onto another provider. After
+    // the chat-shape items, before the conditional tail.
+    let menu = continue_with_submenu(menu, ws, window, cx);
     // "Copy resume command" only exists when the chat is bound to a backend
     // thread AND the backend has a CLI resume (codex/claude).
     let menu = if ws.read(cx).resume_command().is_some() {

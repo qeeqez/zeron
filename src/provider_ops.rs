@@ -227,7 +227,7 @@ impl Workspace {
 
     /// Switch the active instance: rebuild its backend and re-resolve the
     /// model selection against the new catalog.
-    fn select_instance(&mut self, instance_id: &str) {
+    pub(crate) fn select_instance(&mut self, instance_id: &str) {
         let Some(p) = self.providers.iter().find(|p| p.id == instance_id) else { return };
         self.backend = crate::backend::backend_for(p);
         self.selected_provider = p.id.clone();

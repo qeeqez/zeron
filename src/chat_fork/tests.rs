@@ -2,6 +2,7 @@
 //! new chat without touching the original, and the message context menu's
 //! "Fork here" drives it end to end.
 
+mod continue_with;
 use gpui_kit::base::test_support::snapshots;
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;

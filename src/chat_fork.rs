@@ -14,6 +14,23 @@ use gpui_kit::*;
 use crate::model::Chat;
 use crate::workspace::Workspace;
 
+/// `fork_inner`'s options — bundled to stay under the arg-count lint.
+struct ForkOpts {
+    /// Fork point: copy messages through this index; `None` = the end.
+    at: Option<usize>,
+    /// Appended to the source title — " (fork)" or " · <provider>".
+    suffix: String,
+    /// Provider/model stamps for the fork — `None` keeps the source's.
+    bind: Option<(String, String)>,
+}
+
+impl ForkOpts {
+    /// A same-provider fork at `at` — `fork_chat`'s shape.
+    fn at(at: Option<usize>) -> Self {
+        Self { at, suffix: " (fork)".to_string(), bind: None }
+    }
+}
+
 impl Workspace {
     /// Branch chat `chat_ix` at message `msg_ix`: a new chat titled
     /// "<title> (fork)" opens holding the messages up to and including
@@ -25,8 +42,42 @@ impl Workspace {
     /// either chat is deleted). The backend thread id is NOT copied — the
     /// fork starts a fresh backend thread, like `duplicate_chat`.
     pub fn fork_chat(&mut self, chat_ix: usize, msg_ix: Option<usize>, window: &mut Window, cx: &mut Context<Self>) {
+        self.fork_inner(chat_ix, ForkOpts::at(msg_ix), window, cx);
+    }
+
+    /// "Continue with…": fork chat `chat_ix` onto another provider — the
+    /// whole transcript lands in a new chat titled "<title> · <provider>"
+    /// bound to `provider_id` (its first effective model), with no backend
+    /// thread id: the old thread can't resume across providers, so the
+    /// first send starts a fresh thread on the new backend. No-op when the
+    /// instance is gone/disabled, already the chat's provider, or the
+    /// transcript is empty.
+    pub fn continue_chat_with(&mut self, chat_ix: usize, provider_id: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(src) = self.chats.get(chat_ix) else { return };
-        let ix = msg_ix.unwrap_or_else(|| src.messages.len().saturating_sub(1));
+        // Legacy chats (empty stamp) ride the live selection — same rule
+        // `chat_info`/`usage_dashboard` apply.
+        let current = if src.provider.is_empty() { self.selected_provider.as_str() } else { src.provider.as_str() };
+        let Some(p) = self.providers.iter().find(|p| p.id == provider_id && p.enabled) else { return };
+        if p.id == current {
+            return;
+        }
+        let model = self.models_for(provider_id).first().map_or_else(String::new, |m| m.id.to_string());
+        let opts = ForkOpts {
+            suffix: format!(" · {}", p.name),
+            bind: Some((provider_id.to_string(), model)),
+            ..ForkOpts::at(None)
+        };
+        self.fork_inner(chat_ix, opts, window, cx);
+    }
+
+    /// The shared fork body: copy the transcript through `opts.at` (`None`
+    /// = the end) into a new chat titled `<src.title><opts.suffix>`, then
+    /// select it. `opts.bind` overrides the provider/model stamps — `None`
+    /// keeps the source's. The backend thread id never crosses: a fork
+    /// always starts a fresh backend thread.
+    fn fork_inner(&mut self, chat_ix: usize, opts: ForkOpts, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(src) = self.chats.get(chat_ix) else { return };
+        let ix = opts.at.unwrap_or_else(|| src.messages.len().saturating_sub(1));
         if ix >= src.messages.len() {
             return;
         }
@@ -43,12 +94,17 @@ impl Workspace {
         } else {
             (src.workdir.clone(), false)
         };
-        let mut fork = Chat::new(id, format!("{} (fork)", src.title));
+        let mut fork = Chat::new(id, format!("{}{}", src.title, opts.suffix));
         fork.messages = Rc::new(src.messages[..=ix].to_vec());
         fork.folder = src.folder.clone();
         fork.color = src.color;
-        fork.provider = src.provider.clone();
-        fork.model = src.model.clone();
+        if let Some((provider, model)) = opts.bind {
+            fork.provider = provider;
+            fork.model = model;
+        } else {
+            fork.provider = src.provider.clone();
+            fork.model = src.model.clone();
+        }
         fork.access = src.access;
         fork.effort = src.effort.clone();
         fork.workdir = workdir;

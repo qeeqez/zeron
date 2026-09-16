@@ -135,12 +135,18 @@ impl Workspace {
         let model = chat.model.clone();
         let access = chat.access;
         let effort = chat.effort.clone();
-        if !provider.is_empty()
-            && self.providers.iter().any(|p| p.id == provider && p.enabled)
-            && !self.select_model(&provider, &model, cx)
-            && let Some(first) = self.models_for(&provider).first().map(|m| m.id.to_string())
+        if !provider.is_empty() && self.providers.iter().any(|p| p.id == provider && p.enabled) && !self.select_model(&provider, &model, cx)
         {
-            self.select_model(&provider, &first, cx);
+            match self.models_for(&provider).first().map(|m| m.id.to_string()) {
+                Some(first) => {
+                    self.select_model(&provider, &first, cx);
+                },
+                // Empty catalog (unfetched acp/http): still land on the
+                // stamped instance — `send` runs on `self.backend`, so
+                // leaving the old provider selected would route the
+                // thread's turns to the wrong backend.
+                None => self.select_instance(&provider),
+            }
         }
         if let Some(access) = access {
             self.access = self.effective_access(access);
