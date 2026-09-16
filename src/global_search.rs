@@ -213,9 +213,7 @@ pub(crate) fn search(docs: &[SearchDoc], query: &str, filters: &SearchFilters) -
     let from = filters.date_from.or_else(|| filters.date.cutoff());
     let mut hits = Vec::new();
     for doc in docs {
-        if filters.provider.as_ref().is_some_and(|p| *p != doc.provider)
-            || filters.model.as_ref().is_some_and(|m| *m != doc.model)
-        {
+        if filters.provider.as_ref().is_some_and(|p| *p != doc.provider) || filters.model.as_ref().is_some_and(|m| *m != doc.model) {
             continue;
         }
         let mut taken = 0;
@@ -264,7 +262,10 @@ impl Workspace {
         let filters = self.search_filters.clone();
         let ws = cx.entity();
         window.open_dialog(cx, move |dialog, _window, cx| {
-            dialog.close_button(false).overlay_closable(true).child(crate::views::global_search::search_command(&state, &docs, &filters, &ws, cx))
+            dialog
+                .close_button(false)
+                .overlay_closable(true)
+                .child(crate::views::global_search::search_command(&state, &docs, &filters, &ws, cx))
         });
         // The dialog focuses its own handle on open; the query field needs
         // focus so typing and ↑↓/Enter reach the Command context.

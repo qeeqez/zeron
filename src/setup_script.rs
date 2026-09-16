@@ -168,6 +168,7 @@ impl Workspace {
         };
         let chat = &mut self.chats[ix];
         std::rc::Rc::make_mut(&mut chat.messages).push(ChatMessage {
+            alternatives: vec![],
             role: Role::Assistant,
             kind: MessageKind::Text(text.into()),
             rating: None,

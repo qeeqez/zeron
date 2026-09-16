@@ -164,6 +164,7 @@ fn stop_reply_snapshots_tools_onto_agent_row() {
 
 fn tool_msg(ix: usize, status: ToolStatus) -> ChatMessage {
     ChatMessage {
+        alternatives: vec![],
         role: Role::Assistant,
         kind: MessageKind::Tool(ToolCall {
             tool_ix: ix,
@@ -183,6 +184,7 @@ fn tool_msg(ix: usize, status: ToolStatus) -> ChatMessage {
 
 fn user_msg(text: &str) -> ChatMessage {
     ChatMessage {
+        alternatives: vec![],
         role: Role::User,
         kind: MessageKind::Text(text.into()),
         rating: None,

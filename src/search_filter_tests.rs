@@ -32,6 +32,7 @@ fn doc(provider: &str, model: &str, texts: &[&str], ages: &[u64]) -> SearchDoc {
             bookmarked: false,
             usage: None,
             attachments: vec![],
+            alternatives: vec![],
             at: now - Duration::from_secs(*age),
         })
         .collect();
@@ -74,6 +75,7 @@ fn push_to(this: &mut Workspace, s: &str) {
         bookmarked: false,
         usage: None,
         attachments: vec![],
+        alternatives: vec![],
         at: SystemTime::now(),
     });
 }
@@ -136,9 +138,15 @@ fn date_filters_bound_the_window() {
     let day = 86_400;
     let docs = vec![doc("prov-a", "model-a", &["needle fresh", "needle mid", "needle old"], &[3_600, 3 * day, 10 * day])];
     let now = SystemTime::now();
-    let from = SearchFilters { date_from: Some(now - Duration::from_secs(5 * day)), ..Default::default() };
+    let from = SearchFilters {
+        date_from: Some(now - Duration::from_secs(5 * day)),
+        ..Default::default()
+    };
     assert_eq!(search(&docs, "needle", &from).len(), 2, "date_from drops the oldest hit");
-    let to = SearchFilters { date_to: Some(now - Duration::from_secs(5 * day)), ..Default::default() };
+    let to = SearchFilters {
+        date_to: Some(now - Duration::from_secs(5 * day)),
+        ..Default::default()
+    };
     let hits = search(&docs, "needle", &to);
     assert_eq!(hits.len(), 1, "date_to keeps only the oldest hit");
     assert_eq!(hits[0].msg_ix, 2);
@@ -182,7 +190,10 @@ fn filters_combine_with_and() {
 
 #[test]
 fn clearing_filters_restores_all_hits() {
-    let docs = vec![doc("prov-a", "model-a", &["needle one"], &[3_600]), doc("prov-b", "model-b", &["needle two"], &[10 * 86_400])];
+    let docs = vec![
+        doc("prov-a", "model-a", &["needle one"], &[3_600]),
+        doc("prov-b", "model-b", &["needle two"], &[10 * 86_400]),
+    ];
     let filters = SearchFilters { provider: Some("prov-a".into()), ..Default::default() };
     assert_eq!(search(&docs, "needle", &filters).len(), 1);
     let cleared = SearchFilters { provider: None, ..filters };

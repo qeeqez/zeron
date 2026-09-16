@@ -12,6 +12,7 @@ use crate::workspace::Workspace;
 
 fn msg(kind: MessageKind) -> ChatMessage {
     ChatMessage {
+        alternatives: vec![],
         role: Role::Assistant,
         kind,
         rating: None,
@@ -101,6 +102,7 @@ fn push(ws: &Entity<Workspace>, cx: &mut VisualTestContext, role: Role, s: &str)
     ws.update(cx, |this, cx| {
         let chat = &mut this.chats[this.active];
         std::rc::Rc::make_mut(&mut chat.messages).push(ChatMessage {
+            alternatives: vec![],
             role,
             kind: MessageKind::Text(s.into()),
             rating: None,
@@ -234,4 +236,3 @@ fn close_button_closes_find_bar() {
         assert!(!ws.read(cx).find.open);
     });
 }
-

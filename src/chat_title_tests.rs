@@ -6,6 +6,7 @@ use crate::model::{Chat, ChatMessage, MessageKind, Role};
 
 fn text_msg(role: Role, text: &str) -> ChatMessage {
     ChatMessage {
+        alternatives: vec![],
         role,
         kind: MessageKind::Text(text.into()),
         rating: None,

@@ -46,6 +46,7 @@ fn push(ws: &Entity<Workspace>, cx: &mut VisualTestContext, text: &str) {
             bookmarked: false,
             usage: None,
             attachments: vec![],
+            alternatives: vec![],
             at: std::time::SystemTime::now(),
         });
         this.scroller.update(cx, |s, cx| s.append(1, cx));
@@ -65,6 +66,7 @@ fn seed(ws: &Entity<Workspace>, cx: &mut VisualTestContext, n: usize) {
                 bookmarked: false,
                 usage: None,
                 attachments: vec![],
+                alternatives: vec![],
                 at: std::time::SystemTime::now(),
             });
         }

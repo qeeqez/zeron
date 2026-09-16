@@ -40,6 +40,7 @@ fn seed(ws: &Entity<Workspace>, role: Role, text: &str, cx: &mut VisualTestConte
             bookmarked: false,
             usage: None,
             attachments: vec![],
+            alternatives: vec![],
             at: std::time::SystemTime::now(),
         });
         this.scroller.update(cx, |s, cx| s.append(1, cx));

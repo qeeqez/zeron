@@ -17,6 +17,7 @@ use crate::workspace::Workspace;
 
 fn msg(text: &str) -> ChatMessage {
     ChatMessage {
+        alternatives: vec![],
         role: Role::User,
         kind: MessageKind::Text(text.into()),
         rating: None,
@@ -34,6 +35,7 @@ fn doc(chat_id: Option<u64>, file_ix: usize, title: &str, texts: &[&str]) -> Sea
         .iter()
         .enumerate()
         .map(|(ix, t)| ChatMessage {
+            alternatives: vec![],
             at: base + std::time::Duration::from_secs((file_ix * 1000 + ix) as u64),
             ..msg(t)
         })

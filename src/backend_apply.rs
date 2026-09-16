@@ -118,6 +118,7 @@ impl Workspace {
                     bookmarked: false,
                     usage: None,
                     attachments: vec![],
+                    alternatives: vec![],
                     at: SystemTime::now(),
                 });
                 if crate::chat_search::grows_scroller(is_active, chat.messages.last().unwrap(), &query) {
@@ -183,7 +184,7 @@ fn update_tool(chat: &mut crate::model::Chat, ix: usize, f: impl FnOnce(&mut Too
 
 /// Append an assistant message carrying `kind` to the chat.
 fn push_message(chat: &mut crate::model::Chat, kind: MessageKind) {
-    Rc::make_mut(&mut chat.messages).push(ChatMessage {
+    let mut msg = ChatMessage {
         role: Role::Assistant,
         kind,
         rating: None,
@@ -191,7 +192,14 @@ fn push_message(chat: &mut crate::model::Chat, kind: MessageKind) {
         usage: None,
         attachments: vec![],
         at: SystemTime::now(),
-    });
+        alternatives: vec![],
+    };
+    // A regenerate/retry saved the outgoing reply's version chain — the
+    // new turn's first text bubble inherits it.
+    if matches!(msg.kind, MessageKind::Text(_)) {
+        chat.adopt_alternatives(&mut msg);
+    }
+    Rc::make_mut(&mut chat.messages).push(msg);
 }
 
 impl Workspace {

@@ -189,6 +189,7 @@ pub(super) fn history_message(item: &Value) -> Option<ChatMessage> {
         _ => (Role::Assistant, MessageKind::Tool(tool_card(item)?)),
     };
     Some(ChatMessage {
+        alternatives: vec![],
         role,
         kind,
         rating: None,

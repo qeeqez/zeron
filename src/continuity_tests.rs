@@ -46,6 +46,7 @@ fn saved_chats_reopen_on_launch() {
         rating: None,
         bookmarked: false,
         usage: None,
+        alternatives: vec![],
         attachments: vec![],
         at: std::time::SystemTime::now(),
     }]);
@@ -133,6 +134,7 @@ fn second_window_keeps_running_tool_status() {
                 bookmarked: false,
                 usage: None,
                 attachments: vec![],
+                alternatives: vec![],
                 at: std::time::SystemTime::now(),
             }]);
             ws.save();
@@ -175,6 +177,7 @@ fn second_window_save_preserves_completed_turn() {
                 bookmarked: false,
                 usage: None,
                 attachments: vec![],
+                alternatives: vec![],
                 at: std::time::SystemTime::now(),
             }]);
             ws.save();

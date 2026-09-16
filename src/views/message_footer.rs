@@ -3,7 +3,10 @@
 //! duration, token usage and timestamp. A thumbs-down also mounts a "what
 //! went wrong" note editor under the row (see `crate::feedback`).
 
+mod pager;
+
 use gpui_kit::assets::IconName;
+
 use gpui_kit::component::input::{Escape as InputEscape, Input};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -95,6 +98,11 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
         }));
     }
     if msg.role == Role::Assistant {
+        // A regenerated reply keeps its predecessors — the pager swaps
+        // them back in (see `Workspace::cycle_alternative`).
+        if !msg.alternatives.is_empty() {
+            row = row.child(pager::version_pager(mc, ws));
+        }
         // View-raw flips the body between rendered Markdown and source.
         if let Some(md) = md_state {
             let color = if md.read(cx).raw { accent } else { muted };

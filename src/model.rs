@@ -123,6 +123,12 @@ pub struct ChatMessage {
     /// written before bookmarks existed.
     #[serde(default)]
     pub bookmarked: bool,
+    /// Earlier versions of this reply, newest first — a regenerate/retry
+    /// moves the outgoing reply here instead of dropping it, and the
+    /// footer's `< N/M >` pager swaps one back in. Missing in files
+    /// written before versioning existed; empty = no alternatives.
+    #[serde(default)]
+    pub alternatives: Vec<ChatMessage>,
 }
 
 impl ChatMessage {
@@ -140,6 +146,39 @@ impl ChatMessage {
                 format!("**{}:** `{}` — {}", a.kind.label(), a.detail, outcome)
             },
         }
+    }
+
+    /// The version chain's slot for this message: `alternatives` holds the
+    /// other versions newest-first, so the position is the count of
+    /// alternatives newer than `self` plus one (1-based for the pager).
+    pub fn version_position(&self) -> usize {
+        self.alternatives.iter().filter(|a| a.at > self.at).count() + 1
+    }
+
+    /// Swap the live message with an adjacent version: `older` steps back
+    /// (the alternative just after this message's slot), `!older` steps
+    /// forward to the newest. The outgoing message re-enters the chain at
+    /// the vacated slot so positions stay stable across paging.
+    pub fn cycle_alternative(&mut self, older: bool) {
+        let pos = self.version_position();
+        let alt_ix = if older {
+            if pos > self.alternatives.len() {
+                return; // already the oldest version
+            }
+            pos - 1
+        } else {
+            if pos <= 1 {
+                return; // already the newest version
+            }
+            pos - 2
+        };
+        let alt = self.alternatives.remove(alt_ix);
+        // The outgoing message carries the chain; the incoming one stored
+        // none (see `Chat::adopt_alternatives`). Move the chain onto the
+        // new live message, then park the outgoing one at the vacated slot.
+        let mut outgoing = std::mem::replace(self, alt);
+        self.alternatives = std::mem::take(&mut outgoing.alternatives);
+        self.alternatives.insert(alt_ix, outgoing);
     }
 }
 
@@ -233,6 +272,11 @@ pub struct Chat {
     /// Reasoning effort this thread's turns request — `None` = the
     /// model's `default_effort`. Same lifecycle as `provider`/`model`.
     pub effort: Option<String>,
+    /// Version chain a regenerate/retry saved for the reply it replaced —
+    /// the new turn's first assistant text message adopts it (see
+    /// `adopt_alternatives`). Runtime state: a turn that never produces a
+    /// reply leaves the chain to the next turn's first text bubble.
+    pub pending_alternatives: Vec<ChatMessage>,
     /// Composer prompt history — every accepted send, oldest first, capped
     /// (see `crate::send::composer_history`). Persisted so Up-recall survives
     /// restarts; missing in files written before history existed.
@@ -291,6 +335,7 @@ impl Chat {
             messages: std::rc::Rc::new(Vec::new()),
             running: false,
             failed_flag: false,
+            pending_alternatives: Vec::new(),
             pinned: false,
             folder: String::new(),
             created_at: SystemTime::now(),
@@ -323,6 +368,17 @@ impl Chat {
             expanded_tool_groups: std::collections::HashSet::new(),
             prompt_history: Vec::new(),
         }
+    }
+
+    /// Move the pending version chain onto `msg` — called where a reply
+    /// turn creates its assistant text bubble. The outgoing reply's own
+    /// alternatives were flattened into the chain at truncate time, so
+    /// each stored version carries an empty chain.
+    pub fn adopt_alternatives(&mut self, msg: &mut ChatMessage) {
+        if self.pending_alternatives.is_empty() {
+            return;
+        }
+        msg.alternatives = std::mem::take(&mut self.pending_alternatives);
     }
 
     /// Record how long the just-finished turn took and clear `started_at`.

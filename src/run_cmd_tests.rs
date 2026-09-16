@@ -65,7 +65,10 @@ fn seed(ws: &Entity<Workspace>, text: &str, cx: &mut VisualTestContext) {
 
 /// ElementIds registered by `.test_support()` in the last frame.
 fn observed_ids(window: &gpui_kit::Window) -> Vec<ElementId> {
-    gpui_kit::base::test_support::snapshots(window).iter().filter_map(|s| s.path().last().cloned()).collect()
+    gpui_kit::base::test_support::snapshots(window)
+        .iter()
+        .filter_map(|s| s.path().last().cloned())
+        .collect()
 }
 
 fn has_id_containing(ids: &[ElementId], needle: &str) -> bool {
@@ -104,7 +107,11 @@ fn request_run(ws: &Entity<Workspace>, cx: &mut VisualTestContext, command: &str
 /// Answer the pending approval card with `decision`.
 fn answer(ws: &Entity<Workspace>, cx: &mut VisualTestContext, decision: ApprovalDecision) {
     let ix = ws.read_with(cx, |ws, _| {
-        ws.chats[ws.active].messages.iter().position(|m| matches!(&m.kind, MessageKind::Approval(_))).unwrap()
+        ws.chats[ws.active]
+            .messages
+            .iter()
+            .position(|m| matches!(&m.kind, MessageKind::Approval(_)))
+            .unwrap()
     });
     cx.update(|_, cx| ws.update(cx, |this, cx| this.answer_approval(ix, decision, cx)));
 }
@@ -124,7 +131,11 @@ fn shell_for_maps_shell_tags_only() {
 fn run_shell_block_runs_in_project_dir_and_lands_card() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
-    let fake = FakeRunner::install(CommandOutput { stdout: "hello\n".into(), stderr: String::new(), code: Some(0) });
+    let fake = FakeRunner::install(CommandOutput {
+        stdout: "hello\n".into(),
+        stderr: String::new(),
+        code: Some(0),
+    });
     cx.update(|_, cx| ws.update(cx, |this, cx| this.run_command_block("echo hello".to_string(), "sh", cx)));
     until(&ws, cx, |ws| last_tool(ws).is_some_and(|(s, _, _)| s != ToolStatus::Running));
 
@@ -147,7 +158,11 @@ fn run_shell_block_runs_in_project_dir_and_lands_card() {
 fn nonzero_exit_marks_card_failed() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
-    FakeRunner::install(CommandOutput { stdout: String::new(), stderr: "boom\n".into(), code: Some(3) });
+    FakeRunner::install(CommandOutput {
+        stdout: String::new(),
+        stderr: "boom\n".into(),
+        code: Some(3),
+    });
     cx.update(|_, cx| ws.update(cx, |this, cx| this.run_command_block("exit 3".to_string(), "bash", cx)));
     until(&ws, cx, |ws| last_tool(ws).is_some_and(|(s, _, _)| s != ToolStatus::Running));
 
@@ -167,7 +182,10 @@ fn read_only_mode_asks_before_running() {
     // The approval card is up; nothing ran yet.
     assert!(fake.calls().is_empty(), "command ran without approval");
     let pending = ws.read_with(cx, |ws, _| {
-        ws.chats[ws.active].messages.iter().any(|m| matches!(&m.kind, MessageKind::Approval(a) if a.decision.is_none()))
+        ws.chats[ws.active]
+            .messages
+            .iter()
+            .any(|m| matches!(&m.kind, MessageKind::Approval(a) if a.decision.is_none()))
     });
     assert!(pending, "no pending approval card");
 
@@ -205,9 +223,8 @@ fn always_allow_runs_later_commands_without_asking() {
     cx.update(|_, cx| ws.update(cx, |this, cx| this.run_command_block("second".to_string(), "sh", cx)));
     until(&ws, cx, |ws| ws.chats[ws.active].messages.iter().filter(|m| matches!(&m.kind, MessageKind::Tool(_))).count() == 2);
     assert_eq!(fake.calls().len(), 2, "calls: {:?}", fake.calls());
-    let approvals = ws.read_with(cx, |ws, _| {
-        ws.chats[ws.active].messages.iter().filter(|m| matches!(&m.kind, MessageKind::Approval(_))).count()
-    });
+    let approvals =
+        ws.read_with(cx, |ws, _| ws.chats[ws.active].messages.iter().filter(|m| matches!(&m.kind, MessageKind::Approval(_))).count());
     assert_eq!(approvals, 1, "a second approval prompt appeared");
 }
 

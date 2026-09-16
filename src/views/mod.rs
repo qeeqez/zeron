@@ -43,6 +43,8 @@ mod message_edit;
 mod message_footer;
 #[cfg(test)]
 mod message_tests;
+#[cfg(test)]
+mod message_menu_tests;
 mod model_picker;
 pub(crate) mod nav_row;
 mod plan_panel;

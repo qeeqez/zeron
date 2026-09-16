@@ -162,6 +162,7 @@ impl Workspace {
         Rc::make_mut(&mut chat.messages).insert(
             0,
             ChatMessage {
+                alternatives: vec![],
                 role: Role::Assistant,
                 kind: MessageKind::Text(compact_digest(&dropped).into()),
                 rating: None,

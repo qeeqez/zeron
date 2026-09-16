@@ -142,6 +142,16 @@ impl Workspace {
         if chat.running || ix >= chat.messages.len() {
             return;
         }
+        // The dropped tail's first assistant message is the reply being
+        // replaced — it joins the new reply's alternatives (newest-first,
+        // merged with its own chain) instead of being lost.
+        if let Some(outgoing) = chat.messages[ix..].iter().find(|m| m.role == crate::model::Role::Assistant) {
+            let mut outgoing = outgoing.clone();
+            let mut chain = std::mem::take(&mut outgoing.alternatives);
+            let slot = chain.iter().position(|a| a.at < outgoing.at).unwrap_or(chain.len());
+            chain.insert(slot, outgoing);
+            chat.pending_alternatives = chain;
+        }
         std::rc::Rc::make_mut(&mut chat.messages).truncate(ix);
         // Entries pinned to dropped messages are unreachable
         // (`for_message`'s `at` guard) — prune them.
@@ -243,6 +253,22 @@ impl Workspace {
     fn commit_split(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let n = self.split_input.read(cx).value().trim().parse::<usize>().unwrap_or(0);
         self.split_chat(id, n.saturating_sub(1), window, cx);
+    }
+
+    /// Page message `ix` to an adjacent version of its reply: `older`
+    /// steps back through the alternatives, `!older` steps forward to the
+    /// newest. The swap keeps the chain's positions stable (see
+    /// `ChatMessage::cycle_alternative`).
+    pub fn cycle_alternative(&mut self, ix: usize, older: bool, cx: &mut Context<Self>) {
+        {
+            let chat = &mut self.chats[self.active];
+            let Some(msg) = std::rc::Rc::make_mut(&mut chat.messages).get_mut(ix) else { return };
+            msg.cycle_alternative(older);
+        }
+        let pos = self.filtered_pos(ix, cx);
+        self.scroller.update(cx, |s, cx| s.remeasure_items(pos..pos + 1, cx));
+        cx.notify();
+        self.save();
     }
 }
 

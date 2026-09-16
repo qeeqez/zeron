@@ -17,7 +17,11 @@ use crate::workspace::Workspace;
 /// persisted chats.
 fn sandbox_home() {
     static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let dir = std::env::temp_dir().join(format!("rixlcode-approval-test-{}-{}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    let dir = std::env::temp_dir().join(format!(
+        "rixlcode-approval-test-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     // SAFETY: nextest runs each test in its own process, so no other thread
     // can observe HOME mid-write.
@@ -74,11 +78,7 @@ impl AgentBackend for ApprovalBackend {
 
 /// Send "hi" on the fake backend and pump the reply task's 30ms poll loop
 /// until the approval card lands in the chat.
-fn send_and_wait_card(
-    ws: &Entity<Workspace>,
-    cx: &mut VisualTestContext,
-    backend: std::sync::Arc<dyn AgentBackend>,
-) {
+fn send_and_wait_card(ws: &Entity<Workspace>, cx: &mut VisualTestContext, backend: std::sync::Arc<dyn AgentBackend>) {
     cx.update(|window, cx| {
         ws.update(cx, |this, cx| {
             this.backend = backend;
@@ -94,9 +94,7 @@ fn send_and_wait_card(
     loop {
         cx.executor().advance_clock(std::time::Duration::from_millis(50));
         cx.run_until_parked();
-        let landed = ws.read_with(cx, |ws, _| {
-            ws.chats[0].messages.iter().any(|m| matches!(m.kind, MessageKind::Approval(_)))
-        });
+        let landed = ws.read_with(cx, |ws, _| ws.chats[0].messages.iter().any(|m| matches!(m.kind, MessageKind::Approval(_))));
         if landed {
             return;
         }
@@ -157,9 +155,7 @@ fn approval_card_renders_and_approve_replies() {
 /// Click a button on the rendered card and return the decision the
 /// backend's blocked thread received.
 fn click_and_collect(
-    cx: &mut VisualTestContext,
-    button: &'static str,
-    decisions: std::sync::mpsc::Receiver<ApprovalDecision>,
+    cx: &mut VisualTestContext, button: &'static str, decisions: std::sync::mpsc::Receiver<ApprovalDecision>,
 ) -> ApprovalDecision {
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);

@@ -83,6 +83,7 @@ fn temp_workdir(name: &str) -> std::path::PathBuf {
 fn push(ws: &Entity<Workspace>, cx: &mut VisualTestContext, role: Role, text: &str) {
     ws.update(cx, |this, cx| {
         std::rc::Rc::make_mut(&mut this.chats[this.active].messages).push(ChatMessage {
+            alternatives: vec![],
             role,
             kind: MessageKind::Text(text.into()),
             rating: None,

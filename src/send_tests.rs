@@ -69,6 +69,7 @@ fn submit(workspace: &Entity<Workspace>, cx: &mut VisualTestContext, text: &str)
 /// One seeded text message — `i` alternates the role and names the text.
 fn seeded(i: usize) -> ChatMessage {
     ChatMessage {
+        alternatives: vec![],
         role: if i.is_multiple_of(2) { Role::User } else { Role::Assistant },
         kind: MessageKind::Text(format!("message {i}").into()),
         rating: None,

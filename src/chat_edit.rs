@@ -83,6 +83,9 @@ impl Workspace {
             // Entries pinned to dropped messages are unreachable
             // (`for_message`'s `at` guard) — prune them.
             chat.checkpoints.retain(|c| c.ix < edit.ix);
+            // An edit-resend starts a different turn — a version chain
+            // parked by an earlier regenerate belongs to the old prompt.
+            chat.pending_alternatives.clear();
             // The truncated turn earned `last_turn` — don't let the new
             // tail message inherit its duration label.
             chat.last_turn = None;

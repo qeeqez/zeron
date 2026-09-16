@@ -2,10 +2,9 @@
 //! retry, view-raw, rating, speak), the duration label, and retry
 //! re-sending the last user prompt.
 
-use gpui_kit::base::test_support::snapshots;
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, Entity, Role as A11yRole, TestAppContext, VisualTestContext};
+use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext};
 
 use crate::backend::{AgentBackend, AgentEvent, ReplyStream};
 use crate::model::{ChatMessage, MessageKind, PlanStatus, Role};
@@ -42,6 +41,7 @@ fn seed_reply(ws: &Entity<Workspace>, cx: &mut VisualTestContext) {
 fn seed_user(ws: &Entity<Workspace>, text: &str, cx: &mut VisualTestContext) {
     ws.update(cx, |this, cx| {
         std::rc::Rc::make_mut(&mut this.chats[this.active].messages).push(ChatMessage {
+            alternatives: vec![],
             role: Role::User,
             kind: MessageKind::Text(text.into()),
             rating: None,
@@ -215,76 +215,4 @@ fn plan_card_renders_checklist_and_updates() {
         assert_eq!(wip.indeterminate(), Some(true), "in-progress step must read indeterminate");
         assert_eq!(wip.label(), Some("edit files"));
     });
-}
-
-/// Right-click on a message opens the context menu with the copy variants
-/// grouped on top; "Copy as Markdown" writes the raw source.
-#[test]
-fn context_menu_lists_copy_variants() {
-    let mut app = TestAppContext::single();
-    let (ws, cx) = mount(&mut app);
-    ws.update(cx, |this, cx| this.push_note("**bold** reply".into(), cx));
-    cx.update(|window, cx| {
-        window.right_click(("msg", 0usize), cx);
-    });
-    // The menu entity is built in a deferred callback after this update.
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        assert!(window.find("popup-menu").visible(), "right-click should open the message menu");
-        let mut labels: Vec<String> = snapshots(window)
-            .iter()
-            .filter(|s| s.role() == Some(A11yRole::MenuItem))
-            .filter_map(|s| s.label().map(str::to_string))
-            .collect();
-        labels.sort();
-        // The copy variants group at the top of the menu; no fenced blocks
-        // in this message, so Copy Code stays hidden.
-        assert_eq!(
-            labels,
-            ["Bookmark", "Copy", "Copy as Markdown", "Fork here", "Quote", "Regenerate with model", "Retry", "View raw"],
-            "menu should list the copy variants: {labels:?}"
-        );
-        window.within("popup-menu").click(1usize, cx); // Copy as Markdown
-    });
-    let clip = cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()).unwrap_or_default());
-    assert_eq!(clip, "**bold** reply", "Copy as Markdown should write the raw source");
-}
-
-/// A message with a fenced block also lists "Copy Code", which writes the
-/// block contents without the fences.
-#[test]
-fn context_menu_copy_code_writes_block_contents() {
-    let mut app = TestAppContext::single();
-    let (ws, cx) = mount(&mut app);
-    ws.update(cx, |this, cx| this.push_note("try:\n\n```rust\nfn main() {}\n```".into(), cx));
-    cx.update(|window, cx| {
-        window.right_click(("msg", 0usize), cx);
-    });
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        let mut labels: Vec<String> = snapshots(window)
-            .iter()
-            .filter(|s| s.role() == Some(A11yRole::MenuItem))
-            .filter_map(|s| s.label().map(str::to_string))
-            .collect();
-        labels.sort();
-        assert_eq!(
-            labels,
-            [
-                "Bookmark",
-                "Copy",
-                "Copy Code",
-                "Copy as Markdown",
-                "Fork here",
-                "Quote",
-                "Regenerate with model",
-                "Retry",
-                "View raw",
-            ],
-            "Copy Code should join the copy group: {labels:?}"
-        );
-        window.within("popup-menu").click(2usize, cx); // Copy Code
-    });
-    let clip = cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()).unwrap_or_default());
-    assert_eq!(clip, "fn main() {}", "Copy Code should write the block contents");
 }

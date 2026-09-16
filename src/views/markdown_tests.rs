@@ -104,6 +104,7 @@ fn user_message_stays_plain_text() {
     let (ws, cx) = mount(&mut app);
     ws.update(cx, |this, cx| {
         std::rc::Rc::make_mut(&mut this.chats[this.active].messages).push(ChatMessage {
+            alternatives: vec![],
             role: Role::User,
             kind: MessageKind::Text("**not bold** ```sh\nx\n```".into()),
             rating: None,

@@ -136,6 +136,7 @@ impl Workspace {
             bookmarked: false,
             usage: None,
             attachments,
+            alternatives: vec![],
             at: SystemTime::now(),
         });
         if self.push_visible(cx) {
@@ -214,7 +215,12 @@ impl Workspace {
         // Notes aren't turns — don't let them inherit the last turn's
         // "Worked for Ns" label.
         self.chats[self.active].last_turn = None;
-        Rc::make_mut(&mut self.chats[self.active].messages).push(note_message(text));
+        let mut msg = note_message(text);
+        // A regenerate/retry saved the outgoing reply's version chain —
+        // when the note IS the turn's reply (auth/model errors) it
+        // inherits the chain; ordinary notes see an empty chain.
+        self.chats[self.active].adopt_alternatives(&mut msg);
+        Rc::make_mut(&mut self.chats[self.active].messages).push(msg);
         if self.push_visible(cx) {
             self.scroller.update(cx, |s, cx| s.append(1, cx));
         }
@@ -252,6 +258,7 @@ pub(crate) fn note_message(text: String) -> ChatMessage {
         bookmarked: false,
         usage: None,
         attachments: vec![],
+        alternatives: vec![],
         at: SystemTime::now(),
     }
 }

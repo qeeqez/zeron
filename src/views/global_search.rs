@@ -24,24 +24,31 @@ use crate::workspace::Workspace;
 
 /// One filter chip: an xsmall ghost button whose label is the current
 /// selection, opening `menu` on click. `id` keeps it findable in tests.
-fn chip(id: &'static str, icon: IconName, label: SharedString, menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static) -> impl IntoElement {
+fn chip(
+    id: &'static str, icon: IconName, label: SharedString,
+    menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+) -> impl IntoElement {
     Button::new(id).ghost().xsmall().icon(icon).label(label).dropdown_caret(true).dropdown_menu(menu)
 }
 
 /// The Date chip's menu — one checked row per `DateRange` preset.
 fn date_menu(filters: Entity<SearchFilters>, menu: PopupMenu, _window: &mut Window, cx: &mut Context<PopupMenu>) -> PopupMenu {
     let current = filters.read(cx).date;
-    [DateRange::Any, DateRange::Day, DateRange::Week, DateRange::Month].into_iter().fold(menu, |menu, range| {
-        let filters = filters.clone();
-        menu.item(PopupMenuItem::new(range.label()).checked(range == current).on_click(move |_, _, cx| {
-            filters.update(cx, |f, _| f.date = range);
-        }))
-    })
+    [DateRange::Any, DateRange::Day, DateRange::Week, DateRange::Month]
+        .into_iter()
+        .fold(menu, |menu, range| {
+            let filters = filters.clone();
+            menu.item(PopupMenuItem::new(range.label()).checked(range == current).on_click(move |_, _, cx| {
+                filters.update(cx, |f, _| f.date = range);
+            }))
+        })
 }
 
 /// The Model chip's menu — "Any model" plus every distinct model id in the
 /// searched docs, checked on the current selection.
-fn model_menu(filters: Entity<SearchFilters>, models: Rc<Vec<String>>, menu: PopupMenu, _window: &mut Window, cx: &mut Context<PopupMenu>) -> PopupMenu {
+fn model_menu(
+    filters: Entity<SearchFilters>, models: Rc<Vec<String>>, menu: PopupMenu, _window: &mut Window, cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
     let current = filters.read(cx).model.clone();
     let clear = filters.clone();
     let menu = menu.item(PopupMenuItem::new("Any model").checked(current.is_none()).on_click(move |_, _, cx| {
@@ -50,15 +57,21 @@ fn model_menu(filters: Entity<SearchFilters>, models: Rc<Vec<String>>, menu: Pop
     models.iter().fold(menu, |menu, model| {
         let filters = filters.clone();
         let pick = model.clone();
-        menu.item(PopupMenuItem::new(model.clone()).checked(current.as_ref() == Some(model)).on_click(move |_, _, cx| {
-            filters.update(cx, |f, _| f.model = Some(pick.clone()));
-        }))
+        menu.item(
+            PopupMenuItem::new(model.clone())
+                .checked(current.as_ref() == Some(model))
+                .on_click(move |_, _, cx| {
+                    filters.update(cx, |f, _| f.model = Some(pick.clone()));
+                }),
+        )
     })
 }
 
 /// The Provider chip's menu — "Any provider" plus every distinct provider
 /// id in the searched docs, checked on the current selection.
-fn provider_menu(filters: Entity<SearchFilters>, providers: Rc<Vec<String>>, menu: PopupMenu, _window: &mut Window, cx: &mut Context<PopupMenu>) -> PopupMenu {
+fn provider_menu(
+    filters: Entity<SearchFilters>, providers: Rc<Vec<String>>, menu: PopupMenu, _window: &mut Window, cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
     let current = filters.read(cx).provider.clone();
     let clear = filters.clone();
     let menu = menu.item(PopupMenuItem::new("Any provider").checked(current.is_none()).on_click(move |_, _, cx| {
@@ -79,8 +92,22 @@ fn provider_menu(filters: Entity<SearchFilters>, providers: Rc<Vec<String>>, men
 /// distinct stamps across `docs`; a chat with an empty stamp simply never
 /// offers that value.
 fn filter_row(filters: &Entity<SearchFilters>, docs: &[SearchDoc], cx: &mut App) -> AnyElement {
-    let models: Rc<Vec<String>> = Rc::new(docs.iter().map(|d| d.model.clone()).filter(|m| !m.is_empty()).collect::<std::collections::BTreeSet<_>>().into_iter().collect());
-    let providers: Rc<Vec<String>> = Rc::new(docs.iter().map(|d| d.provider.clone()).filter(|p| !p.is_empty()).collect::<std::collections::BTreeSet<_>>().into_iter().collect());
+    let models: Rc<Vec<String>> = Rc::new(
+        docs.iter()
+            .map(|d| d.model.clone())
+            .filter(|m| !m.is_empty())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect(),
+    );
+    let providers: Rc<Vec<String>> = Rc::new(
+        docs.iter()
+            .map(|d| d.provider.clone())
+            .filter(|p| !p.is_empty())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect(),
+    );
     let current = filters.read(cx);
     let date_label: SharedString = current.date.label().into();
     let model_label: SharedString = current.model.clone().unwrap_or_else(|| "Model".into()).into();
@@ -143,10 +170,13 @@ fn hit_item(hit: SearchHit) -> CommandItem {
                     .flex()
                     .flex_col()
                     .items_end()
-                    .child(div().text_xs().text_color(cx.theme().muted_foreground).child(crate::palette_items::rel_time(hit.at)))
-                    .when(!stamps.is_empty(), |d| {
-                        d.child(div().text_xs().text_color(cx.theme().muted_foreground).child(stamps.clone()))
-                    }),
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(crate::palette_items::rel_time(hit.at)),
+                    )
+                    .when(!stamps.is_empty(), |d| d.child(div().text_xs().text_color(cx.theme().muted_foreground).child(stamps.clone()))),
             )
     })
 }
@@ -156,11 +186,7 @@ fn hit_item(hit: SearchHit) -> CommandItem {
 /// query against the docs snapshot, and the workspace's observe on
 /// `filters` re-runs it when a chip changes a selection.
 pub(crate) fn search_command(
-    state: &Entity<CommandState>,
-    docs: &[SearchDoc],
-    filters: &Entity<SearchFilters>,
-    ws: &Entity<Workspace>,
-    cx: &mut App,
+    state: &Entity<CommandState>, docs: &[SearchDoc], filters: &Entity<SearchFilters>, ws: &Entity<Workspace>, cx: &mut App,
 ) -> Command {
     let ws_confirm = ws.clone();
     let ws_query = ws.clone();

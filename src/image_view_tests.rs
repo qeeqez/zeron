@@ -18,6 +18,7 @@ use crate::workspace::Workspace;
 fn seed_user_with_attachments(ws: &Entity<Workspace>, attachments: &[&str], cx: &mut VisualTestContext) {
     ws.update(cx, |this, cx| {
         std::rc::Rc::make_mut(&mut this.chats[this.active].messages).push(ChatMessage {
+            alternatives: vec![],
             role: Role::User,
             kind: MessageKind::Text("with image".into()),
             rating: None,

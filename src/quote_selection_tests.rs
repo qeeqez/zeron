@@ -34,6 +34,7 @@ fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext)
 fn seed(ws: &Entity<Workspace>, text: &str, cx: &mut VisualTestContext) {
     ws.update(cx, |this, cx| {
         std::rc::Rc::make_mut(&mut this.chats[this.active].messages).push(ChatMessage {
+            alternatives: vec![],
             role: Role::Assistant,
             kind: MessageKind::Text(text.into()),
             rating: None,

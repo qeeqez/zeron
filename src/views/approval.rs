@@ -7,8 +7,8 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::backend::{ApprovalDecision, ApprovalKind};
 use crate::backend::ApprovalCard;
+use crate::backend::{ApprovalDecision, ApprovalKind};
 use crate::views::cards::{card_frame, detail_block};
 use crate::workspace::Workspace;
 
@@ -58,11 +58,23 @@ fn approval_footer(ix: usize, card: &ApprovalCard, ws: &Entity<Workspace>, cx: &
             ApprovalDecision::Deny => cx.theme().danger,
             _ => cx.theme().success,
         };
-        return bar.child(div().id(("approval-outcome", ix)).test_support().text_xs().text_color(color).child(decision.label()));
+        return bar.child(
+            div()
+                .id(("approval-outcome", ix))
+                .test_support()
+                .text_xs()
+                .text_color(color)
+                .child(decision.label()),
+        );
     }
     if card.respond.is_none() {
         return bar.child(
-            div().id(("approval-outcome", ix)).test_support().text_xs().text_color(cx.theme().muted_foreground).child("Approval expired"),
+            div()
+                .id(("approval-outcome", ix))
+                .test_support()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("Approval expired"),
         );
     }
     bar.child(approval_button(Btn::new(("deny", ix), ix, "Deny", ApprovalDecision::Deny), ws, cx))

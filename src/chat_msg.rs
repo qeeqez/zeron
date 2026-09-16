@@ -123,8 +123,26 @@ impl Workspace {
         if chat.running {
             return;
         }
+        let mut popped = Vec::new();
         while matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant) {
-            Rc::make_mut(&mut chat.messages).pop();
+            if let Some(m) = Rc::make_mut(&mut chat.messages).pop() {
+                popped.push(m);
+            }
+        }
+        // The popped tail's last text message is the reply being replaced —
+        // it joins the new reply's alternatives (newest-first, merged with
+        // its own chain) instead of being lost.
+        let outgoing =
+            popped
+                .iter()
+                .position(|m| matches!(m.kind, MessageKind::Text(_)))
+                .or(if popped.is_empty() { None } else { Some(0) });
+        if let Some(ix) = outgoing {
+            let mut outgoing = popped.swap_remove(ix);
+            let mut chain = std::mem::take(&mut outgoing.alternatives);
+            let slot = chain.iter().position(|a| a.at < outgoing.at).unwrap_or(chain.len());
+            chain.insert(slot, outgoing);
+            chat.pending_alternatives = chain;
         }
         self.rerun_last_prompt(cx);
     }
@@ -247,7 +265,7 @@ impl Workspace {
         // send is the user's own text.
         let needs_new = !matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant && matches!(m.kind, MessageKind::Text(_)));
         if needs_new {
-            Rc::make_mut(&mut chat.messages).push(crate::model::ChatMessage {
+            let mut msg = crate::model::ChatMessage {
                 role: Role::Assistant,
                 kind: MessageKind::Text("".into()),
                 rating: None,
@@ -255,7 +273,12 @@ impl Workspace {
                 usage: None,
                 attachments: vec![],
                 at: std::time::SystemTime::now(),
-            });
+                alternatives: vec![],
+            };
+            // A regenerate/retry saved the outgoing reply's version chain —
+            // this turn's first text bubble inherits it.
+            chat.adopt_alternatives(&mut msg);
+            Rc::make_mut(&mut chat.messages).push(msg);
             if is_active && (query.is_empty() || crate::chat_search::msg_matches(chat.messages.last().unwrap(), &query)) {
                 self.scroller.update(cx, |s, cx| s.append(1, cx));
             }
@@ -291,3 +314,7 @@ mod bookmark_tests;
 #[cfg(test)]
 #[path = "retry_model_tests.rs"]
 mod retry_model_tests;
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "msg_version_tests.rs"]
+mod msg_version_tests;

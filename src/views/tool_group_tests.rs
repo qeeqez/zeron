@@ -11,6 +11,7 @@ use crate::workspace::Workspace;
 
 fn tool_msg(tool_ix: usize, name: &str) -> ChatMessage {
     ChatMessage {
+        alternatives: vec![],
         role: Role::Assistant,
         kind: MessageKind::Tool(ToolCall {
             tool_ix,
@@ -30,6 +31,7 @@ fn tool_msg(tool_ix: usize, name: &str) -> ChatMessage {
 
 fn text_msg(text: &str) -> ChatMessage {
     ChatMessage {
+        alternatives: vec![],
         role: Role::Assistant,
         kind: MessageKind::Text(text.into()),
         rating: None,

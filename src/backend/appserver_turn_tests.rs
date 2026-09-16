@@ -119,7 +119,8 @@ fn approval_requests_surface_as_cards() {
     assert_eq!(reply["result"]["decision"], serde_json::json!("approved"));
 
     // Deny aborts the tool call — "denied" on the wire.
-    let dec = d.line(r#"{"method":"applyPatchApproval","id":11,"params":{"conversationId":"t","callId":"c","fileChanges":{"src/a.rs":{}}}}"#);
+    let dec =
+        d.line(r#"{"method":"applyPatchApproval","id":11,"params":{"conversationId":"t","callId":"c","fileChanges":{"src/a.rs":{}}}}"#);
     let AgentEvent::ApprovalRequest { kind, detail, respond, .. } = &dec.events[0] else {
         panic!("expected ApprovalRequest");
     };

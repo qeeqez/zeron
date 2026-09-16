@@ -29,6 +29,7 @@ fn step(id: usize, label: &str, status: PlanStatus) -> PlanStep {
 
 fn plan_msg(plan_ix: usize, steps: Vec<PlanStep>) -> ChatMessage {
     ChatMessage {
+        alternatives: vec![],
         role: Role::Assistant,
         kind: MessageKind::Plan(PlanCard { plan_ix, steps }),
         rating: None,
@@ -41,6 +42,7 @@ fn plan_msg(plan_ix: usize, steps: Vec<PlanStep>) -> ChatMessage {
 
 fn text_msg(text: &str) -> ChatMessage {
     ChatMessage {
+        alternatives: vec![],
         role: Role::Assistant,
         kind: MessageKind::Text(text.into()),
         rating: None,

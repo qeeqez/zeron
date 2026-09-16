@@ -121,6 +121,7 @@ impl Workspace {
         let (respond, rx) = std::sync::mpsc::channel::<ApprovalDecision>();
         let respond: ApprovalResponder = respond;
         Rc::make_mut(&mut self.chats[self.active].messages).push(ChatMessage {
+            alternatives: vec![],
             role: Role::Assistant,
             kind: MessageKind::Approval(ApprovalCard {
                 request_ix: NEXT_RUN_IX.fetch_sub(1, std::sync::atomic::Ordering::Relaxed),
@@ -170,6 +171,7 @@ impl Workspace {
         let cwd = crate::worktree::workdir_for(chat, self.project.root());
         let tool_ix = NEXT_RUN_IX.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         Rc::make_mut(&mut chat.messages).push(ChatMessage {
+            alternatives: vec![],
             role: Role::Assistant,
             kind: MessageKind::Tool(ToolCall {
                 tool_ix,

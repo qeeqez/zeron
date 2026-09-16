@@ -8,6 +8,7 @@ mod tests {
 
     fn msg(kind: MessageKind) -> ChatMessage {
         ChatMessage {
+            alternatives: vec![],
             role: Role::Assistant,
             kind,
             rating: None,

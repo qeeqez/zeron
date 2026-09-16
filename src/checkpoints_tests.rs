@@ -128,6 +128,7 @@ mod tests {
             bookmarked: false,
             usage: None,
             attachments: vec![],
+            alternatives: vec![],
             at,
         }]);
         chat.checkpoints
@@ -154,6 +155,7 @@ mod tests {
             rating: None,
             bookmarked: false,
             usage: None,
+            alternatives: vec![],
             attachments: vec![],
             at: std::time::SystemTime::now(),
         }]);

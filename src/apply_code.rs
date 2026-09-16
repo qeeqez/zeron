@@ -99,6 +99,7 @@ static NEXT_APPLY_IX: std::sync::atomic::AtomicUsize = std::sync::atomic::Atomic
 /// A transcript message carrying the apply approval card.
 fn approval_message(detail: String, respond: ApprovalResponder) -> ChatMessage {
     ChatMessage {
+        alternatives: vec![],
         role: Role::Assistant,
         kind: MessageKind::Approval(ApprovalCard {
             request_ix: NEXT_APPLY_IX.fetch_sub(1, std::sync::atomic::Ordering::Relaxed),

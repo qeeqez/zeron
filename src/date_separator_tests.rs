@@ -75,6 +75,7 @@ fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext)
 fn push(ws: &Entity<Workspace>, cx: &mut VisualTestContext, s: &str, at: SystemTime) {
     ws.update(cx, |this, cx| {
         std::rc::Rc::make_mut(&mut this.chats[this.active].messages).push(ChatMessage {
+            alternatives: vec![],
             role: Role::User,
             kind: MessageKind::Text(s.into()),
             rating: None,

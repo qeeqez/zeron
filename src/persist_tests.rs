@@ -21,6 +21,7 @@ mod tests {
 
     fn msg(role: Role, kind: MessageKind) -> ChatMessage {
         ChatMessage {
+            alternatives: vec![],
             role,
             kind,
             rating: None,

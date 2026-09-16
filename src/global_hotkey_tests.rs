@@ -83,10 +83,7 @@ fn apply_falls_back_to_default_chord() {
     let app = TestAppContext::single();
     app.update(|cx| super::apply(true, "", cx));
     let events = imp::EVENTS.lock().clone();
-    assert_eq!(
-        events,
-        vec![imp::MonitorEvent::Unregister, imp::MonitorEvent::Register(Chord::parse(DEFAULT_CHORD).unwrap())]
-    );
+    assert_eq!(events, vec![imp::MonitorEvent::Unregister, imp::MonitorEvent::Register(Chord::parse(DEFAULT_CHORD).unwrap())]);
 }
 
 #[test]
@@ -104,8 +101,7 @@ fn settings_round_trip_and_defaults() {
     assert!(!s.global_hotkey_enabled);
     assert!(s.global_hotkey.is_empty());
     // Values round-trip through the file format.
-    let s: crate::persist::Settings =
-        serde_json::from_str(r#"{"global_hotkey_enabled":true,"global_hotkey":"ctrl-alt-p"}"#).unwrap();
+    let s: crate::persist::Settings = serde_json::from_str(r#"{"global_hotkey_enabled":true,"global_hotkey":"ctrl-alt-p"}"#).unwrap();
     assert!(s.global_hotkey_enabled);
     assert_eq!(s.global_hotkey, "ctrl-alt-p");
     let json = serde_json::to_string(&s).unwrap();

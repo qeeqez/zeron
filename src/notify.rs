@@ -142,6 +142,7 @@ mod tests {
 
     fn assistant_text(chat: &mut Chat, text: &str) {
         std::rc::Rc::make_mut(&mut chat.messages).push(ChatMessage {
+            alternatives: vec![],
             role: Role::Assistant,
             kind: MessageKind::Text(text.into()),
             rating: None,

@@ -38,6 +38,7 @@ fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext)
 fn push(ws: &Entity<Workspace>, cx: &mut VisualTestContext, role: Role, text: &str) {
     ws.update(cx, |this, cx| {
         std::rc::Rc::make_mut(&mut this.chats[this.active].messages).push(ChatMessage {
+            alternatives: vec![],
             role,
             kind: MessageKind::Text(text.into()),
             rating: None,
@@ -171,6 +172,7 @@ fn rating_and_note_survive_save_load() {
     let mut chat = Chat::new(0, "rated");
     let at = std::time::SystemTime::now();
     std::rc::Rc::make_mut(&mut chat.messages).push(ChatMessage {
+        alternatives: vec![],
         role: Role::Assistant,
         kind: MessageKind::Text("answer".into()),
         rating: Some(false),

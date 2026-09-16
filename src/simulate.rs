@@ -39,6 +39,7 @@ pub fn simulate_reply(this: &mut Workspace, cx: &mut Context<Workspace>) {
             bookmarked: false,
             usage: None,
             attachments: vec![],
+            alternatives: vec![],
             at: SystemTime::now(),
         });
     }
@@ -137,11 +138,12 @@ impl Workspace {
                 rating: None,
                 bookmarked: false,
                 usage: None,
-            attachments: vec![],
+                attachments: vec![],
+                alternatives: vec![],
                 at: SystemTime::now(),
             });
         }
-        Rc::make_mut(&mut chat.messages).push(ChatMessage {
+        let mut msg = ChatMessage {
             role: Role::Assistant,
             kind: MessageKind::Text("".into()),
             rating: None,
@@ -149,7 +151,12 @@ impl Workspace {
             usage: None,
             attachments: vec![],
             at: SystemTime::now(),
-        });
+            alternatives: vec![],
+        };
+        // A regenerate/retry saved the outgoing reply's version chain —
+        // this turn's text bubble inherits it.
+        chat.adopt_alternatives(&mut msg);
+        Rc::make_mut(&mut chat.messages).push(msg);
         if is_active {
             // Under an open search only matching messages grow the count —
             // the empty text bubble never matches a non-empty query.
