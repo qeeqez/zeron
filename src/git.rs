@@ -199,6 +199,24 @@ pub(crate) fn commit(dir: &std::path::Path, message: &str) -> Result<String, Str
     git_env(dir, &["commit", "-m", message], &[]).map(|_| "Committed".to_string())
 }
 
+/// `git commit --amend` — rewrite HEAD in place. `None` keeps the existing
+/// message (`--no-edit`); `Some` replaces it (`-m`). Staged changes fold
+/// into the commit either way; git's own refusal (unborn HEAD, nothing to
+/// amend) lands as the panel's error note.
+pub(crate) fn commit_amend(dir: &std::path::Path, message: Option<&str>) -> Result<String, String> {
+    let args = match message {
+        Some(message) => vec!["commit", "--amend", "-m", message],
+        None => vec!["commit", "--amend", "--no-edit"],
+    };
+    git_env(dir, &args, &[]).map(|_| "Amended".to_string())
+}
+
+/// HEAD's subject line (`log -1 --format=%s`) — the commit box's prefill
+/// when amend mode turns on. `None` on non-repo dirs and unborn HEADs.
+pub(crate) fn last_commit_subject(dir: &std::path::Path) -> Option<String> {
+    git(dir, &["log", "-1", "--format=%s"]).map(|s| s.trim().to_string())
+}
+
 /// `git revert --no-edit <sha>` — a new commit undoing `sha`, never a
 /// history rewrite. Merge commits need `-m` and are refused by git itself;
 /// conflicts land as the panel's error note.

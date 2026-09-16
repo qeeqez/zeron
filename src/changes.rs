@@ -75,6 +75,10 @@ pub struct ChangesGit {
     /// An AI commit-message turn is in flight (see `crate::changes_generate`)
     /// — the ✦ button shows a spinner and refuses re-entry.
     pub generating: bool,
+    /// Amend mode for the commit box — the button reads "Amend", an empty
+    /// message is allowed (`--no-edit`), and a successful amend resets it.
+    /// Runtime only, never persisted.
+    pub amend: bool,
     /// Last op's outcome — `(text, is_error)`; `None` before the first op.
     pub note: Option<(String, bool)>,
     /// Expanded diffs hide whitespace-only changes — the panel header's
@@ -121,6 +125,7 @@ impl ChangesGit {
             new_branch_input,
             busy: false,
             generating: false,
+            amend: false,
             note: None,
             ignore_ws: false,
         }
@@ -251,15 +256,53 @@ impl Workspace {
         self.run_git_op(op, cx);
     }
 
-    /// Commit the staged files with the commit box's message. An empty
-    /// message is refused before spawning — the button is disabled in the
-    /// same case, so this only guards Enter and tests.
+    /// Commit the staged files with the commit box's message — or amend HEAD
+    /// when the amend toggle is on. An empty message is refused before
+    /// spawning unless amending (`--no-edit` keeps HEAD's message); the
+    /// button is disabled in the same case, so this only guards Enter and
+    /// tests.
     pub fn commit_staged(&mut self, cx: &mut Context<Self>) {
         let message = self.git.commit_input.read(cx).value().trim().to_string();
+        if self.git.amend {
+            let message = (!message.is_empty()).then_some(message);
+            self.run_git_op(GitOp::CommitAmend(message), cx);
+            return;
+        }
         if message.is_empty() {
             return;
         }
         self.run_git_op(GitOp::Commit(message), cx);
+    }
+
+    /// Flip the commit box's amend mode. Turning it on prefills the box with
+    /// HEAD's subject when it's empty (fetched off the UI thread like the
+    /// panel's other git calls); a typed message is kept as the replacement.
+    pub fn toggle_commit_amend(&mut self, cx: &mut Context<Self>) {
+        self.git.amend = !self.git.amend;
+        let prefill = self.git.amend && self.git.commit_input.read(cx).value().trim().is_empty();
+        if !prefill {
+            cx.notify();
+            return;
+        }
+        let dir = self.project.root().to_path_buf();
+        cx.spawn(async move |this, cx| {
+            let subject = cx.background_executor().spawn(async move { crate::git::last_commit_subject(&dir) }).await;
+            let _ = this.update_in(cx, |this, window, cx| this.land_amend_prefill(subject, window, cx));
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Fill the commit box with HEAD's subject after amend mode turned on —
+    /// skipped when the user toggled amend back off while the fetch ran, or
+    /// when HEAD has no subject to offer (unborn, non-repo).
+    fn land_amend_prefill(&mut self, subject: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.git.amend {
+            return;
+        }
+        if let Some(subject) = subject.filter(|s| !s.is_empty()) {
+            self.git.commit_input.update(cx, |s, cx| s.set_value(subject, window, cx));
+        }
     }
 
     /// `git push` the current branch (setting `-u origin HEAD` when it has no
@@ -320,6 +363,9 @@ impl Workspace {
     }
 }
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "changes_amend_tests.rs"]
+mod changes_amend_tests;
 #[cfg(test)]
 #[path = "changes_stale_tests.rs"]
 mod changes_stale_tests;

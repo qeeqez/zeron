@@ -7,6 +7,8 @@ pub(crate) enum GitOp {
     Stage(String),
     Unstage(String),
     Commit(String),
+    /// `commit --amend` — `None` keeps HEAD's message (`--no-edit`).
+    CommitAmend(Option<String>),
     Push,
     CreatePr,
     Checkout(String),
@@ -28,6 +30,7 @@ impl GitOp {
             Self::Stage(path) => crate::git::stage(dir, path),
             Self::Unstage(path) => crate::git::unstage(dir, path),
             Self::Commit(message) => crate::git::commit(dir, message),
+            Self::CommitAmend(message) => crate::git::commit_amend(dir, message.as_deref()),
             Self::Push => crate::git::push(dir),
             Self::CreatePr => crate::git::create_pr(dir, &[]),
             Self::Checkout(name) => crate::git::checkout(dir, name),
@@ -70,16 +73,18 @@ impl Workspace {
     }
 
     /// Publish an op's outcome: the note under the buttons, a cleared commit
-    /// box when a commit succeeded (a failed commit keeps the typed message
-    /// so it isn't lost), a cleared stash box when a stash succeeded, and a
-    /// cleared new-branch box when a branch was created. Branch ops also
-    /// re-list branches so an open picker shows the switch.
+    /// box and a reset amend toggle when a commit succeeded (a failed commit
+    /// keeps the typed message so it isn't lost), a cleared stash box when a
+    /// stash succeeded, and a cleared new-branch box when a branch was
+    /// created. Branch ops also re-list branches so an open picker shows the
+    /// switch.
     fn land_git_op(&mut self, op: GitOp, result: Result<String, String>, window: &mut Window, cx: &mut Context<Self>) {
         self.git.busy = false;
         match result {
             Ok(text) => {
-                if matches!(op, GitOp::Commit(_)) {
+                if matches!(op, GitOp::Commit(_) | GitOp::CommitAmend(_)) {
                     self.git.commit_input.update(cx, |s, cx| s.set_value("", window, cx));
+                    self.git.amend = false;
                 }
                 if matches!(op, GitOp::CreateBranch(_)) {
                     self.git.new_branch_input.update(cx, |s, cx| s.set_value("", window, cx));

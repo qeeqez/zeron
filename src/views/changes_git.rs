@@ -48,13 +48,15 @@ pub fn git_block(ws: &Workspace, branch: &BranchStatus, cx: &mut Context<Workspa
         .into_any_element()
 }
 
-/// The commit-message input plus the ✦ generate and Commit buttons —
-/// Commit is disabled while the message is empty or a git op is running;
-/// ✦ is disabled while any op or generation is in flight.
+/// The commit-message input plus the ✦ generate, Amend toggle and Commit
+/// buttons — Commit is disabled while the message is empty (unless amending,
+/// where empty means `--no-edit`) or a git op is running; ✦ is disabled
+/// while any op or generation is in flight.
 fn commit_row(ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     let theme = cx.theme();
     let (accent, accent_fg, muted, muted_fg) = (theme.accent, theme.accent_foreground, theme.muted, theme.muted_foreground);
-    let ready = !ws.git.busy && !ws.git.commit_input.read(cx).value().trim().is_empty();
+    let amend = ws.git.amend;
+    let ready = !ws.git.busy && (amend || !ws.git.commit_input.read(cx).value().trim().is_empty());
     let idle = !ws.git.busy && !ws.git.generating;
     div()
         .flex()
@@ -89,10 +91,12 @@ fn commit_row(ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
                     IconName::Sparkles.into_any_element()
                 }),
         )
+        .when(!ws.git.commits.is_empty(), |d| d.child(amend_toggle(amend, cx)))
         .child(
             div()
                 .id("commit-button")
                 .test_support()
+                .aria_label(if amend { "Amend" } else { "Commit" })
                 .flex()
                 .items_center()
                 .gap_1()
@@ -108,9 +112,37 @@ fn commit_row(ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
                 })
                 .when(!ready, |d| d.text_color(muted_fg))
                 .child(IconName::Check)
-                .child("Commit"),
+                .child(if amend { "Amend" } else { "Commit" }),
         )
         .into_any_element()
+}
+
+/// The Amend chip next to the commit button — accent-filled while amend
+/// mode is on. Clicking flips `git.amend` via `toggle_commit_amend`, which
+/// prefills the box with HEAD's subject. Rendered only when a commit exists
+/// to amend (`git_block` gates the row on `commits` being non-empty).
+fn amend_toggle(on: bool, cx: &mut Context<Workspace>) -> impl IntoElement {
+    use gpui_kit::accesskit::Toggled;
+    let (border, muted_fg, accent, accent_fg) = {
+        let theme = cx.theme();
+        (theme.border, theme.muted_foreground, theme.accent, theme.accent_foreground)
+    };
+    let mut chip = div()
+        .id("commit-amend")
+        .test_support()
+        .role(gpui_kit::Role::CheckBox)
+        .aria_toggled(if on { Toggled::True } else { Toggled::False })
+        .aria_label("Amend last commit")
+        .cursor_pointer()
+        .px_1p5()
+        .py_0p5()
+        .rounded_md()
+        .border_1()
+        .border_color(border)
+        .text_xs()
+        .child("Amend");
+    chip = if on { chip.bg(accent).text_color(accent_fg) } else { chip.text_color(muted_fg) };
+    chip.on_click(cx.listener(|this, _, _, cx| this.toggle_commit_amend(cx)))
 }
 
 /// Push and Create PR — both refused while an op is in flight.
