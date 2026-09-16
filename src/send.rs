@@ -113,8 +113,9 @@ impl Workspace {
         let Queued { text, attachments, .. } = item;
         let chat = &mut self.chats[self.active];
         if chat.messages.is_empty() && chat.title == "New chat" {
-            let title = text.lines().next().unwrap_or("").chars().take(40).collect::<String>();
-            chat.title = title.into();
+            // The placeholder stands until the first reply completes —
+            // `maybe_generate_title` replaces it with a real title.
+            chat.title = crate::chat_title::provisional_title(&text).into();
             window.set_window_title(&format!("{} — Rixl Code", chat.title));
         }
         let display = if attachments.is_empty() {

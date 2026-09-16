@@ -203,6 +203,10 @@ pub struct Chat {
     pub run_agent: Option<u64>,
     pub draft: String,
     pub unread: bool,
+    /// The title was auto-generated from the first exchange (see
+    /// `crate::chat_title`). Persisted so a manual rename — or a second
+    /// turn after a generated title — never triggers another generation.
+    pub title_generated: bool,
     pub archived: bool,
     pub attachments: Vec<SharedString>,
     /// Provider instance id this thread sends on — stamped at creation from
@@ -262,6 +266,7 @@ impl Chat {
             attachments: Vec::new(),
             archived: false,
             unread: false,
+            title_generated: false,
             draft: String::new(),
             provider: String::new(),
             model: String::new(),

@@ -21,6 +21,10 @@ pub(crate) struct StoredChat {
     pub(crate) archived: bool,
     #[serde(default)]
     pub(crate) draft: String,
+    /// The title was auto-generated — missing in files written before
+    /// chat titles existed; false lets an old chat still earn one.
+    #[serde(default)]
+    title_generated: bool,
     /// Missing in early v1 files — fall back to now().
     #[serde(default = "std::time::SystemTime::now")]
     created_at: std::time::SystemTime,
@@ -75,6 +79,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             archived: chat.archived,
             folder: chat.folder.clone(),
             draft: chat.draft.clone(),
+            title_generated: chat.title_generated,
             created_at: chat.created_at,
             provider: chat.provider.clone(),
             model: chat.model.clone(),
@@ -182,6 +187,7 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
             chat.archived = stored.archived;
             chat.folder = stored.folder;
             chat.draft = stored.draft;
+            chat.title_generated = stored.title_generated;
             chat.created_at = stored.created_at;
             chat.provider = stored.provider;
             chat.model = stored.model;

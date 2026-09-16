@@ -149,6 +149,10 @@ impl Workspace {
         self.finish_run_agent(chat_id, ok, cx);
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
+        // A real backend turn ran only when a stream was attached — the
+        // no-model/auth bail-outs reach here without one and must not
+        // title a chat off an error note.
+        let had_stream = chat.stream.is_some();
         chat.running = false;
         chat.complete_turn();
         chat.stream = None;
@@ -164,6 +168,9 @@ impl Workspace {
             chat.unread = true;
         }
         self.record_turn_finished(chat_id);
+        // The first completed exchange earns the chat a real title —
+        // replaces the placeholder unless the user renamed meanwhile.
+        self.maybe_generate_title(chat_id, had_stream, cx);
         cx.notify();
         self.save();
     }
