@@ -54,7 +54,16 @@ fn context_menu_lists_copy_variants() {
         // in this message, so Copy Code stays hidden.
         assert_eq!(
             menu_labels(window),
-            ["Bookmark", "Copy", "Copy as Markdown", "Fork here", "Quote", "Regenerate with model", "Retry", "View raw"],
+            [
+                "Bookmark",
+                "Copy",
+                "Copy as Markdown",
+                "Fork here",
+                "Quote",
+                "Regenerate with model",
+                "Retry",
+                "View raw"
+            ],
             "menu should list the copy variants"
         );
         window.within("popup-menu").click(1usize, cx); // Copy as Markdown

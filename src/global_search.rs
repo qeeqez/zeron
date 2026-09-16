@@ -115,12 +115,12 @@ impl DateRange {
     /// The preset's lower bound, evaluated now — `None` for `Any`.
     fn cutoff(self) -> Option<SystemTime> {
         let days = match self {
-            Self::Any => return None,
-            Self::Day => 1,
-            Self::Week => 7,
-            Self::Month => 30,
+            Self::Any => None,
+            Self::Day => Some(1),
+            Self::Week => Some(7),
+            Self::Month => Some(30),
         };
-        SystemTime::now().checked_sub(std::time::Duration::from_secs(days * 86_400))
+        days.and_then(|d| SystemTime::now().checked_sub(std::time::Duration::from_secs(d * 86_400)))
     }
 }
 
@@ -279,10 +279,9 @@ impl Workspace {
         let live = self.chats.iter().enumerate().filter(|x| !x.1.ephemeral);
         let mut docs: Vec<SearchDoc> = live.map(|(ix, chat)| SearchDoc::live(ix, chat)).collect();
         for (file_ix, path) in chat_files(&self.project.chats_dir()) {
-            if file_ix < self.chats.len() {
-                continue;
-            }
-            if let Some(stored) = read_stored(&path) {
+            if file_ix >= self.chats.len()
+                && let Some(stored) = read_stored(&path)
+            {
                 docs.push(SearchDoc::stored(file_ix, stored));
             }
         }
@@ -304,14 +303,12 @@ impl Workspace {
     /// Open the hit's chat — loading it from its file when this window
     /// never did — and land on the matched message via the find bar.
     pub(crate) fn open_hit(&mut self, hit: &SearchHit, query: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let ix = match hit.chat_id.and_then(|id| self.chat_index(id)) {
-            Some(ix) => ix,
-            None => {
-                let Some(chat) = self.load_chat(hit.file_ix) else { return };
-                self.chats.push(chat);
-                self.chats.len() - 1
-            },
-        };
+        let ix = hit.chat_id.and_then(|id| self.chat_index(id)).or_else(|| {
+            let chat = self.load_chat(hit.file_ix)?;
+            self.chats.push(chat);
+            Some(self.chats.len() - 1)
+        });
+        let Some(ix) = ix else { return };
         self.select_chat(ix, window, cx);
         self.jump_to_message(query, hit.msg_ix, window, cx);
     }

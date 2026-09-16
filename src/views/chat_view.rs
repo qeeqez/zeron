@@ -8,7 +8,7 @@ use crate::views::render_message;
 use crate::{EscapeKey, FindInChat, MsgNavBottom, MsgNavDown, MsgNavEnter, MsgNavTop, MsgNavUp, workspace::Workspace};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::input::Input;
+
 use gpui_kit::component::menu::DropdownMenu;
 use gpui_kit::component::message_scroller::MessageScroller;
 use gpui_kit::component::theme::ActiveTheme;
@@ -198,28 +198,7 @@ impl Workspace {
             // Restricted-mode notice for an untrusted folder — the "Trust…"
             // button reopens the trust dialog (see `crate::views::trust`).
             .when(!self.trusted, |d| d.child(crate::views::trust::restricted_banner(cx)))
-            .when(self.chat_search_open, |d| {
-                d.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .px_4()
-                        .py_1()
-                        .border_b_1()
-                        .border_color(cx.theme().border)
-                        .child(IconName::Search)
-                        .child(div().flex_1().child(Input::new(&self.chat_search).appearance(true)))
-                        .child(
-                            div()
-                                .id("close-search")
-                                .cursor_pointer()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(IconName::X)
-                                .on_click(cx.listener(|this, _, window, cx| this.open_chat_search(window, cx))),
-                        ),
-                )
-            })
+            .when(self.chat_search_open, |d| d.child(self.chat_search_bar(cx)))
             .when(self.find.open, |d| d.child(self.find_bar(cx)))
             .child(
                 div()

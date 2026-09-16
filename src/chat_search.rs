@@ -1,5 +1,8 @@
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::Button;
+use gpui_kit::component::input::Input;
 use gpui_kit::component::message_scroller::MessageScrollerState;
+use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::*;
 
 use crate::model::{ChatMessage, MessageKind};
@@ -198,6 +201,30 @@ impl Workspace {
             s.scroll_to_item(self.search_match_ix, cx);
         });
         cx.notify();
+    }
+
+    /// The search bar under the titlebar — filters the transcript to
+    /// matching messages. The close button reuses `open_chat_search`, which
+    /// also clears the query and resets the scroller.
+    pub(crate) fn chat_search_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_4()
+            .py_1()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(IconName::Search)
+            .child(div().flex_1().child(Input::new(&self.chat_search).appearance(true)))
+            .child(
+                div()
+                    .id("close-search")
+                    .cursor_pointer()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(IconName::X)
+                    .on_click(cx.listener(|this, _, window, cx| this.open_chat_search(window, cx))),
+            )
     }
 }
 
