@@ -42,6 +42,11 @@ pub fn parse_codex_line(line: &str) -> Vec<AgentEvent> {
         },
         "error" => vec![AgentEvent::Error(ev["message"].as_str().unwrap_or("codex error").into())],
         "turn.failed" => vec![AgentEvent::Error(ev["error"]["message"].as_str().unwrap_or("turn failed").into())],
+        // Older `codex exec` builds attach the account quota snapshot to
+        // `token_count` — surface it like the app-server notification.
+        "token_count" => crate::rate_limit::RateLimit::from_codex(&ev["rate_limits"])
+            .map(|rl| vec![AgentEvent::RateLimit(rl)])
+            .unwrap_or_default(),
         "turn.completed" => {
             let usage = &ev["usage"];
             let input = usage["input_tokens"].as_u64().unwrap_or(0);

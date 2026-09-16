@@ -77,6 +77,11 @@ impl ClaudeDecoder {
             Some("assistant") => self.assistant(&msg["message"]),
             Some("user") => self.user(&msg["message"]),
             Some("result") => return ClaudeDecoded { events: self.result(&msg), turn_over: true },
+            // `rate_limit_event` frames carry quota status — "rejected"
+            // raises the banner, "allowed" clears it.
+            Some("rate_limit_event") => crate::rate_limit::RateLimit::from_claude(&msg["rate_limit_info"])
+                .map(|rl| vec![AgentEvent::RateLimit(rl)])
+                .unwrap_or_default(),
             _ => vec![],
         };
         ClaudeDecoded { events, turn_over: false }

@@ -98,6 +98,14 @@ impl TurnDecoder {
             "item/mcpToolCall/progress" => (self.progress(params), false),
             "turn/plan/updated" => (self.plan_updated(params), false),
             "thread/tokenUsage/updated" => (self.usage(params), false),
+            // Account quota snapshot — fires mid-turn and on its own; the
+            // chat banner reads `limited`, the popover reads the windows.
+            "account/rateLimits/updated" => (
+                crate::rate_limit::RateLimit::from_codex(params)
+                    .map(|rl| vec![AgentEvent::RateLimit(rl)])
+                    .unwrap_or_default(),
+                false,
+            ),
             "error" => (self.error(params), false),
             "turn/completed" => (self.turn_completed(&params["turn"]), true),
             _ => (vec![], false),

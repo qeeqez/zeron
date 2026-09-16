@@ -157,6 +157,13 @@ fn apply_task_event(agent: &mut Agent, ev: &AgentEvent) -> Option<AgentStatus> {
             agent.log.push(format!("[{}s] usage {input}→{output}", agent.elapsed_secs).into());
             None
         },
+        // Task agents have no banner — a throttle just lands in the log.
+        AgentEvent::RateLimit(rl) => {
+            if rl.limited {
+                agent.log.push(format!("[{}s] rate limited", agent.elapsed_secs).into());
+            }
+            None
+        },
         AgentEvent::Done => Some(AgentStatus::Done),
         AgentEvent::Error(msg) => {
             agent.log.push(format!("[{}s] error: {msg}", agent.elapsed_secs).into());

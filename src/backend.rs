@@ -261,6 +261,11 @@ pub enum AgentEvent {
     Diff { path: SharedString, added: usize, removed: usize, hunks: SharedString },
     /// Token usage for the completed turn.
     Usage { input: u64, output: u64 },
+    /// Rate-limit/quota state reported by the backend — codex's
+    /// `account/rateLimits/updated`, claude's `rate_limit_event`, or a
+    /// snapshot folded from an error message. Drives the chat's
+    /// rate-limit banner and the usage popover's quota rows.
+    RateLimit(crate::rate_limit::RateLimit),
     /// The run finished normally.
     Done,
     /// The run failed; `message` is human-readable.

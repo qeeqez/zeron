@@ -2,56 +2,18 @@ use std::rc::Rc;
 
 use crate::model::ChatMessage;
 use crate::views::cards::MsgCtx;
+use crate::views::chat_menu::chat_menu;
 use crate::views::render_empty_state;
 use crate::views::render_message;
 use crate::{EscapeKey, FindInChat, MsgNavBottom, MsgNavDown, MsgNavEnter, MsgNavTop, MsgNavUp, workspace::Workspace};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::Input;
-use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
+use gpui_kit::component::menu::DropdownMenu;
 use gpui_kit::component::message_scroller::MessageScroller;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-
-fn chat_menu(
-    menu: gpui_kit::component::menu::PopupMenu, ws: &Entity<Workspace>, pinned: bool, word_wrap: bool,
-) -> gpui_kit::component::menu::PopupMenu {
-    let ws_pin = ws.clone();
-    let ws_rename = ws.clone();
-    let ws_export = ws.clone();
-    let ws_copy = ws.clone();
-    let ws_wrap = ws.clone();
-    let ws_snap = ws.clone();
-    menu.item(
-        PopupMenuItem::new(if pinned { "Unpin" } else { "Pin" })
-            .icon(IconName::Star)
-            .on_click(move |_, _, cx| {
-                ws_pin.update(cx, |this, cx| this.toggle_pin(this.active, cx));
-            }),
-    )
-    .item(PopupMenuItem::new("Rename").icon(IconName::Pencil).on_click(move |_, window, cx| {
-        ws_rename.update(cx, |this, cx| this.rename_active(window, cx));
-    }))
-    .item(PopupMenuItem::new("Export").icon(IconName::Share).on_click(move |_, _, cx| {
-        ws_export.update(cx, |this, cx| this.export_active(cx));
-    }))
-    .item(PopupMenuItem::new("Copy transcript").icon(IconName::Copy).on_click(move |_, _, cx| {
-        ws_copy.update(cx, |this, cx| this.copy_transcript(cx));
-    }))
-    .item(PopupMenuItem::new("Snapshots").icon(IconName::Camera).on_click(move |_, _, cx| {
-        ws_snap.update(cx, |this, cx| this.toggle_snapshots_panel(cx));
-    }))
-    .item(PopupMenuItem::new("Word wrap").icon(IconName::Check).checked(word_wrap).on_click(move |_, _, cx| {
-        ws_wrap.update(cx, |this, cx| {
-            this.word_wrap = !this.word_wrap;
-            this.save_settings();
-            // Every message's height changed — remeasure the whole list.
-            this.scroller.update(cx, |s, cx| s.remeasure(cx));
-            cx.notify();
-        });
-    }))
-}
 
 impl Workspace {
     pub fn render_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -60,6 +22,9 @@ impl Workspace {
         let messages: Rc<Vec<ChatMessage>> = chat.messages.clone();
         let running = chat.running;
         let failed = chat.failed_flag;
+        // A live rate limit replaces the generic failure row — its banner
+        // carries the same Retry affordance plus the reset time.
+        let limited = chat.usage.rate_limit.as_ref().is_some_and(|rl| rl.limited);
         let last_turn = chat.last_turn;
         let title = chat.title.clone();
         let pinned = chat.pinned;
@@ -260,7 +225,11 @@ impl Workspace {
                         .child(format!("Working… {elapsed}s")),
                 )
             })
-            .when(failed && !running, |d| {
+            .when_some(
+                chat.usage.rate_limit.as_ref().and_then(|rl| crate::views::rate_limit::rate_limit_banner(rl, running, &ws_empty, cx)),
+                |d, banner| d.child(banner),
+            )
+            .when(failed && !running && !limited, |d| {
                 let ws_retry = ws_empty.clone();
                 d.child(
                     div()

@@ -189,6 +189,11 @@ impl Workspace {
         chat.running = false;
         // failed_flag survives so the retry banner stays until next send.
         chat.complete_turn();
+        // A clean sim turn lifts a stale rate-limit banner, same as a
+        // real backend turn does in `run_backend`'s tail.
+        if !chat.failed_flag {
+            chat.usage.clear_limited();
+        }
         if !is_active {
             chat.unread = true;
         }

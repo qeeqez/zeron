@@ -4,6 +4,7 @@
 //! unstyled `base::Popover` so the meter itself stays the trigger — the
 //! styled `component::Popover` only accepts `Selectable` triggers.
 
+use gpui_kit::assets::IconName;
 use gpui_kit::base::Popover;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::{ThemeStyled, h_flex, v_flex};
@@ -15,16 +16,28 @@ use crate::usage::{ChatUsage, SessionUsage, TurnUsage, fmt_tokens};
 use crate::workspace::Workspace;
 
 /// The composer meter wrapped as a popover trigger. `None` until the first
-/// usage report — same gate as the bare meter.
+/// usage report or rate-limit snapshot — an untouched thread shows nothing.
+/// With no token meter yet, a quota snapshot still gets a trigger: a
+/// warning glyph that opens the same breakdown.
 pub fn usage_popover(usage: &ChatUsage, ws: &Entity<Workspace>, cx: &App) -> Option<impl IntoElement> {
     // into_any_element erases the opaque type's captured lifetimes — the
     // trigger closure must be 'static.
-    let meter = super::composer_helpers::usage_indicator(usage, cx)?.into_any_element();
+    let trigger = match super::composer_helpers::usage_indicator(usage, cx) {
+        Some(meter) => meter.into_any_element(),
+        None if usage.rate_limit.is_some() => div()
+            .id("usage-meter")
+            .test_support()
+            .text_xs()
+            .text_color(cx.theme().warning)
+            .child(IconName::TriangleAlert)
+            .into_any_element(),
+        None => return None,
+    };
     let ws = ws.clone();
     Some(
         Popover::new("usage-popover")
             .anchor(Anchor::BottomRight)
-            .trigger_with(move |_, _, _| div().cursor_pointer().child(meter).into_any_element())
+            .trigger_with(move |_, _, _| div().cursor_pointer().child(trigger).into_any_element())
             .content(move |_, _, cx| usage_breakdown(&ws, cx)),
     )
 }
@@ -56,6 +69,16 @@ fn usage_breakdown(ws: &Entity<Workspace>, cx: &mut Context<gpui_kit::base::Popo
             format!("{} / {} ({:.0}%)", fmt_tokens(used), fmt_tokens(usage.context.unwrap_or(0)), fill * 100.),
             cx,
         ));
+    }
+    // Quota windows from the backend's rate-limit snapshot, plus a
+    // "reached" row while a limit is active.
+    if let Some(rl) = &usage.rate_limit {
+        if rl.limited {
+            body = body.child(stat_row("usage-limit", "Rate limit", "reached".into(), cx));
+        }
+        for (ix, w) in rl.windows().enumerate() {
+            body = body.child(stat_row(("usage-quota", ix), w.label(), w.value(std::time::SystemTime::now()), cx));
+        }
     }
     // Honest cost: a priced model shows the estimate, anything else '—'.
     let cost_text = cost.map(|c| format!("~{}", fmt_cost(c))).unwrap_or_else(|| "—".into());

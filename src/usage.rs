@@ -91,6 +91,9 @@ pub struct ChatUsage {
     /// Last token report — reports are running totals for the turn, so the
     /// delta since `last` is what accrues.
     last: TurnUsage,
+    /// Latest rate-limit/quota snapshot — the chat banner reads `limited`,
+    /// the popover reads the windows. Runtime state, not persisted.
+    pub rate_limit: Option<crate::rate_limit::RateLimit>,
 }
 
 impl ChatUsage {
@@ -128,6 +131,30 @@ impl ChatUsage {
         self.total += delta.total();
         self.turn_tokens.accrue(delta);
         self.tokens.accrue(delta);
+    }
+
+    /// Fold a rate-limit signal in. A bare flag (error-derived, no
+    /// windows) merges onto the current snapshot so quota rows survive;
+    /// a snapshot with windows replaces it wholesale.
+    pub fn record_rate_limit(&mut self, rl: crate::rate_limit::RateLimit) {
+        if rl.primary.is_none()
+            && rl.secondary.is_none()
+            && let Some(cur) = &mut self.rate_limit
+        {
+            cur.limited = rl.limited;
+            cur.reset_hint = rl.reset_hint.or_else(|| cur.reset_hint.take());
+            return;
+        }
+        self.rate_limit = Some(rl);
+    }
+
+    /// A turn completed without an error — the limit cleared. Quota
+    /// windows stay: the popover still shows how full they are.
+    pub fn clear_limited(&mut self) {
+        if let Some(rl) = &mut self.rate_limit {
+            rl.limited = false;
+            rl.reset_hint = None;
+        }
     }
 
     /// Completed turns plus the in-flight one when it has tokens — the

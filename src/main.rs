@@ -24,6 +24,7 @@ mod approval_tests;
 mod attachment;
 mod auth;
 mod backend;
+mod backend_apply;
 mod backend_parse;
 #[cfg(test)]
 mod backend_parse_tests;
@@ -142,6 +143,9 @@ mod provider_ops;
 #[cfg(test)]
 mod provider_tests;
 mod providers;
+mod rate_limit;
+#[cfg(test)]
+mod rate_limit_tests;
 mod recent_projects;
 mod resume;
 #[cfg(test)]

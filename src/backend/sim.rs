@@ -23,21 +23,36 @@ impl AgentBackend for SimBackend {
         }]
     }
 
-    fn send(&self, _prompt: &str, _model: &str, _mode: &str, _ctx: &TurnContext) -> ReplyStream {
+    fn send(&self, prompt: &str, _model: &str, _mode: &str, _ctx: &TurnContext) -> ReplyStream {
         let (tx, events) = std::sync::mpsc::channel();
-        for e in [
-            AgentEvent::ToolCallStart { ix: 0, name: "cargo build".into(), detail: "--locked".into() },
-            AgentEvent::ToolCallDelta { ix: 0, output: "   Compiling rixlcode v0.1.0\n".into() },
-            AgentEvent::ToolCallEnd { ix: 0, ok: true },
-            AgentEvent::Diff {
-                path: "src/main.rs".into(),
-                added: 24,
-                removed: 6,
-                hunks: "@@ -10,6 +10,24 @@\n fn main() {\n-    println!(\"old\");\n+    gpui_kit::application().run(|cx| {\n        gpui_kit::init(cx);\n    });\n }".into(),
-            },
-            AgentEvent::TextDelta("Done. The build is **green** — `0 warnings`, all checks passed.\n\n- `cargo build --locked` finished in 3.6s\n- clippy: clean\n- nextest: 0 tests".into()),
-            AgentEvent::Done,
-        ] {
+        // "rate limit" in the prompt fakes a throttled turn — the banner
+        // and its clear-on-success are exercisable without a real 429.
+        let stream: Vec<AgentEvent> = if prompt.to_lowercase().contains("rate limit") {
+            vec![
+                AgentEvent::RateLimit(crate::rate_limit::RateLimit {
+                    limited: true,
+                    reset_hint: Some("in 5 minutes".into()),
+                    ..Default::default()
+                }),
+                AgentEvent::Error("rate limit exceeded: try again in 5 minutes".into()),
+                AgentEvent::Done,
+            ]
+        } else {
+            vec![
+                AgentEvent::ToolCallStart { ix: 0, name: "cargo build".into(), detail: "--locked".into() },
+                AgentEvent::ToolCallDelta { ix: 0, output: "   Compiling rixlcode v0.1.0\n".into() },
+                AgentEvent::ToolCallEnd { ix: 0, ok: true },
+                AgentEvent::Diff {
+                    path: "src/main.rs".into(),
+                    added: 24,
+                    removed: 6,
+                    hunks: "@@ -10,6 +10,24 @@\n fn main() {\n-    println!(\"old\");\n+    gpui_kit::application().run(|cx| {\n        gpui_kit::init(cx);\n    });\n }".into(),
+                },
+                AgentEvent::TextDelta("Done. The build is **green** — `0 warnings`, all checks passed.\n\n- `cargo build --locked` finished in 3.6s\n- clippy: clean\n- nextest: 0 tests".into()),
+                AgentEvent::Done,
+            ]
+        };
+        for e in stream {
             let _ = tx.send(e);
         }
         ReplyStream {
