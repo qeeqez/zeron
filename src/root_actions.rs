@@ -199,12 +199,14 @@ pub(crate) fn workspace_actions(root: Div, window: &Window, cx: &mut Context<Wor
 }
 
 /// Esc: the lightbox sits above every other layer, so it dismisses first;
-/// then the usage dashboard, then the logs overlay; otherwise the
-/// workspace's usual Esc cascade runs.
+/// then the file-inspect overlay, the usage dashboard, then the logs
+/// overlay; otherwise the workspace's usual Esc cascade runs.
 fn escape_key(ws: Entity<Workspace>) -> impl Fn(&EscapeKey, &mut Window, &mut App) + 'static {
     move |_: &EscapeKey, window, cx| {
         if ws.read(cx).image_view.is_some() {
             ws.update(cx, |this, cx| this.close_image_view(cx));
+        } else if ws.read(cx).file_inspect.is_some() {
+            ws.update(cx, |this, cx| this.close_file_inspect(cx));
         } else if ws.read(cx).usage_dashboard_open {
             ws.update(cx, |this, cx| {
                 this.usage_dashboard_open = false;

@@ -103,7 +103,15 @@ fn change_row_menu_copies_diff_to_clipboard() {
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert!(window.find("popup-menu").visible(), "right-click should open the file menu");
-        window.within("popup-menu").click(3usize, cx); // Copy Diff
+        // Click "Copy Diff" by label — the tracked-file git items sit between
+        // it and "Copy Path", so a positional index would drift.
+        let item = gpui_kit::base::test_support::snapshots(window)
+            .iter()
+            .find(|s| s.label() == Some("Copy Diff"))
+            .expect("menu should offer Copy Diff")
+            .clone();
+        let id = item.path().last().unwrap().clone();
+        window.within("popup-menu").click(id, cx);
     });
     // The diff is fetched on the background executor — poll the clipboard.
     let mut clip = String::new();

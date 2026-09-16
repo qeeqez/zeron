@@ -150,7 +150,7 @@ fn commit_diff_body(ix: usize, diff: &CommitDiff, cx: &mut Context<Workspace>) -
 
 /// One commit-diff row: `sign text`, tinted by line kind. No line-number
 /// gutters — commit lines aren't review-comment anchors.
-fn commit_diff_line(line: &DiffLine, cx: &App) -> AnyElement {
+pub(crate) fn commit_diff_line(line: &DiffLine, cx: &App) -> AnyElement {
     let theme = cx.theme();
     let (tint, fg, sign) = match line.kind {
         DiffLineKind::Added => (Some(theme.success.opacity(0.12)), theme.success, "+"),

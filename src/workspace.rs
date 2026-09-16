@@ -171,6 +171,9 @@ pub struct Workspace {
     /// Usage dashboard overlay — a centered panel aggregating tokens and
     /// cost across every chat (see `crate::views::usage_dashboard`).
     pub usage_dashboard_open: bool,
+    /// File-inspect overlay — the open "File History"/"Blame" panel for one
+    /// project file; `None` is closed (see `crate::views::file_inspect`).
+    pub file_inspect: Option<crate::views::file_inspect::FileInspect>,
     /// Image lightbox — the open image path while the full-size overlay is
     /// up; `None` is closed (see `crate::image_view`).
     pub image_view: Option<SharedString>,

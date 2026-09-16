@@ -255,49 +255,6 @@ pub(crate) fn revert(dir: &std::path::Path, sha: &str) -> Result<String, String>
     git_env(dir, &["revert", "--no-edit", sha], &[]).map(|_| format!("Reverted {sha}"))
 }
 
-/// One stash entry as the Changes panel's stash list sees it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StashEntry {
-    /// Reflog selector (`stash@{0}`) — the row label and the argument
-    /// pop/apply/drop pass back to git.
-    pub name: String,
-    /// Stash subject (`%gs`): "WIP on main: …" for an auto message, or
-    /// "On main: <msg>" when `stash push -m` supplied one.
-    pub message: String,
-    /// Relative committer time (`%cr` — "2 hours ago").
-    pub rel_time: String,
-}
-
-/// Stash entries under `dir`, newest first. Empty on non-repo dirs and when
-/// nothing is stashed — `git stash list` prints nothing for an empty reflog.
-pub(crate) fn stash_list(dir: &std::path::Path) -> Vec<StashEntry> {
-    let out = git(dir, &["stash", "list", "--format=%gd%x00%gs%x00%cr"]);
-    out.map(|o| crate::git_parse::parse_stash_list(&o)).unwrap_or_default()
-}
-
-/// `git stash push -u -m <message>` — stash tracked and untracked changes,
-/// leaving a clean worktree. On a clean tree git exits 0 with "No local
-/// changes to save"; that text is the note, not an error.
-pub(crate) fn stash_push(dir: &std::path::Path, message: &str) -> Result<String, String> {
-    git_env(dir, &["stash", "push", "-u", "-m", message], &[]).map(|out| out.trim().to_string())
-}
-
-/// `git stash pop <name>` — apply the stash and drop it on success. A merge
-/// conflict exits non-zero, keeps the entry, and its stderr is the note.
-pub(crate) fn stash_pop(dir: &std::path::Path, name: &str) -> Result<String, String> {
-    git_env(dir, &["stash", "pop", name], &[]).map(|_| format!("Popped {name}"))
-}
-
-/// `git stash apply <name>` — apply the stash but keep it in the list.
-pub(crate) fn stash_apply(dir: &std::path::Path, name: &str) -> Result<String, String> {
-    git_env(dir, &["stash", "apply", name], &[]).map(|_| format!("Applied {name}"))
-}
-
-/// `git stash drop <name>` — remove the entry without applying it.
-pub(crate) fn stash_drop(dir: &std::path::Path, name: &str) -> Result<String, String> {
-    git_env(dir, &["stash", "drop", name], &[]).map(|_| format!("Dropped {name}"))
-}
-
 /// One commit as the Changes panel's "Recent commits" list sees it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Commit {
@@ -382,6 +339,19 @@ pub(crate) use file_diff::{file_diff, tracked};
 #[path = "git_discard.rs"]
 pub(crate) mod discard;
 pub(crate) use discard::discard_file;
+
+/// Stash list + push/pop/apply/drop — split into `git_stash.rs` for the SLOC
+/// cap; re-exported so callers keep using `crate::git::stash_list` etc.
+#[path = "git_stash.rs"]
+pub(crate) mod stash;
+pub(crate) use stash::{StashEntry, stash_apply, stash_drop, stash_list, stash_pop, stash_push};
+
+/// Per-line blame and per-file history for the file menu's "Blame" and
+/// "File History" overlays — split into `git_blame.rs` for the SLOC cap;
+/// re-exported so callers keep using `crate::git::blame` / `file_log`.
+#[path = "git_blame.rs"]
+pub(crate) mod blame;
+pub(crate) use blame::{BlameLine, blame, commit_file_diff, file_log};
 
 /// `git diff` variant with bounded output: reads at most `max_bytes` of
 /// stdout, then kills the child rather than buffering an unbounded diff.

@@ -81,6 +81,11 @@ impl Render for Workspace {
             // Usage dashboard — same centered-modal shape, layered above
             // logs so Esc dismisses it first.
             .when(self.usage_dashboard_open, |d| d.child(crate::views::usage_dashboard::usage_dashboard_overlay(self, cx)))
+            // File History / Blame — same centered-modal shape, layered above
+            // the usage dashboard so Esc dismisses it first.
+            .when_some(self.file_inspect.as_ref().map(|_| ()), |d, _| {
+                d.child(crate::views::file_inspect::file_inspect_overlay(self, cx))
+            })
             // gpui-component's Root only stores sheet/dialog/notification
             // state — the app must mount the layers itself or open_sheet /
             // open_dialog / push_notification update state nothing renders.
