@@ -114,6 +114,15 @@ pub fn chat_menu(
             let ws = ws.clone();
             move |m, _w, _cx| color_submenu(&ws, color, m)
         })
+        .item(PopupMenuItem::new("Custom instructions…").icon(IconName::NotebookPen).on_click({
+            let ws = ws.clone();
+            move |_, window, cx| {
+                ws.update(cx, |this, cx| {
+                    let id = this.chats[this.active].id;
+                    this.open_chat_instructions(id, window, cx);
+                });
+            }
+        }))
         .item(PopupMenuItem::new("Export").icon(IconName::Share).disabled(ephemeral).on_click(move |_, _, cx| {
             ws_export.update(cx, |this, cx| this.export_active(cx));
         }))

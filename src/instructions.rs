@@ -47,6 +47,13 @@ pub(crate) fn for_turn(global: &str, root: &std::path::Path) -> Option<String> {
     merge(global, project_file(root).map(|(_, text)| text).as_deref())
 }
 
+/// The merged instructions for one chat's turn — the global setting plus
+/// the project file under `root`, then the chat's own instructions last.
+/// Order: global → project file → per-chat.
+pub(crate) fn for_chat_turn(global: &str, root: &std::path::Path, chat: Option<&str>) -> Option<String> {
+    merge(&for_turn(global, root).unwrap_or_default(), chat)
+}
+
 /// `prompt` with `instructions` prepended as a `<system_instructions>`
 /// block — for transports with no dedicated system channel (ACP's
 /// `session/prompt`, the HTTP endpoint's `prompt` field). Returns the

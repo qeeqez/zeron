@@ -155,6 +155,11 @@ impl Workspace {
             rename_mode: RenameMode::Inline,
             folder_input: cx.new(|cx| InputState::new(window, cx).placeholder("Folder name")),
             prompt_input: cx.new(|cx| InputState::new(window, cx).placeholder("Prompt name")),
+            chat_instructions_input: cx.new(|cx| {
+                TextareaState::new(window, cx)
+                    .auto_grow(3, 12)
+                    .placeholder("Instructions applied to this chat's turns — appended after the global and project instructions.")
+            }),
             collapsed_folders: std::collections::HashSet::new(),
             recall_ix: None,
             palette,

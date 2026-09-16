@@ -117,6 +117,9 @@ pub struct Workspace {
     /// Shared text field for the saved-prompt dialogs — "Save prompt" seeds
     /// it empty, "Rename prompt" with the current name.
     pub prompt_input: Entity<InputState>,
+    /// Shared multiline field for the per-chat "Custom instructions…"
+    /// dialog — seeded with the chat's current text on open.
+    pub chat_instructions_input: Entity<TextareaState>,
     /// Folder names collapsed in the sidebar — runtime-only; folders are
     /// just `Chat::folder` values, so this set may name a folder that no
     /// longer exists.

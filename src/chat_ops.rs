@@ -1,5 +1,6 @@
 mod colors;
 mod folders;
+pub(crate) mod instructions;
 
 use std::rc::Rc;
 
@@ -318,14 +319,5 @@ impl Workspace {
 
     pub fn running_agents(&self) -> usize {
         self.agents.iter().filter(|a| a.status == crate::model::AgentStatus::Running).count()
-    }
-}
-
-impl Chat {
-    /// Record how long the just-finished turn took and clear `started_at`.
-    /// Callers: `finish_reply`, `finish_stream` (simulate.rs),
-    /// `stop_reply` — each replaces its `chat.started_at = None` with this.
-    pub fn complete_turn(&mut self) {
-        self.last_turn = self.started_at.take().map(|t| t.elapsed());
     }
 }

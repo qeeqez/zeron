@@ -55,11 +55,8 @@ impl Workspace {
             String::new()
         };
         // None = unfiltered — avoids allocating 0..n every render.
-        let filtered: Option<Vec<usize>> = if query.is_empty() {
-            None
-        } else {
-            Some((0..msg_count).filter(|&ix| crate::chat_search::msg_matches(&messages[ix], &query)).collect())
-        };
+        let filtered: Option<Vec<usize>> =
+            (!query.is_empty()).then(|| (0..msg_count).filter(|&ix| crate::chat_search::msg_matches(&messages[ix], &query)).collect());
         // Find bar state: matching message indices plus the current match's
         // message — the scroller rows read both for the highlight.
         let find: Option<crate::chat_find::FindMarks> = self.find.open.then(|| self.find_marks(cx));
@@ -115,6 +112,7 @@ impl Workspace {
                 .when_some(color, |d, color| d.child(crate::views::chat_menu::color_dot("chat-color-dot", color, px(8.))))
                 .when(worktree, |d| d.child(crate::views::chat_menu::worktree_badge("worktree-badge", &workdir, cx)))
                 .when(ephemeral, |d| d.child(crate::views::chat_menu::temp_badge("temp-badge", cx)))
+                .when(chat.instructions.is_some(), |d| d.child(crate::chat_ops::instructions::instructions_badge("instructions-badge", cx)))
                 .child(div().flex_1())
                 .child(
                     div()

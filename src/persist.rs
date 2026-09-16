@@ -59,6 +59,10 @@ pub(crate) struct StoredChat {
     /// before history existed.
     #[serde(default)]
     prompt_history: Vec<String>,
+    /// Per-chat custom instructions — missing in files written before
+    /// per-chat instructions existed; empty means no override.
+    #[serde(default)]
+    instructions: String,
     /// Color tag for visual grouping — missing in files written before
     /// color tags existed; unknown names load as untagged.
     #[serde(default)]
@@ -105,6 +109,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             feedback: chat.feedback.clone(),
             prompt_history: chat.prompt_history.clone(),
             color: chat.color.map_or_else(String::new, |c| c.name().to_string()),
+            instructions: chat.instructions.clone().unwrap_or_default(),
         };
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
@@ -220,6 +225,7 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
             chat.feedback = stored.feedback;
             chat.prompt_history = stored.prompt_history;
             chat.color = crate::model::ChatColor::from_name(&stored.color);
+            chat.instructions = if stored.instructions.is_empty() { None } else { Some(stored.instructions) };
             Some(chat)
         })
         .collect()
