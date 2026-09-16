@@ -64,7 +64,7 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
     let MsgCtx { ix, msg, .. } = mc;
     let MessageKind::Text(text) = &msg.kind else { unreachable!() };
     let role = msg.role;
-    let (word_wrap, font_size, checkpointed, edit_input) = {
+    let (word_wrap, font_size, undoable, edit_input) = {
         let ws = ws.read(cx);
         let chat = &ws.chats[ws.active];
         let input = ws
@@ -72,7 +72,16 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
             .as_ref()
             .filter(|e| e.chat_id == chat.id && e.ix == ix && e.at == msg.at)
             .map(|e| e.input.clone());
-        (ws.word_wrap, ws.font_size, input.is_none() && !chat.running && crate::checkpoints::for_message(chat, ix).is_some(), input)
+        // "Undo turn" lives on the last user message only — it rewinds the
+        // transcript to that point, so an older message would drop later
+        // turns too (the Snapshots panel restores files without truncating).
+        let last_user = chat.messages.iter().rposition(|m| m.role == Role::User) == Some(ix);
+        (
+            ws.word_wrap,
+            ws.font_size,
+            input.is_none() && !chat.running && last_user && crate::checkpoints::for_message(chat, ix).is_some(),
+            input,
+        )
     };
     let alignment = match role {
         Role::User => MessageAlignment::End,
@@ -172,13 +181,13 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
         .test_support()
         .group(group.clone())
         .child(message)
-        // "Undo turn" on the user message that opened a checkpointed turn —
-        // hover-revealed like the footer actions, hidden while a reply runs.
-        .when(checkpointed, |d| {
+        // "Undo turn" on the last user message — hover-revealed like the
+        // footer actions, hidden while a reply runs.
+        .when(undoable, |d| {
             d.child(
                 div().flex().justify_end().child(
                     div()
-                        .id(("revert", ix))
+                        .id(("undo", ix))
                         .test_support()
                         .flex()
                         .items_center()
@@ -190,8 +199,8 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
                         .text_color(cx.theme().muted_foreground)
                         .child(IconName::Undo2)
                         .child("Undo turn")
-                        .on_click(move |_, _, cx| {
-                            ws_revert.update(cx, |this, cx| this.revert_to_checkpoint(ix, cx));
+                        .on_click(move |_, window, cx| {
+                            ws_revert.update(cx, |this, cx| this.undo_turn(ix, window, cx));
                         }),
                 ),
             )
@@ -240,9 +249,9 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
                 menu.item(PopupMenuItem::new(label).icon(IconName::Code).on_click(
                     super::message_footer::toggle_raw(md, ws_menu.clone(), ix),
                 ))
-            } else if checkpointed {
-                menu.item(msg_item("Undo turn", IconName::Undo2, &ws_menu, move |this, _w, cx| {
-                    this.revert_to_checkpoint(ix, cx)
+            } else if undoable {
+                menu.item(msg_item("Undo turn", IconName::Undo2, &ws_menu, move |this, w, cx| {
+                    this.undo_turn(ix, w, cx)
                 }))
             } else {
                 menu

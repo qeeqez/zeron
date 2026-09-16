@@ -217,24 +217,4 @@ impl crate::workspace::Workspace {
             chat.checkpoints.push(TurnCheckpoint { ix, at, checkpoint });
         }
     }
-
-    /// Restore the active chat's workdir to the checkpoint taken before
-    /// the turn that message `ix` opened — the "Undo turn" affordance.
-    /// Later checkpoints stay recorded, so an older turn can still be
-    /// reverted after this one. Failures surface as a chat note.
-    pub fn revert_to_checkpoint(&mut self, ix: usize, cx: &mut gpui_kit::Context<Self>) {
-        let chat = &self.chats[self.active];
-        let Some(turn) = for_message(chat, ix) else { return };
-        let checkpoint = turn.checkpoint.clone();
-        let workdir = crate::worktree::workdir_for(chat, self.project.root());
-        match restore(&workdir, &checkpoint) {
-            Ok(()) => {
-                if self.changes_panel_open {
-                    self.refresh_changes(cx);
-                }
-                cx.notify();
-            },
-            Err(e) => self.push_note(format!("**Revert failed:** {e}"), cx),
-        }
-    }
 }
