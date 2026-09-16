@@ -16,4 +16,4 @@ Replace the in-process simulation with a real agent backend.
 
 ## Todo
 
-- [ ] MCP transport — needs a JSON-RPC client; no crate pinned yet
+- [ ] MCP transport — a JSON-RPC client now exists in-tree (`backend/acp_rpc.rs`); what remains is an `AgentBackend` impl that speaks MCP
