@@ -31,6 +31,9 @@ pub struct ChatMenuState {
     pub ephemeral: bool,
     /// The chat has 2+ messages and no reply running — gates "Split chat…".
     pub can_split: bool,
+    /// A backend turn is running — gates "Merge into project" (the
+    /// worktree's files are still moving).
+    pub running: bool,
 }
 
 /// The color-tag dot — one shape for the sidebar row, the titlebar and the
@@ -130,7 +133,15 @@ pub fn context_chip(id: &'static str, usage: &crate::usage::ChatUsage, cx: &App)
 pub fn chat_menu(
     menu: PopupMenu, ws: &Entity<Workspace>, state: ChatMenuState, window: &mut Window, cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let ChatMenuState { pinned, word_wrap, color, worktree, ephemeral, can_split } = state;
+    let ChatMenuState {
+        pinned,
+        word_wrap,
+        color,
+        worktree,
+        ephemeral,
+        can_split,
+        running,
+    } = state;
     let ws_pin = ws.clone();
     let ws_rename = ws.clone();
     let ws_export = ws.clone();
@@ -221,7 +232,7 @@ pub fn chat_menu(
         menu
     };
     let menu = bookmarks_submenu(menu, ws, window, cx);
-    let menu = if worktree { worktree_items(menu, ws, window, cx) } else { menu };
+    let menu = if worktree { worktree_items(menu, ws, running, window, cx) } else { menu };
     menu.item(PopupMenuItem::new("Snapshots").icon(IconName::Camera).on_click(move |_, _, cx| {
         ws_snap.update(cx, |this, cx| this.toggle_snapshots_panel(cx));
     }))
@@ -239,23 +250,35 @@ pub fn chat_menu(
     }))
 }
 
-/// The worktree-only section of the ⋯ menu: reveal the checkout in Finder
-/// and open it in the preferred editor (`Ask` expands to a picker, same as
-/// the file menu). Paths resolve at click time so a deleted worktree falls
-/// back to the project root via `workdir_for`.
-fn worktree_items(menu: PopupMenu, ws: &Entity<Workspace>, window: &mut Window, cx: &mut Context<PopupMenu>) -> PopupMenu {
+/// The worktree-only section of the ⋯ menu: merge the checkout's delta
+/// back into the project, reveal it in Finder and open it in the
+/// preferred editor (`Ask` expands to a picker, same as the file menu).
+/// Paths resolve at click time so a deleted worktree falls back to the
+/// project root via `workdir_for`. Merge is disabled while the chat's
+/// turn runs — its files are still moving.
+fn worktree_items(menu: PopupMenu, ws: &Entity<Workspace>, running: bool, window: &mut Window, cx: &mut Context<PopupMenu>) -> PopupMenu {
     let preferred = ws.read(cx).preferred_editor;
+    let ws_merge = ws.clone();
     let ws_reveal = ws.clone();
-    let menu = menu.item(
-        PopupMenuItem::new("Reveal Worktree in Finder")
-            .icon(IconName::FolderOpen)
-            .on_click(move |_, _w, cx| {
-                ws_reveal.update(cx, |this, cx| {
-                    let dir = worktree_dir(this);
-                    this.reveal_path_in_finder(&dir, cx);
-                });
-            }),
-    );
+    let menu = menu
+        .item(
+            PopupMenuItem::new("Merge into project")
+                .icon(IconName::GitMerge)
+                .disabled(running)
+                .on_click(move |_, _w, cx| {
+                    ws_merge.update(cx, |this, cx| this.merge_worktree_into_project(cx));
+                }),
+        )
+        .item(
+            PopupMenuItem::new("Reveal Worktree in Finder")
+                .icon(IconName::FolderOpen)
+                .on_click(move |_, _w, cx| {
+                    ws_reveal.update(cx, |this, cx| {
+                        let dir = worktree_dir(this);
+                        this.reveal_path_in_finder(&dir, cx);
+                    });
+                }),
+        );
     if preferred == crate::open_in::PreferredEditor::Ask {
         let ws_pick = ws.clone();
         menu.submenu("Open Worktree in Editor", window, cx, move |m, _w, _cx| {

@@ -163,7 +163,7 @@ impl Workspace {
                 .child(Button::new("chat-menu").ghost().icon(IconName::Ellipsis).dropdown_menu({
                     let word_wrap = self.word_wrap;
                     let can_split = msg_count >= 2 && !running;
-                    let state = crate::views::chat_menu::ChatMenuState { pinned, word_wrap, color, worktree, ephemeral, can_split };
+                    let state = crate::views::chat_menu::ChatMenuState { pinned, word_wrap, color, worktree, ephemeral, can_split, running };
                     move |menu, window, cx| chat_menu(menu, &ws_menu, state, window, cx)
                 })),
         );

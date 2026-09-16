@@ -243,6 +243,11 @@ fn git_err(dir: &Path, args: &[&str]) -> Result<String, String> {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
     }
 }
+/// Merge-back — "Merge into project" applies a worktree chat's delta to
+/// the project checkout — split into `worktree_merge.rs` for the SLOC
+/// cap; it uses this module's `git_err`, `is_clean` and `remove`.
+#[path = "worktree_merge.rs"]
+pub(crate) mod merge;
 
 impl Workspace {
     /// Remove an orphan worktree dir — one no chat's `workdir` points at —

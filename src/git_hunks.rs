@@ -11,7 +11,7 @@ use std::path::Path;
 /// synthesized hunk patch off the filesystem. The write runs on a helper
 /// thread so a child that stops reading can't deadlock the caller against a
 /// full stderr pipe.
-fn git_stdin(dir: &Path, args: &[&str], input: &str) -> Result<String, String> {
+pub(crate) fn git_stdin(dir: &Path, args: &[&str], input: &str) -> Result<String, String> {
     let mut child = std::process::Command::new("git")
         .args(args)
         .current_dir(dir)

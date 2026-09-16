@@ -333,7 +333,7 @@ pub(crate) use pr::{CheckVerdict, PrChecks, PrState, PrStatus, create_pr, pr_sta
 /// staging lives in `git_hunks.rs` under it for the same reason.
 #[path = "git_file_diff.rs"]
 pub(crate) mod file_diff;
-pub(crate) use file_diff::hunks::{stage_hunk, unstage_hunk};
+pub(crate) use file_diff::hunks::{git_stdin, stage_hunk, unstage_hunk};
 pub(crate) use file_diff::{file_diff, git_diff, tracked};
 
 /// Per-file "Discard changes" — split into `git_discard.rs` for the SLOC

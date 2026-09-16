@@ -77,7 +77,7 @@ const IDENT: [(&str, &str); 4] = [
 ];
 
 /// Scratch index path — unique per call so concurrent turns never share.
-fn temp_index() -> PathBuf {
+pub(crate) fn temp_index() -> PathBuf {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     std::env::temp_dir().join(format!("rixl-ckpt-{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)))
 }
