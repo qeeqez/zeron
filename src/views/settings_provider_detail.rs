@@ -95,7 +95,9 @@ fn connection_fields(p: &ProviderInstance, inputs: &ProviderInputs, search: &cra
         )
     };
     match p.kind {
-        ProviderKind::Acp | ProviderKind::ClaudeCli => vec![conn_field("Command", "provider-command", &inputs.command)],
+        ProviderKind::Acp | ProviderKind::ClaudeCli | ProviderKind::Mcp => {
+            vec![conn_field("Command", "provider-command", &inputs.command)]
+        },
         ProviderKind::Http => vec![
             conn_field("Endpoint URL", "provider-url", &inputs.command),
             conn_field("API key env var", "provider-key-env", &inputs.key_env),

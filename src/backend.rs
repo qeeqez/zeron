@@ -14,6 +14,10 @@ mod codex;
 mod codex_turn;
 mod factory;
 mod http;
+mod mcp;
+mod mcp_decode;
+mod mcp_rpc;
+mod mcp_session;
 mod models;
 mod ollama;
 mod rpc;
@@ -39,6 +43,10 @@ mod codex_tests;
 #[cfg(test)]
 mod instructions_tests;
 #[cfg(test)]
+mod mcp_rpc_tests;
+#[cfg(test)]
+mod mcp_tests;
+#[cfg(test)]
 mod sessions_tests;
 pub use acp::AcpBackend;
 pub use approval::{ApprovalCard, ApprovalDecision, ApprovalKind, ApprovalResponder, ApprovalRoute, ApprovalRule};
@@ -52,6 +60,7 @@ pub(crate) use codex::{auth_status as codex_auth_status, login as codex_login, l
 pub(crate) use factory::apply_env;
 pub use factory::backend_for;
 pub use http::HttpBackend;
+pub use mcp::{McpBackend, fetch_mcp_tools};
 pub use models::fetch_codex_models;
 pub use ollama::{OllamaBackend, fetch_ollama_models};
 pub use steer::TurnHandle;

@@ -177,7 +177,7 @@ pub(super) fn config_step(panel: &Entity<SettingsPanel>, kind: ProviderKind, cx:
     };
     let mut d = div().id("wizard-config").test_support().flex().flex_col().gap_3();
     match kind {
-        ProviderKind::Acp | ProviderKind::ClaudeCli => {
+        ProviderKind::Acp | ProviderKind::ClaudeCli | ProviderKind::Mcp => {
             d = d.child(field("Command", Input::new(&command).id("wizard-command").appearance(true).into_any_element()));
         },
         ProviderKind::Http => {

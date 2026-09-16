@@ -29,6 +29,8 @@ pub enum ProviderKind {
     ClaudeCli,
     /// Agent Client Protocol subprocess (Zed-style agents).
     Acp,
+    /// Model Context Protocol server — its tools are the "models".
+    Mcp,
     /// Custom NDJSON HTTP endpoint.
     Http,
     /// Local Ollama daemon over HTTP (`/api/chat` + `/api/tags`).
@@ -59,7 +61,7 @@ pub struct ProviderKindInfo {
 
 impl ProviderKind {
     /// All kinds in picker display order — codex-cli first, it's the default.
-    pub const ALL: [ProviderKind; 6] = [Self::CodexCli, Self::ClaudeCli, Self::Acp, Self::Http, Self::Ollama, Self::Sim];
+    pub const ALL: [ProviderKind; 7] = [Self::CodexCli, Self::ClaudeCli, Self::Acp, Self::Mcp, Self::Http, Self::Ollama, Self::Sim];
 
     pub fn info(self) -> &'static ProviderKindInfo {
         const CODEX: ProviderKindInfo = ProviderKindInfo {
@@ -88,6 +90,13 @@ impl ProviderKind {
             cli: None,
             daemon: None,
             fetch: None,
+        };
+        const MCP: ProviderKindInfo = ProviderKindInfo {
+            slug: "mcp",
+            label: "MCP",
+            tagline: "MCP server — its tools are the models",
+            icon: IconName::PlugZap,
+            fetch: Some(crate::backend::fetch_mcp_tools),
         };
         const HTTP: ProviderKindInfo = ProviderKindInfo {
             slug: "http",
@@ -120,6 +129,7 @@ impl ProviderKind {
             Self::CodexCli => &CODEX,
             Self::ClaudeCli => &CLAUDE,
             Self::Acp => &ACP,
+            Self::Mcp => &MCP,
             Self::Http => &HTTP,
             Self::Ollama => &OLLAMA,
             Self::Sim => &SIM,

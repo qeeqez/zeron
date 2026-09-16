@@ -43,14 +43,26 @@ pub fn resume_codex_session(thread_id: &str, env: &[(String, String)]) -> Result
 pub(super) fn exchange<T: Send + 'static>(
     env: &[(String, String)], drive: impl FnOnce(&mut dyn Write, std::process::ChildStdout) -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
-    let mut cmd = std::process::Command::new("codex");
-    cmd.arg("app-server")
+    exchange_cmd(&["codex".to_string(), "app-server".to_string()], env, "codex session", drive)
+}
+
+/// Spawn `argv` (an arbitrary JSON-RPC stdio server), run `drive` against
+/// its pipes on a helper thread, and bound the exchange by
+/// `FETCH_TIMEOUT`. `what` prefixes spawn/timeout errors ("codex
+/// session", "mcp"). The child is killed either way — these are one-shot
+/// queries, not a session.
+pub(super) fn exchange_cmd<T: Send + 'static>(
+    argv: &[String], env: &[(String, String)], what: &str,
+    drive: impl FnOnce(&mut dyn Write, std::process::ChildStdout) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let mut cmd = std::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..])
         .current_dir(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
     super::apply_env(&mut cmd, env);
-    let mut child = cmd.spawn().map_err(|e| format!("codex spawn: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| format!("{what} spawn: {e}"))?;
     let stdout = child.stdout.take().expect("piped");
     let mut stdin = child.stdin.take().expect("piped");
 
@@ -61,7 +73,7 @@ pub(super) fn exchange<T: Send + 'static>(
     std::thread::spawn(move || {
         let _ = tx.send(drive(&mut stdin, stdout));
     });
-    let result = rx.recv_timeout(FETCH_TIMEOUT).unwrap_or_else(|_| Err("codex session request timed out".into()));
+    let result = rx.recv_timeout(FETCH_TIMEOUT).unwrap_or_else(|_| Err(format!("{what} request timed out")));
     let _ = child.kill();
     let _ = child.wait();
     result
