@@ -44,6 +44,7 @@ impl Workspace {
             sidebar_collapsed: settings.sidebar_collapsed,
             sidebar_tab: crate::views::sidebar::SidebarTab::Chats,
             explorer: crate::views::explorer::ExplorerState::default(),
+            explorer_input: cx.new(|cx| InputState::new(window, cx).placeholder("Name")),
             sidebar_width: settings.sidebar_width.clamp(180.0, 480.0),
             agents: Vec::new(),
             next_agent_id: 0,

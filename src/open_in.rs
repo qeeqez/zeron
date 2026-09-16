@@ -300,7 +300,7 @@ fn notify_failure(this: WeakEntity<Workspace>, action: &str, e: &str, cx: &mut A
 /// so callers keep using `crate::open_in::file_menu` / `copy_diff_item`.
 #[path = "open_in_menu.rs"]
 mod menu;
-pub use menu::{copy_diff_item, file_menu};
+pub use menu::{copy_diff_item, explorer_dir_menu, explorer_file_menu, explorer_root_menu, file_menu};
 
 #[cfg(test)]
 #[path = "diff_open_tests.rs"]

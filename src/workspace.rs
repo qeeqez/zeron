@@ -18,6 +18,9 @@ pub struct Workspace {
     /// File explorer state — expanded dirs, last-clicked file (see
     /// `crate::views::explorer::ExplorerState`).
     pub explorer: crate::views::explorer::ExplorerState,
+    /// The explorer tree's inline name input — shared by new-file,
+    /// new-folder and rename edits (`explorer.editing` says which).
+    pub explorer_input: Entity<InputState>,
     /// Monotonic id source for agents — survives `clear_finished_agents`.
     pub next_agent_id: u64,
     /// Monotonic id source for chats — survives deletions.

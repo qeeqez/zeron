@@ -115,3 +115,8 @@ fn sort_dirs(node: &mut DirNode) {
         sort_dirs(dir);
     }
 }
+
+/// Explorer file ops (new/rename/delete) — declared here, not in `main.rs`,
+/// which is at the SLOC cap (same pattern as `views/mod.rs`'s `#[path]`s).
+#[path = "fs_ops.rs"]
+pub(crate) mod fs_ops;

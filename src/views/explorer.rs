@@ -1,8 +1,11 @@
-//! File explorer — the sidebar's Files tab. A read-only tree built from the
-//! same `project_files` scan that feeds the @-mention picker: directories
-//! expand/collapse, and clicking a file inserts `@path ` into the composer
+//! File explorer — the sidebar's Files tab. A tree built from the same
+//! `project_files` scan that feeds the @-mention picker: directories
+//! expand/collapse, clicking a file inserts `@path ` into the composer
 //! (there is no editor surface to open files in — the mention is how the
-//! explorer hands a file to the agent).
+//! explorer hands a file to the agent), and the context menus create,
+//! rename and delete entries on disk (see `crate::files::fs_ops`).
+
+mod rows;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::h_flex;
@@ -11,35 +14,30 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::files::{DirNode, build_file_tree};
+use crate::files::build_file_tree;
 use crate::views::explorer_git;
 use crate::views::sidebar::SidebarTab;
 use crate::workspace::Workspace;
 
 /// Explorer panel state: expanded directory paths (project-relative), the
-/// last file clicked (its row stays highlighted), and whether top-level
-/// dirs were auto-expanded on first render.
+/// last file clicked (its row stays highlighted), whether top-level dirs
+/// were auto-expanded on first render, and the in-flight inline edit.
 #[derive(Default)]
 pub struct ExplorerState {
     pub expanded: std::collections::HashSet<String>,
     pub selected: Option<String>,
     pub seeded: bool,
+    /// `Some` while the tree's inline name input is armed — see
+    /// `crate::files::fs_ops` for the ops it commits.
+    pub editing: Option<ExplorerEdit>,
 }
 
-/// One visible line of the flattened tree.
-enum Row {
-    Dir {
-        name: SharedString,
-        path: SharedString,
-        depth: usize,
-        expanded: bool,
-        dirty: Option<explorer_git::Tone>,
-    },
-    File {
-        path: SharedString,
-        depth: usize,
-        badge: Option<explorer_git::GitBadge>,
-    },
+/// The inline edit the tree's input row is armed for. `dir` is the parent
+/// the new entry lands in ("" = project root); `path` is the renamed row.
+pub(crate) enum ExplorerEdit {
+    NewFile { dir: String },
+    NewFolder { dir: String },
+    Rename { path: String },
 }
 
 impl Workspace {
@@ -113,9 +111,19 @@ impl Workspace {
         // built once per render, never a fresh `git status`.
         let git = explorer_git::GitDecorations::build(&self.changes);
         let mut rows = Vec::new();
-        flatten(&tree, 0, &self.explorer.expanded, &git, &mut rows);
+        let flat = rows::Flat {
+            expanded: &self.explorer.expanded,
+            git: &git,
+            editing: self.explorer.editing.as_ref(),
+        };
+        rows::flatten(&tree, 0, &flat, &mut rows);
         let selected = self.explorer.selected.clone();
-        let rows: Vec<AnyElement> = rows.into_iter().enumerate().map(|(ix, row)| render_row(ix, row, selected.as_deref(), cx)).collect();
+        let input = self.explorer_input.clone();
+        let rows: Vec<AnyElement> = rows
+            .into_iter()
+            .enumerate()
+            .map(|(ix, row)| rows::render_row(ix, row, selected.as_deref(), &input, cx))
+            .collect();
         div()
             .id("explorer")
             .test_support()
@@ -128,6 +136,8 @@ impl Workspace {
             .child(h_flex().id("header").pt_3().px_3().gap_2().child(header))
             .child(
                 h_flex()
+                    .id("explorer-header")
+                    .test_support()
                     .px_3()
                     .pt_1()
                     .gap_2()
@@ -142,7 +152,11 @@ impl Workspace {
                             .cursor_pointer()
                             .child(IconName::RefreshCcw)
                             .on_click(cx.listener(|this, _, _, cx| this.refresh_project_files(cx))),
-                    ),
+                    )
+                    .context_menu({
+                        let ws = cx.entity();
+                        move |menu, window, cx| crate::open_in::explorer_root_menu(&ws, menu, window, cx)
+                    }),
             )
             .child(
                 div()
@@ -165,97 +179,6 @@ impl Workspace {
     }
 }
 
-/// Depth-first walk: a dir emits its row, then its children when expanded.
-fn flatten(
-    dir: &DirNode, depth: usize, expanded: &std::collections::HashSet<String>, git: &explorer_git::GitDecorations, out: &mut Vec<Row>,
-) {
-    for d in &dir.dirs {
-        let open = expanded.contains(d.path.as_str());
-        out.push(Row::Dir {
-            name: d.name.clone(),
-            path: d.path.clone(),
-            depth,
-            expanded: open,
-            dirty: git.dir(&d.path),
-        });
-        if open {
-            flatten(d, depth + 1, expanded, git, out);
-        }
-    }
-    for f in &dir.files {
-        out.push(Row::File { path: f.clone(), depth, badge: git.file(f) });
-    }
-}
-
-fn render_row(ix: usize, row: Row, selected: Option<&str>, cx: &mut Context<Workspace>) -> AnyElement {
-    match row {
-        Row::Dir { name, path, depth, expanded, dirty } => {
-            let indent = 8. + depth as f32 * 14.;
-            div()
-                .id(("explorer-dir", ix))
-                .test_support()
-                .flex()
-                .items_center()
-                .gap_1()
-                .pl(px(indent))
-                .pr_2()
-                .py_0p5()
-                .rounded_md()
-                .text_sm()
-                .cursor_pointer()
-                .hover(|d| d.bg(cx.theme().muted))
-                .child(div().flex_shrink_0().text_color(cx.theme().muted_foreground).child(if expanded {
-                    IconName::ChevronDown
-                } else {
-                    IconName::ChevronRight
-                }))
-                .child(div().flex_shrink_0().text_color(cx.theme().muted_foreground).child(if expanded {
-                    IconName::FolderOpen
-                } else {
-                    IconName::Folder
-                }))
-                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(name))
-                .when_some(dirty.map(|tone| explorer_git::dirty_dot(ix, tone, cx)), |d, dot| d.child(dot))
-                .on_click(cx.listener(move |this, _, _, cx| this.toggle_explorer_dir(&path, cx)))
-                .into_any_element()
-        },
-        Row::File { path, depth, badge } => {
-            let indent = 8. + depth as f32 * 14. + 16.;
-            let is_selected = selected == Some(path.as_str());
-            let menu_path = path.to_string();
-            let ws = cx.entity();
-            div()
-                .id(("explorer-file", ix))
-                .test_support()
-                .flex()
-                .items_center()
-                .gap_1()
-                .pl(px(indent))
-                .pr_2()
-                .py_0p5()
-                .rounded_md()
-                .text_sm()
-                .cursor_pointer()
-                .when(is_selected, |d| d.bg(cx.theme().accent))
-                .when(!is_selected, |d| d.hover(|d| d.bg(cx.theme().muted)))
-                .child(div().flex_shrink_0().text_color(cx.theme().muted_foreground).child(file_icon(&path)))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .child(file_name(&path).to_string()),
-                )
-                .when_some(badge.map(|b| explorer_git::badge_element(ix, b, cx)), |d, el| d.child(el))
-                .on_click(cx.listener(move |this, _, window, cx| this.mention_file(&path, window, cx)))
-                .context_menu(move |menu, window, cx| crate::open_in::file_menu(&ws, &menu_path, menu, window, cx))
-                .into_any_element()
-        },
-    }
-}
-
 /// The composer text after picking `path`: an open mention query — a `@`
 /// at a word boundary with a whitespace-free tail — is replaced, otherwise
 /// the mention appends (padding the draft with a space when needed).
@@ -270,26 +193,5 @@ pub(crate) fn mention_text(current: &str, path: &str) -> String {
         format!("{current}@{path} ")
     } else {
         format!("{current} @{path} ")
-    }
-}
-
-fn file_name(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
-}
-
-/// Icon by extension — a compact map, not a mime table: code, data, prose,
-/// media, archives, and a generic fallback.
-fn file_icon(path: &str) -> IconName {
-    match file_name(path).rsplit('.').next().unwrap_or_default() {
-        "rs" | "py" | "js" | "jsx" | "ts" | "tsx" | "go" | "c" | "h" | "cc" | "cpp" | "java" | "rb" | "swift" | "kt" | "sh" | "css"
-        | "scss" | "html" | "vue" | "svelte" => IconName::FileCode,
-        "json" | "jsonc" | "yaml" | "yml" | "toml" | "xml" => IconName::FileBraces,
-        "md" | "txt" | "rtf" => IconName::FileText,
-        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "ico" | "bmp" => IconName::FileImage,
-        "zip" | "tar" | "gz" | "tgz" | "xz" | "bz2" | "7z" | "rar" => IconName::FileArchive,
-        "mp3" | "wav" | "ogg" | "flac" | "m4a" => IconName::FileMusic,
-        "mp4" | "mov" | "mkv" | "webm" | "avi" => IconName::FileVideoCamera,
-        "lock" | "sqlite" | "db" => IconName::FileBox,
-        _ => IconName::File,
     }
 }

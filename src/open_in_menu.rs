@@ -90,3 +90,57 @@ pub fn file_menu(ws: &Entity<Workspace>, rel: &str, menu: PopupMenu, window: &mu
     }));
     git_items(ws, rel, menu, cx)
 }
+
+/// "New File…" / "New Folder…" items for a directory's menu — `dir` is the
+/// project-relative parent the entry lands in ("" = the project root).
+fn new_items(ws: &Entity<Workspace>, dir: &str, menu: PopupMenu) -> PopupMenu {
+    let ws_file = ws.clone();
+    let dir_file = dir.to_string();
+    let ws_dir = ws.clone();
+    let dir_dir = dir.to_string();
+    menu.item(PopupMenuItem::new("New File…").icon(IconName::FilePlus).on_click(move |_, w, cx| {
+        ws_file.update(cx, |this, cx| this.begin_new_file(&dir_file, w, cx));
+    }))
+    .item(PopupMenuItem::new("New Folder…").icon(IconName::FolderPlus).on_click(move |_, w, cx| {
+        ws_dir.update(cx, |this, cx| this.begin_new_folder(&dir_dir, w, cx));
+    }))
+}
+
+/// "Rename…" + "Delete" — the tail of every explorer row menu. `is_dir`
+/// picks `remove_dir_all` over `remove_file` in `delete_path`, which also
+/// runs the native confirm.
+fn edit_items(ws: &Entity<Workspace>, rel: &str, is_dir: bool, menu: PopupMenu) -> PopupMenu {
+    let ws_rename = ws.clone();
+    let rel_rename = rel.to_string();
+    let ws_delete = ws.clone();
+    let rel_delete = rel.to_string();
+    menu.separator()
+        .item(PopupMenuItem::new("Rename…").icon(IconName::Pencil).on_click(move |_, w, cx| {
+            ws_rename.update(cx, |this, cx| this.begin_rename_path(&rel_rename, w, cx));
+        }))
+        .item(PopupMenuItem::new("Delete").icon(IconName::Trash).on_click(move |_, w, cx| {
+            ws_delete.update(cx, |this, cx| this.delete_path(&rel_delete, is_dir, w, cx));
+        }))
+}
+
+/// A file row's menu: the shared `file_menu` items plus Rename/Delete.
+pub fn explorer_file_menu(
+    ws: &Entity<Workspace>, rel: &str, menu: PopupMenu, window: &mut Window, cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    edit_items(ws, rel, false, file_menu(ws, rel, menu, window, cx))
+}
+
+/// A directory row's menu: the create items lead, then the shared
+/// `file_menu` items, then Rename/Delete.
+pub fn explorer_dir_menu(
+    ws: &Entity<Workspace>, rel: &str, menu: PopupMenu, window: &mut Window, cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let menu = file_menu(ws, rel, new_items(ws, rel, menu).separator(), window, cx);
+    edit_items(ws, rel, true, menu)
+}
+
+/// The explorer header's right-click menu — create items at the project
+/// root only (reveal/open/copy live on the git branch row's `file_menu`).
+pub fn explorer_root_menu(ws: &Entity<Workspace>, menu: PopupMenu, _window: &mut Window, _cx: &mut Context<PopupMenu>) -> PopupMenu {
+    new_items(ws, "", menu)
+}
