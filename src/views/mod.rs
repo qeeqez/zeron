@@ -85,6 +85,7 @@ pub mod settings_shortcuts;
 mod settings_shortcuts_tests;
 pub mod settings_voice;
 pub mod shortcuts;
+mod slash_item;
 
 pub(crate) mod sidebar;
 mod sidebar_row;
@@ -100,11 +101,12 @@ pub(crate) mod usage_chart;
 pub(crate) mod usage_dashboard;
 mod usage_popover;
 
-pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_item, slash_item};
+pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_item};
 pub use empty::render_empty_state;
 pub use message::render_message;
 pub use model_picker::{EffortPickerSpec, ModelPickerSpec, PickerProvider, PickerSpec, effort_picker, model_picker, picker};
 pub use saved_prompts::{SavedPromptsSpec, saved_prompts_popover};
+pub use slash_item::{SlashSpec, slash_item};
 pub use usage_popover::usage_popover;
 
 #[cfg(test)]

@@ -12,6 +12,7 @@ mod claude_auth;
 mod claude_parse;
 mod codex;
 mod codex_turn;
+mod compact;
 mod factory;
 mod http;
 mod mcp;
@@ -370,6 +371,14 @@ pub trait AgentBackend: Send + Sync {
     /// when unsupported or the resume failed — the caller still binds the
     /// thread id so the next send continues it. Blocking.
     fn resume_session(&self, _thread_id: &str) -> Option<ResumedSession> {
+        None
+    }
+    /// Compact the thread bound to `ctx.thread_id` server-side — codex's
+    /// `thread/compact/start` on a resumed thread. `None` when the backend
+    /// can't compact (or the chat carries no thread id): the caller falls
+    /// back to a summarization prompt turn. The returned stream yields the
+    /// compaction turn's events until `Done`.
+    fn compact(&self, _ctx: &TurnContext) -> Option<ReplyStream> {
         None
     }
     /// The shell command that continues this thread in a terminal —

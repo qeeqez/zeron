@@ -39,33 +39,6 @@ pub fn usage_indicator(usage: &crate::usage::ChatUsage, cx: &App) -> Option<impl
     )
 }
 
-pub fn slash_item(cmd: &str, desc: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
-    let ws = ws.clone();
-    let cmd_str = cmd.to_string();
-    div()
-        .id(SharedString::from(format!("slash-{cmd}")))
-        .test_support()
-        .cursor_pointer()
-        .px_2()
-        .py_1()
-        .rounded_md()
-        .text_sm()
-        .hover(|d| d.bg(cx.theme().accent))
-        .child(
-            div().flex().items_baseline().gap_2().child(format!("/{cmd}")).child(
-                div()
-                    .id(SharedString::from(format!("slash-{cmd}-desc")))
-                    .test_support()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(desc.to_string()),
-            ),
-        )
-        .on_click(move |_, window, cx| {
-            apply_slash(&ws, &cmd_str, window, cx);
-        })
-}
-
 pub fn mention_item(file: &str, ws: &Entity<Workspace>, cx: &mut App) -> impl IntoElement {
     let ws = ws.clone();
     let path = file.to_string();
@@ -153,9 +126,6 @@ pub fn attachment_chips(chat: &Chat, ws: &Entity<Workspace>, cx: &mut App) -> Ve
         .collect()
 }
 
-fn apply_slash(ws: &Entity<Workspace>, cmd: &str, window: &mut Window, cx: &mut App) {
-    ws.update(cx, |this, cx| this.run_command(cmd, window, cx));
-}
 fn apply_mention(ws: &Entity<Workspace>, path: &str, window: &mut Window, cx: &mut App) {
     ws.update(cx, |this, cx| {
         this.composer.update(cx, |s, cx| {

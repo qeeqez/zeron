@@ -103,12 +103,27 @@ impl Workspace {
         self.editing = None;
         let prompt = build_prompt(&item.text, &item.attachments);
         self.push_user_message(item, window, cx);
+        self.begin_turn(&prompt, cx);
+    }
+
+    /// Send `prompt` to the backend while the transcript shows `display` —
+    /// `/compact`'s summarization request carries the transcript without
+    /// rendering it as a user bubble.
+    pub(crate) fn send_prompt_as(&mut self, display: &str, prompt: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.editing = None;
+        self.push_user_message(Queued::new(display.to_string(), Vec::new()), window, cx);
+        self.begin_turn(&prompt, cx);
+    }
+
+    /// Shared tail of `send_text`/`send_prompt_as`: mark the active chat
+    /// running and start the reply turn.
+    fn begin_turn(&mut self, prompt: &str, cx: &mut Context<Self>) {
         let chat = &mut self.chats[self.active];
         chat.running = true;
         chat.failed_flag = false;
         chat.started_at = Some(std::time::Instant::now());
         self.clear_recall();
-        self.start_reply(&prompt, cx);
+        self.start_reply(prompt, cx);
     }
 
     /// Append `item` as a user message on the active chat — shared by

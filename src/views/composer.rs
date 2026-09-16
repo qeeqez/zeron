@@ -8,8 +8,8 @@ use gpui_kit::*;
 
 use crate::slash::SLASH_COMMANDS;
 use crate::views::{
-    EffortPickerSpec, ModelPickerSpec, PickerProvider, PickerSpec, SavedPromptsSpec, attachment_chips, effort_picker, mention_item,
-    model_picker, picker, queued_item, saved_prompts_popover, slash_item, usage_popover,
+    EffortPickerSpec, ModelPickerSpec, PickerProvider, PickerSpec, SavedPromptsSpec, SlashSpec, attachment_chips, effort_picker,
+    mention_item, model_picker, picker, queued_item, saved_prompts_popover, slash_item, usage_popover,
 };
 use crate::workspace::Workspace;
 
@@ -140,12 +140,17 @@ impl Workspace {
             .strip_prefix('/')
             .map(str::to_lowercase)
             .filter(|q| !q.chars().any(|c| c.is_whitespace()));
+        // `/compact` starts a turn — a reply already in flight makes it
+        // queue like text, so the menu row sits disabled until it ends.
+        let turn_running = self.chats[self.active].running;
         let slash_items: Vec<AnyElement> = slash_query
             .map(|q| {
                 SLASH_COMMANDS
                     .iter()
-                    .filter(|(c, _)| q.is_empty() || c.starts_with(q.as_str()))
-                    .map(|&(cmd, desc)| slash_item(cmd, desc, &ws, cx).into_any_element())
+                    .filter(|(c, ..)| q.is_empty() || c.starts_with(q.as_str()))
+                    .map(|&(cmd, icon, desc)| {
+                        slash_item(SlashSpec { cmd, icon, desc, disabled: cmd == "compact" && turn_running }, &ws, cx).into_any_element()
+                    })
                     .collect()
             })
             .unwrap_or_default();

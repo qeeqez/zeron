@@ -121,6 +121,13 @@ pub(crate) fn thread_resume_req(id: i64, thread_id: &str, opts: Option<&ThreadOp
     }
     json!({"method": "thread/resume", "id": id, "params": params})
 }
+/// `thread/compact/start` — ask the server to fold the thread's history
+/// into a summary. Runs as its own turn: `item/*` notifications for the
+/// `contextCompaction` item, `thread/tokenUsage/updated`, then
+/// `turn/completed` + `thread/compacted`.
+pub(crate) fn thread_compact_start_req(id: i64, thread_id: &str) -> Value {
+    json!({"method": "thread/compact/start", "id": id, "params": {"threadId": thread_id}})
+}
 
 /// Parse one `thread/list` result into `(sessions, next_cursor)`. Ephemeral
 /// threads (our own per-turn threads) are dropped — they hold no history
@@ -483,6 +490,14 @@ mod tests {
         // A bare resume (history fetch) carries only the thread id.
         let bare = thread_resume_req(3, "tid-1", None);
         assert_eq!(bare["params"], json!({"threadId": "tid-1"}));
+    }
+
+    #[test]
+    fn thread_compact_start_sends_thread_id() {
+        let req = thread_compact_start_req(3, "tid-1");
+        assert_eq!(req["method"], json!("thread/compact/start"));
+        assert_eq!(req["id"], json!(3));
+        assert_eq!(req["params"], json!({"threadId": "tid-1"}));
     }
 
     #[test]

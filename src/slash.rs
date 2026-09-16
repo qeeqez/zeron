@@ -7,27 +7,27 @@
 //! `SLASH_COMMANDS` gets a note instead of silently reaching the backend.
 
 use std::rc::Rc;
-use std::time::SystemTime;
 
+use gpui_kit::assets::IconName;
 use gpui_kit::*;
 
 use crate::model::{ChatMessage, MessageKind, Role};
 use crate::send_queue::Queued;
 use crate::workspace::Workspace;
 
-/// `(name, description)` — the composer's `/` menu and `/help` both render
-/// this table, so a command ships with its help text or not at all.
-pub(crate) const SLASH_COMMANDS: [(&str, &str); 10] = [
-    ("clear", "Clear this chat's messages"),
-    ("compact", "Fold older messages into a context summary"),
-    ("export", "Export this chat as Markdown"),
-    ("help", "List the slash commands"),
-    ("init", "Analyze the codebase and write AGENTS.md"),
-    ("model", "Show or switch the model (`/model [instance/]id`)"),
-    ("prompts", "List saved prompts"),
-    ("rename", "Rename this chat"),
-    ("save", "Save a prompt (`/save <name> [text]`)"),
-    ("status", "Show provider, model, access and workspace"),
+/// `(name, icon, description)` — the composer's `/` menu and `/help` both
+/// render this table, so a command ships with its help text or not at all.
+pub(crate) const SLASH_COMMANDS: [(&str, IconName, &str); 10] = [
+    ("clear", IconName::Eraser, "Clear this chat's messages"),
+    ("compact", IconName::ListCollapse, "Compact the conversation context"),
+    ("export", IconName::FileDown, "Export this chat as Markdown"),
+    ("help", IconName::CircleQuestionMark, "List the slash commands"),
+    ("init", IconName::Sparkles, "Analyze the codebase and write AGENTS.md"),
+    ("model", IconName::Cpu, "Show or switch the model (`/model [instance/]id`)"),
+    ("prompts", IconName::Star, "List saved prompts"),
+    ("rename", IconName::PenLine, "Rename this chat"),
+    ("save", IconName::Save, "Save a prompt (`/save <name> [text]`)"),
+    ("status", IconName::Info, "Show provider, model, access and workspace"),
 ];
 
 /// `/init` prompt — the first line doubles as the chat title.
@@ -37,6 +37,15 @@ const INIT_PROMPT: &str = "Write AGENTS.md for this codebase.\n\n\
     and lint commands, code conventions, and pitfalls worth knowing. \
     Read the manifests, entry points and existing docs first; keep the file \
     concise and factual.";
+
+/// `/compact`'s fallback turn when the backend can't compact natively:
+/// ask the model for a context handoff over the serialized transcript.
+/// Backends without threads see only this prompt, so the transcript rides
+/// along — without it the model would summarize nothing.
+const COMPACT_PROMPT: &str = "Summarize this conversation so far into a compact context handoff \
+    for continuing the work. Cover: the user's goal, decisions made, files and code touched, \
+    current state, and what remains. Be concise and factual — the summary replaces the transcript \
+    as working context.\n\nTranscript:\n";
 
 /// Split `/cmd arg` into `(cmd, arg)`; `None` when `text` isn't a slash
 /// command. Command names are letters only, so a pasted path like
@@ -50,13 +59,14 @@ fn slash_cmd(text: &str) -> Option<(&str, &str)> {
     Some((cmd, arg))
 }
 
-/// Commands that must run even mid-reply: `/compact` and `/clear` stop the
-/// turn themselves, `/rename` never touches the message list. Note-producing
-/// commands (`/help`, `/model`, `/status`, `/export`) queue like text
-/// instead — run mid-stream their note becomes the last message and the
-/// streaming reply appends into (or replaces) it.
+/// Commands that must run even mid-reply: `/clear` stops the turn itself,
+/// `/rename` never touches the message list. Note-producing commands
+/// (`/help`, `/model`, `/status`, `/export`) and `/compact` queue like
+/// text instead — run mid-stream their note becomes the last message and
+/// the streaming reply appends into (or replaces) it, and a compaction
+/// turn must not race the reply it would fold.
 fn slash_runs_now(cmd: &str) -> bool {
-    matches!(cmd, "clear" | "compact" | "rename")
+    matches!(cmd, "clear" | "rename")
 }
 
 /// True when `text` is a `/command` line — known or not. `send` uses this
@@ -71,32 +81,48 @@ pub(crate) fn runs_now(text: &str) -> bool {
     slash_cmd(text).is_some_and(|(cmd, _)| slash_runs_now(cmd))
 }
 
-/// First line of a message, capped at 80 chars — one digest row.
-fn snippet(text: &str) -> String {
-    let one_line = text.lines().next().unwrap_or("").trim();
-    let end = one_line.char_indices().nth(80).map_or(one_line.len(), |(i, _)| i);
-    if end < one_line.len() { format!("{}…", &one_line[..end]) } else { one_line.to_string() }
+/// One message's body for the compact prompt, capped so a giant tool dump
+/// can't crowd out the rest of the transcript.
+fn compact_body(m: &ChatMessage) -> String {
+    const MAX: usize = 2_000;
+    let body = match &m.kind {
+        MessageKind::Text(t) => t.to_string(),
+        MessageKind::Tool(t) => format!("`{} {}`\n{}", t.name, t.detail, t.output),
+        MessageKind::Diff(d) => format!("`{}` +{} -{}\n{}", d.path, d.added, d.removed, d.hunks),
+        MessageKind::Plan(p) => p.markdown(),
+        MessageKind::Approval(a) => format!("{}: {}", a.kind.label(), a.detail),
+    };
+    if body.len() <= MAX {
+        return body;
+    }
+    format!("{}…", &body[..body.floor_char_boundary(MAX)])
 }
 
-/// Compact context block replacing the dropped prefix: a per-message digest
-/// so the gist survives while the bulk is gone.
-fn compact_digest(dropped: &[ChatMessage]) -> String {
-    const SHOWN: usize = 12;
-    let mut out = String::from("**Compacted context** — summary of the earlier conversation:\n");
-    for m in dropped.iter().take(SHOWN) {
-        let row = match &m.kind {
-            MessageKind::Text(t) => format!("- {}: {}", if m.role == Role::User { "user" } else { "assistant" }, snippet(t)),
-            MessageKind::Tool(t) => format!("- tool `{}`: {}", t.name, snippet(&t.output)),
-            MessageKind::Diff(d) => format!("- diff `{}`: +{} −{}", d.path, d.added, d.removed),
-            MessageKind::Plan(p) => format!("- plan: {}", p.steps.iter().map(|s| s.label.as_str()).collect::<Vec<_>>().join("; ")),
-            MessageKind::Approval(a) => format!("- approval {}: {}", a.kind.label().to_lowercase(), snippet(&a.detail)),
+/// The transcript as the compact prompt's input: `Role: body` sections,
+/// newest kept when the whole thing would exceed the cap — recent context
+/// matters most to a handoff.
+fn compact_transcript(messages: &[ChatMessage]) -> String {
+    const MAX_TOTAL: usize = 150_000;
+    let mut kept: Vec<String> = Vec::new();
+    let mut total = 0usize;
+    for m in messages.iter().rev() {
+        let role = match m.role {
+            Role::User => "User",
+            Role::Assistant => "Assistant",
         };
-        out.push_str(&row);
-        out.push('\n');
+        let section = format!("{role}: {}\n\n", compact_body(m));
+        if total + section.len() > MAX_TOTAL {
+            break;
+        }
+        total += section.len();
+        kept.push(section);
     }
-    if dropped.len() > SHOWN {
-        out.push_str(&format!("- …and {} more messages\n", dropped.len() - SHOWN));
+    kept.reverse();
+    let mut out = String::new();
+    if kept.len() < messages.len() {
+        out.push_str(&format!("[{} earlier messages omitted]\n\n", messages.len() - kept.len()));
     }
+    out.push_str(&kept.concat());
     out
 }
 
@@ -108,10 +134,10 @@ impl Workspace {
         let Some((cmd, arg)) = slash_cmd(text) else { return false };
         match cmd {
             "clear" => self.clear_active_chat(cx),
-            "compact" => self.compact_active_chat(cx),
+            "compact" => self.compact_active_chat(window, cx),
             "export" => self.export_active(cx),
             "help" => {
-                let list = SLASH_COMMANDS.iter().map(|(c, d)| format!("- `/{c}` — {d}")).collect::<Vec<_>>().join("\n");
+                let list = SLASH_COMMANDS.iter().map(|(c, _, d)| format!("- `/{c}` — {d}")).collect::<Vec<_>>().join("\n");
                 self.push_note(format!("**Commands:**\n{list}"), cx);
             },
             "init" => self.send_text(Queued::new(INIT_PROMPT.to_string(), Vec::new()), window, cx),
@@ -121,7 +147,7 @@ impl Workspace {
             "save" => self.save_prompt_command(arg, cx),
             "status" => self.status_note(cx),
             _ => {
-                let known = SLASH_COMMANDS.iter().map(|(c, _)| format!("`/{c}`")).collect::<Vec<_>>().join(" ");
+                let known = SLASH_COMMANDS.iter().map(|(c, ..)| format!("`/{c}`")).collect::<Vec<_>>().join(" ");
                 self.push_note(format!("Unknown command `/{cmd}` — try `/help`. Commands: {known}"), cx);
             },
         }
@@ -144,41 +170,21 @@ impl Workspace {
         self.save();
     }
 
-    /// `/compact` — replace all but the last few messages with a digest, so
-    /// the transcript (and the context the backend resumes from) shrinks
-    /// while the gist of the dropped prefix survives.
-    fn compact_active_chat(&mut self, cx: &mut Context<Self>) {
-        if self.chats[self.active].running {
-            self.stop_reply(cx);
-        }
-        let chat = &mut self.chats[self.active];
-        let keep = 4.min(chat.messages.len());
-        let drain_to = chat.messages.len() - keep;
-        if drain_to == 0 {
-            self.push_note("Nothing to compact — the transcript is already short.".into(), cx);
+    /// `/compact` — fold the conversation's context. A chat bound to a
+    /// codex thread compacts server-side (`thread/compact/start`); every
+    /// other chat gets a summarization turn carrying the transcript, so
+    /// the reply is a context handoff the user can continue from.
+    fn compact_active_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::backend_run::run_compact(self, cx) {
             return;
         }
-        let dropped: Vec<ChatMessage> = Rc::make_mut(&mut chat.messages).drain(..drain_to).collect();
-        Rc::make_mut(&mut chat.messages).insert(
-            0,
-            ChatMessage {
-                alternatives: vec![],
-                role: Role::Assistant,
-                kind: MessageKind::Text(compact_digest(&dropped).into()),
-                rating: None,
-                bookmarked: false,
-                usage: None,
-                attachments: vec![],
-                at: SystemTime::now(),
-            },
-        );
-        chat.last_turn = None;
-        self.clear_recall();
-        self.search_match_ix = 0;
-        let count = self.filtered_count(cx);
-        self.scroller.update(cx, |s, cx| s.reset(count, cx));
-        self.save();
-        self.push_note(format!("Compacted — folded {drain_to} messages into a summary, kept the last {keep}."), cx);
+        let chat = &self.chats[self.active];
+        if chat.messages.is_empty() {
+            self.push_note("Nothing to compact — the transcript is empty.".into(), cx);
+            return;
+        }
+        let prompt = format!("{COMPACT_PROMPT}\n{}", compact_transcript(&chat.messages));
+        self.send_prompt_as("/compact", prompt, window, cx);
     }
 
     /// `/status` — report the effective provider, model, access and workdir.

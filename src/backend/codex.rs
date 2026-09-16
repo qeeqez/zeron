@@ -86,6 +86,12 @@ impl AgentBackend for CodexCliBackend {
     fn resume_command(&self, thread_id: &str) -> Option<String> {
         Some(format!("codex resume {thread_id}"))
     }
+
+    /// `thread/compact/start` on the chat's bound thread — `None` for
+    /// unbound chats, whose ephemeral threads hold nothing to fold.
+    fn compact(&self, ctx: &super::TurnContext) -> Option<ReplyStream> {
+        super::compact::compact_thread(ctx, &self.env)
+    }
 }
 
 /// Everything one codex turn needs — bundled so the spawn helpers stay

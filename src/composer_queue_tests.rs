@@ -91,6 +91,39 @@ fn slash_command_queued_mid_stream_keeps_reply_intact(cx: &mut TestAppContext) {
     assert!(!msgs[..msgs.len() - 1].iter().any(|t| t.contains("Commands:")), "note merged into the reply");
 }
 
+/// `/compact` submitted mid-stream must queue like text: the compaction
+/// turn can't race the reply it would fold.
+#[gpui_kit::test]
+fn slash_compact_queued_mid_stream(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    use_sim(&workspace, cx);
+    type_and_send(cx, "first");
+
+    until(&workspace, cx, |ws| ws.chats[ws.active].running);
+    type_and_send(cx, "/compact");
+
+    // Deferred: no compact user row while the reply is in flight.
+    assert!(workspace.read_with(cx, |ws, _| {
+        !ws.chats[ws.active]
+            .messages
+            .iter()
+            .any(|m| matches!(&m.kind, MessageKind::Text(t) if t == "/compact"))
+    }));
+    cx.update(|window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("queued-0").is_some(), "/compact should sit in the queue");
+    });
+
+    // Turn ends → the queued command runs as its own turn.
+    until(&workspace, cx, |ws| {
+        !ws.chats[ws.active].running
+            && ws.chats[ws.active]
+                .messages
+                .iter()
+                .any(|m| matches!(&m.kind, MessageKind::Text(t) if t == "/compact"))
+    });
+}
+
 /// Enqueueing snapshots the attachment list: the queued message keeps what
 /// was attached at submit time, and later chips don't leak into it.
 #[gpui_kit::test]

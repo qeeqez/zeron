@@ -13,10 +13,13 @@ use crate::backend::{AgentBackend, AgentEvent, ReplyStream, TurnContext};
 use crate::model::{ChatMessage, MessageKind, Role};
 use crate::workspace::Workspace;
 
+#[path = "slash_compact_tests.rs"]
+mod compact;
+
 /// A backend that records each prompt instead of spawning — the `/init`
 /// assertion without a real subprocess.
-struct PromptBackend {
-    prompts: std::sync::Arc<parking_lot::Mutex<Vec<String>>>,
+pub(crate) struct PromptBackend {
+    pub(crate) prompts: std::sync::Arc<parking_lot::Mutex<Vec<String>>>,
 }
 
 impl AgentBackend for PromptBackend {
@@ -38,7 +41,7 @@ impl AgentBackend for PromptBackend {
 
 /// Mount a `Workspace` in a headless window with `HOME` redirected to a temp
 /// dir so settings/chats reads+writes stay off the real profile.
-fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
+pub(crate) fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
     let dir = std::env::temp_dir().join(format!("rixlcode-send-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -57,7 +60,7 @@ fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext)
 }
 
 /// Type `text` into the composer and send it through the real `send` path.
-fn submit(workspace: &Entity<Workspace>, cx: &mut VisualTestContext, text: &str) {
+pub(crate) fn submit(workspace: &Entity<Workspace>, cx: &mut VisualTestContext, text: &str) {
     cx.update(|window, cx| {
         workspace.update(cx, |ws, cx| {
             ws.composer.update(cx, |s, cx| s.set_value(text, window, cx));
@@ -81,7 +84,7 @@ fn seeded(i: usize) -> ChatMessage {
 }
 
 /// Seed the active chat with `n` alternating user/assistant text messages.
-fn seed(workspace: &Entity<Workspace>, cx: &mut VisualTestContext, n: usize) {
+pub(crate) fn seed(workspace: &Entity<Workspace>, cx: &mut VisualTestContext, n: usize) {
     cx.update(|_, cx| {
         workspace.update(cx, |ws, _| {
             let chat = &mut ws.chats[ws.active];
@@ -93,7 +96,7 @@ fn seed(workspace: &Entity<Workspace>, cx: &mut VisualTestContext, n: usize) {
 }
 
 /// Text of every `Text` message in the active chat, in order.
-fn texts(ws: &Workspace) -> Vec<String> {
+pub(crate) fn texts(ws: &Workspace) -> Vec<String> {
     ws.chats[ws.active]
         .messages
         .iter()
@@ -114,37 +117,6 @@ fn clear_empties_active_chat(cx: &mut TestAppContext) {
         assert!(ws.chats[ws.active].messages.is_empty(), "/clear must empty the transcript");
         assert_eq!(ws.chats[ws.active].id, chat_id, "/clear must not delete the chat itself");
         assert_eq!(ws.chats.len(), 1);
-    });
-}
-
-#[gpui_kit::test]
-fn compact_folds_prefix_into_summary(cx: &mut TestAppContext) {
-    let (workspace, cx) = mount(cx);
-    seed(&workspace, cx, 8);
-    submit(&workspace, cx, "/compact");
-    workspace.read_with(cx, |ws, _| {
-        let msgs = texts(ws);
-        // Summary + 4 kept verbatim + the "Compacted" note.
-        assert_eq!(msgs.len(), 6);
-        assert!(msgs[0].contains("Compacted context"), "dropped prefix must become a digest");
-        assert!(msgs[0].contains("message 0"), "digest must cover the dropped messages");
-        assert!(msgs[0].contains("message 3"));
-        assert!(!msgs[0].contains("message 4"), "kept messages stay out of the digest");
-        assert_eq!(msgs[1], "message 4");
-        assert_eq!(msgs[4], "message 7");
-        assert!(msgs[5].contains("Compacted"));
-    });
-}
-
-#[gpui_kit::test]
-fn compact_short_transcript_notes_nothing_to_do(cx: &mut TestAppContext) {
-    let (workspace, cx) = mount(cx);
-    seed(&workspace, cx, 3);
-    submit(&workspace, cx, "/compact");
-    workspace.read_with(cx, |ws, _| {
-        let msgs = texts(ws);
-        assert_eq!(msgs.len(), 4, "short transcript keeps its messages plus the note");
-        assert!(msgs[3].contains("Nothing to compact"));
     });
 }
 
@@ -197,7 +169,7 @@ fn help_lists_every_command(cx: &mut TestAppContext) {
     submit(&workspace, cx, "/help");
     workspace.read_with(cx, |ws, _| {
         let note = texts(ws).pop().unwrap_or_default();
-        for (cmd, _) in crate::slash::SLASH_COMMANDS {
+        for (cmd, ..) in crate::slash::SLASH_COMMANDS {
             assert!(note.contains(&format!("`/{cmd}`")), "/help must list /{cmd}: {note}");
         }
     });

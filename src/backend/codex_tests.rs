@@ -260,6 +260,14 @@ mod tests {
         assert!(crate::backend::CodexCliBackend::new(Vec::new()).supports_steer());
         assert!(!crate::backend::SimBackend.supports_steer());
     }
+
+    #[test]
+    fn compact_needs_a_bound_thread() {
+        use crate::backend::{AgentBackend, TurnContext};
+        // No thread id → no stream: the caller falls back to a prompt turn.
+        let ctx = TurnContext::at(std::path::PathBuf::from("/tmp"), crate::backend::AccessMode::Auto);
+        assert!(crate::backend::CodexCliBackend::new(Vec::new()).compact(&ctx).is_none());
+    }
 }
 
 // ── Auth: `account/*` wire shapes and the login drive ──

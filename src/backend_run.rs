@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use gpui_kit::*;
 
-use crate::backend::AgentEvent;
+use crate::backend::{AgentEvent, ReplyStream};
 use crate::workspace::Workspace;
 
 /// Drive a real `AgentBackend` reply: spawn the backend, pump its event
@@ -26,6 +26,43 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     this.record_turn_checkpoint(chat_id, &ctx.cwd);
     let mut stream = this.backend.send(prompt, &model, &mode, &ctx);
     this.spawn_run_agent(crate::agents::RunAgentSpec { chat_id, name: this.backend.name(), lane: &model }, cx);
+    drive_stream(this, chat_id, &mut stream, cx);
+    if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
+        chat.stream = Some(stream);
+    }
+}
+
+/// Drive a backend compaction turn on the active chat: no user message,
+/// no checkpoint — compaction only folds the thread's server-side history.
+/// Returns false when the backend can't compact this chat (no bound
+/// thread); the caller falls back to a summarization prompt.
+pub fn run_compact(this: &mut Workspace, cx: &mut Context<Workspace>) -> bool {
+    let chat_id = this.chats[this.active].id;
+    if let Some(reason) = this.auth_block_note() {
+        this.push_note(format!("**Error:** {reason}"), cx);
+        this.finish_reply(chat_id, cx);
+        return true;
+    }
+    let ctx = this.turn_context();
+    let Some(mut stream) = this.backend.compact(&ctx) else { return false };
+    this.spawn_run_agent(crate::agents::RunAgentSpec { chat_id, name: this.backend.name(), lane: "compact" }, cx);
+    let chat = &mut this.chats[this.active];
+    chat.running = true;
+    chat.failed_flag = false;
+    chat.started_at = Some(std::time::Instant::now());
+    this.clear_recall();
+    drive_stream(this, chat_id, &mut stream, cx);
+    if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
+        chat.stream = Some(stream);
+    }
+    true
+}
+
+/// Pump a turn's event stream into the chat: forward whatever the backend
+/// already queued, drain the rest on a blocking thread, and apply events
+/// on the UI thread until `Done` or disconnect. The stream lands on the
+/// chat so stop/delete drop it (killing the child).
+fn drive_stream(this: &mut Workspace, chat_id: u64, stream: &mut ReplyStream, cx: &mut Context<Workspace>) {
     // The pump needs the receiver; the stream itself lands on the chat so
     // stop/delete drop it (killing the child, setting `cancelled`) and the
     // composer can steer into the turn. A dummy receiver stands in — the
@@ -85,7 +122,6 @@ pub fn run_backend(this: &mut Workspace, prompt: &str, cx: &mut Context<Workspac
     });
     if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
         chat.reply_task = Some(task);
-        chat.stream = Some(stream);
         // A fresh turn starts the meter's per-turn counter over.
         chat.usage.begin_turn();
     }

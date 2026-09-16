@@ -49,6 +49,8 @@ fn slash_menu_filters_and_dispatches(cx: &mut TestAppContext) {
         window.input("/", cx);
         assert!(window.try_find("slash-help").is_some());
         assert!(window.try_find("slash-model").is_some());
+        assert!(window.try_find("slash-compact").is_some());
+        assert!(window.try_find("slash-compact-desc").is_some());
         // Every row carries its description from SLASH_COMMANDS.
         assert!(window.try_find("slash-help-desc").is_some());
         window.input("he", cx);
@@ -77,6 +79,31 @@ fn slash_menu_filters_by_prefix(cx: &mut TestAppContext) {
         assert!(window.try_find("slash-help").is_none());
         assert!(window.try_find("slash-clear").is_none());
     });
+}
+
+/// `/compact` starts a turn, so its menu row disables while a reply runs —
+/// clicking it must not dispatch.
+#[gpui_kit::test]
+fn slash_menu_disables_compact_mid_turn(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    use_sim(&workspace, cx);
+    type_and_send(cx, "hello");
+    until(&workspace, cx, |ws| ws.chats[ws.active].running);
+    cx.update(|window, cx| {
+        window.input("/", cx);
+        assert!(window.try_find("slash-compact").is_some(), "the row still lists");
+        window.click("slash-compact", cx);
+    });
+    // Disabled: no dispatch — the composer keeps its text and no compact
+    // user row lands mid-turn.
+    assert_eq!(composer_value(&workspace, cx), "/");
+    assert!(workspace.read_with(cx, |ws, _| {
+        !ws.chats[ws.active]
+            .messages
+            .iter()
+            .any(|m| matches!(&m.kind, MessageKind::Text(t) if t == "/compact"))
+    }));
+    until(&workspace, cx, |ws| !ws.chats[ws.active].running);
 }
 
 #[gpui_kit::test]
