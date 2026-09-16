@@ -7,6 +7,11 @@ pub(crate) mod copy;
 #[cfg(test)]
 mod copy_tests;
 
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "quote_selection_tests.rs"]
+mod quote_selection_tests;
+
 use std::rc::Rc;
 
 use gpui_kit::*;

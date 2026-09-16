@@ -209,6 +209,14 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
                     }))
                 })
                 .item(msg_item("Quote", IconName::Quote, &ws_menu, move |this, w, cx| this.quote_message(ix, w, cx)))
+                // "Quote selection" appears only while this message's body has
+                // an active selection — the text is captured as the menu opens
+                // because the item's own click would clear it first.
+                .when_some(md_state.as_ref().map(|md| md.read(cx).view.read(cx).selected_text()).filter(|s| !s.trim().is_empty()), |menu, selected| {
+                    menu.item(msg_item("Quote selection", IconName::Quote, &ws_menu, move |this, w, cx| {
+                        this.quote_selection(&selected, w, cx)
+                    }))
+                })
                 .separator()
                 .item(msg_item("Fork here", IconName::GitFork, &ws_menu, move |this, w, cx| {
                     this.fork_chat(this.active, Some(ix), w, cx)

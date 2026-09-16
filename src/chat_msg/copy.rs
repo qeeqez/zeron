@@ -1,7 +1,7 @@
 //! Copy and quote operations on a chat message. "Copy" writes the rendered
 //! text (what a select-all copy of the bubble produces), "Copy as Markdown"
 //! writes the raw source, "Copy Code" writes every fenced block's contents,
-//! and "Quote" seeds the composer with a `>` reply block.
+//! and "Quote"/"Quote selection" seed the composer with a `>` reply block.
 //!
 //! `markdown_to_plain` mirrors gpui-base's `BlockNode::text()` — the same
 //! `markdown` crate and GFM options the renderer parses with, so the copied
@@ -56,7 +56,20 @@ impl Workspace {
     /// for the reply below it. An existing draft is kept after the quote.
     pub fn quote_message(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(msg) = self.chats[self.active].messages.get(ix) else { return };
-        let quote = quote_block(&msg.markdown());
+        let text = msg.markdown();
+        self.quote_text(&text, window, cx);
+    }
+
+    /// Seed the composer with just the selected text as a `>` quote block —
+    /// the message menu's "Quote selection" passes the selection captured
+    /// when the menu opened (a click would clear it first).
+    pub fn quote_selection(&mut self, selected: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.quote_text(selected, window, cx);
+    }
+
+    /// Shared quote seeding: `>` block on top, existing draft preserved below.
+    fn quote_text(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let quote = quote_block(text);
         if quote.is_empty() {
             return;
         }
