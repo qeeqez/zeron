@@ -46,6 +46,7 @@ impl Workspace {
         let mut fork = Chat::new(id, format!("{} (fork)", src.title));
         fork.messages = Rc::new(src.messages[..=ix].to_vec());
         fork.folder = src.folder.clone();
+        fork.color = src.color;
         fork.provider = src.provider.clone();
         fork.model = src.model.clone();
         fork.access = src.access;

@@ -42,6 +42,9 @@ pub(crate) struct NavRow {
     /// Replaces the label + suffix entirely (the inline rename editor).
     body: Option<RowContent>,
     suffix: Option<RowContent>,
+    /// Extra content between the icon and the label — the chat row's color
+    /// dot lives here. Rendered only in the expanded row.
+    leading: Option<RowContent>,
     /// Drag source applied to the row's `Stateful<Div>` — the toolkit's 2px
     /// threshold keeps plain clicks from starting a drag.
     on_drag: Option<DragSource>,
@@ -60,6 +63,7 @@ impl NavRow {
             on_click: None,
             body: None,
             suffix: None,
+            leading: None,
             context_menu: None,
             on_drag: None,
         }
@@ -117,6 +121,13 @@ impl NavRow {
         self
     }
 
+    /// Leading content between the icon and the label — the chat row's
+    /// color dot. Skipped while the sidebar is collapsed.
+    pub(crate) fn leading<E: IntoElement>(mut self, leading: impl Fn(&mut Window, &mut App) -> E + 'static) -> Self {
+        self.leading = Some(Rc::new(move |window, cx| leading(window, cx).into_any_element()));
+        self
+    }
+
     pub(crate) fn context_menu(mut self, menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static) -> Self {
         self.context_menu = Some(Rc::new(menu));
         self
@@ -154,6 +165,7 @@ impl SidebarItem for NavRow {
                 .when_some(self.suffix, |this, suffix| this.child(suffix(window, cx)))
                 .into_any_element(),
         };
+        let leading = self.leading.map(|leading| leading(window, cx));
         let row = h_flex()
             .size_full()
             .id(self.id)
@@ -171,7 +183,7 @@ impl SidebarItem for NavRow {
             .when(self.active, |this| this.font_medium().bg(accent_bg).text_color(accent_fg))
             .when_some(self.icon, |this, icon| this.child(icon))
             .when(self.collapsed, |this| this.justify_center())
-            .when(!self.collapsed, |this| this.h_7().child(content))
+            .when(!self.collapsed, |this| this.h_7().when_some(leading, |this, leading| this.child(leading)).child(content))
             .when_some(self.on_click, |this, on_click| this.on_click(move |ev, window, cx| on_click(ev, window, cx)))
             .map(|this| match self.context_menu {
                 Some(menu) => this.context_menu(move |m, window, cx| menu(m, window, cx)).into_any_element(),

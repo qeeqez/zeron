@@ -59,6 +59,10 @@ pub(crate) struct StoredChat {
     /// before history existed.
     #[serde(default)]
     prompt_history: Vec<String>,
+    /// Color tag for visual grouping — missing in files written before
+    /// color tags existed; unknown names load as untagged.
+    #[serde(default)]
+    color: String,
 }
 
 /// Chats dir for the current project — kept for `RevealChats` in root.rs.
@@ -100,6 +104,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             checkpoints: chat.checkpoints.clone(),
             feedback: chat.feedback.clone(),
             prompt_history: chat.prompt_history.clone(),
+            color: chat.color.map_or_else(String::new, |c| c.name().to_string()),
         };
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
@@ -214,6 +219,7 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
             chat.thread_id = stored.thread_id;
             chat.feedback = stored.feedback;
             chat.prompt_history = stored.prompt_history;
+            chat.color = crate::model::ChatColor::from_name(&stored.color);
             Some(chat)
         })
         .collect()

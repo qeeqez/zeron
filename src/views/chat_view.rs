@@ -35,6 +35,9 @@ impl Workspace {
         // Temporary chats get a muted "Temporary" chip next to the title —
         // a chat can be both worktree and ephemeral, so both chips render.
         let ephemeral = chat.ephemeral;
+        // A color tag shows as a small dot beside the title — same slot as
+        // the worktree/temp chips; all three can coexist.
+        let color = chat.color;
         let ws = cx.entity();
         let ws_empty = cx.entity();
         let ws_menu = cx.entity();
@@ -109,6 +112,7 @@ impl Workspace {
                 .border_color(cx.theme().border)
                 .text_sm()
                 .child(title)
+                .when_some(color, |d, color| d.child(crate::views::chat_menu::color_dot("chat-color-dot", color, px(8.))))
                 .when(worktree, |d| d.child(crate::views::chat_menu::worktree_badge("worktree-badge", &workdir, cx)))
                 .when(ephemeral, |d| d.child(crate::views::chat_menu::temp_badge("temp-badge", cx)))
                 .child(div().flex_1())
@@ -153,7 +157,7 @@ impl Workspace {
                 )
                 .child(Button::new("chat-menu").ghost().icon(IconName::Ellipsis).dropdown_menu({
                     let word_wrap = self.word_wrap;
-                    let state = crate::views::chat_menu::ChatMenuState { pinned, word_wrap, worktree, ephemeral };
+                    let state = crate::views::chat_menu::ChatMenuState { pinned, word_wrap, color, worktree, ephemeral };
                     move |menu, window, cx| chat_menu(menu, &ws_menu, state, window, cx)
                 })),
         );

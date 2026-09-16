@@ -134,3 +134,8 @@ impl Workspace {
         self.rename_folder(old, &new, cx);
     }
 }
+
+// Declared here, not in `chat_ops.rs` — that file is at the SLOC cap.
+#[cfg(test)]
+#[path = "folder_tests.rs"]
+mod folder_tests;

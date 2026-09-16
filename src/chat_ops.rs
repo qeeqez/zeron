@@ -1,5 +1,4 @@
-#[cfg(test)]
-mod folder_tests;
+mod colors;
 mod folders;
 
 use std::rc::Rc;
@@ -197,6 +196,7 @@ impl Workspace {
         let mut copy = Chat::new(id, format!("{} (copy)", src.title));
         copy.messages = src.messages.clone();
         copy.draft = src.draft.clone();
+        copy.color = src.color;
         copy.folder = src.folder.clone();
         // A temporary chat's copy stays temporary — duplicating must not
         // silently persist content the user marked ephemeral.
