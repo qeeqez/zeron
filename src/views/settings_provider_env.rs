@@ -123,7 +123,7 @@ pub(crate) fn variables_section(p: &ProviderInstance, rows: &[EnvRow], s: &Setti
         .flex()
         .flex_col()
         .gap_1()
-        .child(group_label("Variables", cx))
+        .child(group_label("Variables", &s.search, cx))
         .child(
             div()
                 .text_xs()

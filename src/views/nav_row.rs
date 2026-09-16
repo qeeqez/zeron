@@ -34,6 +34,9 @@ pub(crate) struct NavRow {
     icon: Option<IconName>,
     label: SharedString,
     active: bool,
+    /// False drops the hover wash — the settings nav's "No settings match"
+    /// placeholder is a label, not a clickable row.
+    hoverable: bool,
     collapsed: bool,
     /// Hover-reveal group name painted on the row's wrapper (e.g. the chat
     /// row's "…" button shows on `group_hover`).
@@ -58,6 +61,7 @@ impl NavRow {
             icon: None,
             label: label.into(),
             active: false,
+            hoverable: true,
             collapsed: false,
             group: None,
             on_click: None,
@@ -88,6 +92,12 @@ impl NavRow {
 
     pub(crate) fn on_click(mut self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Rc::new(handler));
+        self
+    }
+
+    /// Hover wash on/off — off for non-interactive placeholder rows.
+    pub(crate) fn hoverable(mut self, hoverable: bool) -> Self {
+        self.hoverable = hoverable;
         self
     }
 
@@ -179,7 +189,7 @@ impl SidebarItem for NavRow {
             .gap_x_2()
             .rounded(radius)
             .text_sm()
-            .when(!self.active, |this| this.hover(|this| this.bg(accent.opacity(0.8)).text_color(accent_fg)))
+            .when(!self.active && self.hoverable, |this| this.hover(|this| this.bg(accent.opacity(0.8)).text_color(accent_fg)))
             .when(self.active, |this| this.font_medium().bg(accent_bg).text_color(accent_fg))
             .when_some(self.icon, |this, icon| this.child(icon))
             .when(self.collapsed, |this| this.justify_center())

@@ -71,6 +71,14 @@ pub struct SettingsPanel {
     /// Dictation-language picker — `VOICE_LANGUAGES` labels; Confirm maps
     /// back to the locale id (empty = system default).
     pub(crate) voice_language_select: Entity<SelectState<Vec<String>>>,
+    /// Scroll state of the settings content pane — the search anchor
+    /// targets it so the first matching row scrolls into view.
+    pub(crate) content_scroll: ScrollHandle,
+    /// Anchor the first search-matching row claims each render.
+    pub(crate) match_anchor: ScrollAnchor,
+    /// (section, query) the last match scroll ran for — re-scrolls only
+    /// when the target changes, so unrelated re-renders don't snap back.
+    pub(crate) last_match_scroll: Option<(Section, String)>,
 }
 
 impl SettingsPanel {
@@ -104,6 +112,9 @@ impl SettingsPanel {
             let _ = ws_code.update(cx, |this, cx| this.set_code_font(family.clone(), window, cx));
         })
         .detach();
+
+        let content_scroll = ScrollHandle::new();
+        let match_anchor = ScrollAnchor::for_handle(content_scroll.clone());
 
         let contrast_slider = cx.new(|_cx| {
             SliderState::new()
@@ -187,6 +198,9 @@ impl SettingsPanel {
             voice_language_select,
             mcp_error: None,
             mcp_inputs,
+            content_scroll,
+            match_anchor,
+            last_match_scroll: None,
         }
     }
 }
@@ -200,44 +214,7 @@ impl Render for SettingsPanel {
         self.sync_provider_inputs(window, cx);
         self.sync_provider_env_inputs(window, cx);
         let s = ws.read(cx);
-        let view = crate::views::settings_sections::SettingsView {
-            notify: s.notify_on_done,
-            notify_sound: s.notify_sound,
-            font_size: s.font_size,
-            code_font_size: s.code_font_size,
-            sidebar_frosted: s.sidebar_frosted,
-            contrast: s.contrast,
-            backend: s.backend.name(),
-            access: s.access,
-            word_wrap: s.word_wrap,
-            theme: s.theme.clone(),
-            ws: ws.clone(),
-            panel: cx.entity(),
-            provider_inputs: self.provider_inputs.clone(),
-            mcp_servers: self.mcp_servers.clone(),
-            mcp_status: self.mcp_status.clone(),
-            mcp_status_loading: self.mcp_status_loading,
-            mcp_adding: self.mcp_adding,
-            mcp_error: self.mcp_error.clone(),
-            mcp_inputs: self.mcp_inputs.clone(),
-            provider_env_inputs: self.provider_env_inputs.clone(),
-            provider_selection: self.provider_selection.clone(),
-            test_state: self.test_state.clone(),
-            font_select: self.font_select.clone(),
-            code_font_select: self.code_font_select.clone(),
-            contrast_slider: self.contrast_slider.clone(),
-            editor_select: self.editor_select.clone(),
-            voice_enabled: s.voice.enabled,
-            voice_language_select: self.voice_language_select.clone(),
-            voice_on_device: s.voice.on_device,
-            voice_phase: s.voice.phase,
-            voice_test_result: s.voice.test_result.clone(),
-            update: s.update.clone(),
-            permissions_select: self.permissions_select.clone(),
-            workspace_select: self.workspace_select.clone(),
-            instructions_input: s.instructions_input.clone(),
-            setup_script_input: s.setup_script_input.clone(),
-        };
+        let view = crate::views::settings_sections::SettingsView::snapshot(self, &ws, cx);
         let theme = cx.theme();
         // Left edge sits at the main sidebar's right edge — the sidebar (now
         // showing the settings nav) and the overlaid toggle stay visible and
@@ -286,23 +263,46 @@ impl Render for SettingsPanel {
                 )
                 .test_support(),
             )
-            .child(self.render_content(&view, cx))
+            .child(self.render_content(&view, window, cx))
     }
 }
 
 impl SettingsPanel {
-    fn render_content(&self, view: &crate::views::settings_sections::SettingsView, cx: &App) -> impl IntoElement {
-        div().id("settings-content").test_support().flex_1().min_w_0().h_full().overflow_y_scroll().child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_4()
-                .w_full()
-                .max_w(px(680.))
-                .mx_auto()
-                .p_6()
-                .child(div().text_lg().font_semibold().child(self.section.label()))
-                .child(crate::views::settings_sections::section_body(self.section, view, cx)),
-        )
+    fn render_content(
+        &mut self, view: &crate::views::settings_sections::SettingsView, window: &mut Window, cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        // While searching, scroll the first matching row into view — but
+        // only when (section, query) changed, so unrelated re-renders
+        // (toggles, status refreshes) don't yank the user's scroll back.
+        let key = (self.section, view.search.query.clone());
+        let scroll_to_match = !view.search.query.is_empty() && self.last_match_scroll.as_ref() != Some(&key);
+        let content = div()
+            .id("settings-content")
+            .test_support()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .overflow_y_scroll()
+            .track_scroll(&self.content_scroll)
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_4()
+                    .w_full()
+                    .max_w(px(680.))
+                    .mx_auto()
+                    .p_6()
+                    .child(div().text_lg().font_semibold().child(self.section.label()))
+                    .child(crate::views::settings_sections::section_body(self.section, view, cx)),
+            );
+        if scroll_to_match && view.search.anchor_taken.get() {
+            self.match_anchor.scroll_to(window, cx);
+            self.last_match_scroll = Some(key);
+        }
+        if view.search.query.is_empty() {
+            self.last_match_scroll = None;
+        }
+        content
     }
 }

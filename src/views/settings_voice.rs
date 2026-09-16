@@ -68,8 +68,8 @@ pub(crate) fn voice_section(s: &SettingsView, cx: &App) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap_3()
-        .child(group_label("Dictation", cx))
-        .child(toggle_row(("toggle-voice", "Enable dictation"), s.voice_enabled, ws.clone(), Workspace::set_voice_enabled))
+        .child(group_label("Dictation", &s.search, cx))
+        .child(toggle_row(("toggle-voice", "Enable dictation"), s.voice_enabled, ws.clone(), Workspace::set_voice_enabled, &s.search))
         .child(
             div()
                 .text_xs()
@@ -82,16 +82,23 @@ pub(crate) fn voice_section(s: &SettingsView, cx: &App) -> impl IntoElement {
             div()
                 .w(px(220.))
                 .child(Select::new(&s.voice_language_select).id("voice-language").small().appearance(true)),
+            &s.search,
             cx,
         ))
-        .child(toggle_row(("toggle-voice-device", "On-device recognition"), s.voice_on_device, ws.clone(), Workspace::set_voice_on_device))
+        .child(toggle_row(
+            ("toggle-voice-device", "On-device recognition"),
+            s.voice_on_device,
+            ws.clone(),
+            Workspace::set_voice_on_device,
+            &s.search,
+        ))
         .child(
             div()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
                 .child("On-device keeps audio on this Mac but supports fewer languages."),
         )
-        .child(group_label("Microphone", cx))
+        .child(group_label("Microphone", &s.search, cx))
         .child(
             div()
                 .text_xs()
@@ -99,19 +106,22 @@ pub(crate) fn voice_section(s: &SettingsView, cx: &App) -> impl IntoElement {
                 .child("macOS asks for Microphone and Speech Recognition access on first use."),
         )
         .child(
-            div().flex().items_center().gap_2().child(
-                div().id("voice-test-mic").test_support().child(
-                    Button::new("voice-test-mic-btn")
-                        .ghost()
-                        .small()
-                        .icon(IconName::Mic)
-                        .label(if busy { "Stop & transcribe" } else { "Test microphone" })
-                        .on_click({
-                            let ws = ws.clone();
-                            move |_, window, cx| {
-                                ws.update(cx, |this, cx| this.toggle_dictation_test(window, cx));
-                            }
-                        }),
+            s.search.wrap(
+                "Test microphone",
+                div().flex().items_center().gap_2().child(
+                    div().id("voice-test-mic").test_support().child(
+                        Button::new("voice-test-mic-btn")
+                            .ghost()
+                            .small()
+                            .icon(IconName::Mic)
+                            .label(if busy { "Stop & transcribe" } else { "Test microphone" })
+                            .on_click({
+                                let ws = ws.clone();
+                                move |_, window, cx| {
+                                    ws.update(cx, |this, cx| this.toggle_dictation_test(window, cx));
+                                }
+                            }),
+                    ),
                 ),
             ),
         )
@@ -140,21 +150,26 @@ fn test_status(s: &SettingsView, cx: &App) -> Option<AnyElement> {
 
 /// Label + caption left, control right — same shape as the General
 /// section's `default_row`, local so the caption id stays unique.
-fn voice_row(label: &'static str, caption: &'static str, control: impl IntoElement, cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap_4()
-        .child(
-            div().flex_1().min_w_0().flex().flex_col().child(div().text_sm().child(label)).child(
-                div()
-                    .id(SharedString::from(format!("voice-caption-{}", label.to_lowercase())))
-                    .test_support()
-                    .aria_label(caption)
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(caption),
-            ),
-        )
-        .child(control)
+fn voice_row(
+    label: &'static str, caption: &'static str, control: impl IntoElement, search: &crate::views::settings_search::SearchCtx, cx: &App,
+) -> AnyElement {
+    search.wrap(
+        label,
+        div()
+            .flex()
+            .items_center()
+            .gap_4()
+            .child(
+                div().flex_1().min_w_0().flex().flex_col().child(div().text_sm().child(label)).child(
+                    div()
+                        .id(SharedString::from(format!("voice-caption-{}", label.to_lowercase())))
+                        .test_support()
+                        .aria_label(caption)
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(caption),
+                ),
+            )
+            .child(control),
+    )
 }

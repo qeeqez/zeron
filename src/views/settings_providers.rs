@@ -137,12 +137,17 @@ pub fn providers_section(s: &SettingsView, cx: &App) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap_3()
-        .child(div().flex().items_center().child(group_label("Model providers", cx)).child(div().flex_1()).child(
-            Button::new("provider-add").label("Add provider").icon(IconName::Plus).small().outline().on_click({
-                let panel = s.panel.clone();
-                move |_, window, cx| panel.update(cx, |this, cx| this.open_provider_wizard(window, cx))
-            }),
-        ))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .child(group_label("Model providers", &s.search, cx))
+                .child(div().flex_1())
+                .child(Button::new("provider-add").label("Add provider").icon(IconName::Plus).small().outline().on_click({
+                    let panel = s.panel.clone();
+                    move |_, window, cx| panel.update(cx, |this, cx| this.open_provider_wizard(window, cx))
+                })),
+        )
         .child(
             div()
                 .id("providers-split")

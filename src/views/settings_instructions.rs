@@ -26,7 +26,7 @@ pub(crate) fn instructions_section(s: &SettingsView, cx: &App) -> impl IntoEleme
         .flex()
         .flex_col()
         .gap_3()
-        .child(group_label("Global instructions", cx))
+        .child(group_label("Global instructions", &s.search, cx))
         .child(
             div()
                 .text_xs()
@@ -34,10 +34,13 @@ pub(crate) fn instructions_section(s: &SettingsView, cx: &App) -> impl IntoEleme
                 .child("Applied to every turn, ahead of the project's own instructions file."),
         )
         .child(
-            div()
-                .id("instructions-field")
-                .test_support()
-                .child(Textarea::new(&s.instructions_input).aria_label("Custom instructions")),
+            s.search.wrap(
+                "Global instructions",
+                div()
+                    .id("instructions-field")
+                    .test_support()
+                    .child(Textarea::new(&s.instructions_input).aria_label("Custom instructions")),
+            ),
         )
         .child(
             div()
@@ -64,7 +67,7 @@ pub(crate) fn instructions_section(s: &SettingsView, cx: &App) -> impl IntoEleme
                         .child(if dirty { "Unsaved changes" } else { "Saved" }),
                 ),
         )
-        .child(group_label("Project instructions", cx))
+        .child(group_label("Project instructions", &s.search, cx))
         .child(
             div()
                 .id("instructions-project-note")

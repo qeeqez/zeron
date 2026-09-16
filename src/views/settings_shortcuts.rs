@@ -11,11 +11,11 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::shortcuts::{SHORTCUT_SPECS, ShortcutGroup, ShortcutSpec};
-use crate::views::settings_sections::group_label;
+use crate::views::settings_sections::{SettingsView, group_label};
 
 /// The section body: one `group_label` header per `ShortcutGroup` in
 /// `ShortcutGroup::ALL` order, then that group's rows.
-pub(crate) fn shortcuts_section(cx: &App) -> impl IntoElement {
+pub(crate) fn shortcuts_section(s: &SettingsView, cx: &App) -> impl IntoElement {
     let mut list = div().id("settings-shortcuts").test_support().flex().flex_col().gap_2();
     for group in ShortcutGroup::ALL {
         let specs: Vec<(usize, &ShortcutSpec)> = SHORTCUT_SPECS.iter().enumerate().filter(|(_, s)| s.group == group).collect();
@@ -29,8 +29,8 @@ pub(crate) fn shortcuts_section(cx: &App) -> impl IntoElement {
                 .flex()
                 .flex_col()
                 .gap_1()
-                .child(group_label(group.label(), cx))
-                .children(specs.iter().map(|(ix, spec)| shortcut_row(*ix, spec, cx))),
+                .child(group_label(group.label(), &s.search, cx))
+                .children(specs.iter().map(|(ix, spec)| s.search.wrap(spec.description, shortcut_row(*ix, spec, cx)))),
         );
     }
     list

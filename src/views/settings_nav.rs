@@ -73,7 +73,7 @@ pub fn settings_nav(nav: SettingsNav<'_>, window: &mut Window, cx: &mut App) -> 
     let SettingsNav { panel, width, collapsed } = nav;
     let (ws, search, section, query) = {
         let p = panel.read(cx);
-        (p.ws.clone(), p.search.clone(), p.section, p.search.read(cx).value().to_lowercase())
+        (p.ws.clone(), p.search.clone(), p.section, p.search.read(cx).value().trim().to_lowercase())
     };
 
     // "Back to app" sits at the very top of the rail, above the full-width
@@ -92,8 +92,17 @@ pub fn settings_nav(nav: SettingsNav<'_>, window: &mut Window, cx: &mut App) -> 
             .map(|(name, sections)| SidebarGroup::new(*name).children(sections.iter().map(|s| nav_item(*s, *s == section, panel))))
             .collect()
     } else {
-        let matches = Section::ALL.iter().filter(|s| s.label().to_lowercase().contains(query.as_str()));
-        vec![SidebarGroup::new("").children(matches.map(|s| nav_item(*s, *s == section, panel)))]
+        // Filtered rail: sections whose label OR indexed row labels match
+        // (see `settings_search::matching_sections`), flat under no header.
+        let matches = crate::views::settings_search::matching_sections(&query);
+        if matches.is_empty() {
+            let empty = NavRow::new("settings-nav-empty", "No settings match")
+                .hoverable(false)
+                .body(|_, cx| div().text_color(cx.theme().muted_foreground).child("No settings match"));
+            vec![SidebarGroup::new("").child(empty)]
+        } else {
+            vec![SidebarGroup::new("").children(matches.into_iter().map(|s| nav_item(s, s == section, panel)))]
+        }
     };
 
     // The component paints its own opaque `tokens.sidebar` — clear it so the
@@ -109,7 +118,7 @@ pub fn settings_nav(nav: SettingsNav<'_>, window: &mut Window, cx: &mut App) -> 
 }
 
 /// A nav-rail section. `name` feeds element ids; `label` is what renders.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
     General,
     Instructions,

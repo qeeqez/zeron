@@ -76,6 +76,9 @@ pub mod settings_provider_test;
 pub mod settings_provider_wizard;
 mod settings_provider_wizard_steps;
 pub mod settings_providers;
+pub(crate) mod settings_search;
+#[cfg(test)]
+mod settings_search_tests;
 pub mod settings_sections;
 pub mod settings_shortcuts;
 #[cfg(test)]

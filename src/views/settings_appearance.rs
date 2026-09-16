@@ -18,21 +18,21 @@ pub(crate) fn appearance_section(s: &SettingsView, cx: &App) -> impl IntoElement
         .flex()
         .flex_col()
         .gap_3()
-        .child(group_label("Theme", cx))
+        .child(group_label("Theme", &s.search, cx))
         .child(
             div()
                 .flex()
                 .gap_3()
-                .child(theme_card("System", "system", s, cx))
-                .child(theme_card("Light", "light", s, cx))
-                .child(theme_card("Dark", "dark", s, cx)),
+                .child(s.search.wrap("System", theme_card("System", "system", s, cx)))
+                .child(s.search.wrap("Light", theme_card("Light", "light", s, cx)))
+                .child(s.search.wrap("Dark", theme_card("Dark", "dark", s, cx))),
         )
-        .child(group_label("Interface", cx))
+        .child(group_label("Interface", &s.search, cx))
         .child(font_row(s, false))
-        .child(group_label("Code", cx))
+        .child(group_label("Code", &s.search, cx))
         .child(font_row(s, true))
         .child(code_preview(cx))
-        .child(group_label("Contrast", cx))
+        .child(group_label("Contrast", &s.search, cx))
         .child(
             div()
                 .flex()
@@ -41,7 +41,7 @@ pub(crate) fn appearance_section(s: &SettingsView, cx: &App) -> impl IntoElement
                 .child(div().id("contrast-slider").test_support().flex_1().child(Slider::new(&s.contrast_slider)))
                 .child(div().w(px(40.)).text_xs().child(format!("{}%", s.contrast))),
         )
-        .child(group_label("Sidebar", cx))
+        .child(group_label("Sidebar", &s.search, cx))
         .child(toggle_row(
             ("toggle-sidebar-frosted", "Frosted glass sidebar"),
             s.sidebar_frosted,
@@ -50,6 +50,7 @@ pub(crate) fn appearance_section(s: &SettingsView, cx: &App) -> impl IntoElement
                 this.sidebar_frosted = next;
                 this.apply_appearance(window, cx);
             },
+            &s.search,
         ))
 }
 
@@ -91,23 +92,26 @@ fn theme_card(label: &'static str, mode: &'static str, s: &SettingsView, cx: &Ap
 
 /// Font family picker + size stepper for one text role. `code` selects the
 /// code (mono) fields; `false` the interface fields.
-fn font_row(s: &SettingsView, code: bool) -> impl IntoElement {
+fn font_row(s: &SettingsView, code: bool) -> AnyElement {
     let (id, select, size, placeholder) = if code {
         ("code-font-select", &s.code_font_select, s.code_font_size, "Default mono font")
     } else {
         ("font-select", &s.font_select, s.font_size, "System font")
     };
-    div()
-        .flex()
-        .items_center()
-        .gap_2()
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .child(Select::new(select).id(id).small().appearance(true).cleanable(true).placeholder(placeholder)),
-        )
-        .child(size_stepper(id, size, s.ws.clone(), code))
+    s.search.wrap(
+        placeholder,
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(Select::new(select).id(id).small().appearance(true).cleanable(true).placeholder(placeholder)),
+            )
+            .child(size_stepper(id, size, s.ws.clone(), code)),
+    )
 }
 
 /// −/+ stepper around the current size; writes the role's font size, persists

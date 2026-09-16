@@ -58,14 +58,14 @@ pub(crate) fn profile_section(s: &SettingsView, cx: &App) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap_3()
-        .child(group_label("Accounts", cx))
+        .child(group_label("Accounts", &s.search, cx))
         .child(if any_signed_in {
             div().flex().flex_col().gap_1().children(rows.iter().map(|r| account_row(r, cx))).into_any_element()
         } else {
             signed_out_state(s, cx).into_any_element()
         })
-        .when(any_signoutable, |d| d.child(sign_out_all_button(s)))
-        .child(group_label("About", cx))
+        .when(any_signoutable, |d| d.child(s.search.wrap("Sign out all", sign_out_all_button(s))))
+        .child(group_label("About", &s.search, cx))
         .child(
             div()
                 .flex()
@@ -74,14 +74,14 @@ pub(crate) fn profile_section(s: &SettingsView, cx: &App) -> impl IntoElement {
                 .child(crate::app_icon::app_icon("profile-app-icon", 28.))
                 .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child("Rixl Code")),
         )
-        .child(info_row("profile-version", "Version", env!("CARGO_PKG_VERSION"), cx))
+        .child(info_row("profile-version", "Version", env!("CARGO_PKG_VERSION"), &s.search, cx))
         .child(update_row(s, cx))
-        .child(data_dir_row(cx))
+        .child(data_dir_row(&s.search, cx))
 }
 
 /// The update line under Version: the pending release with Download/Skip,
 /// or the last check's outcome plus a Check button.
-fn update_row(s: &SettingsView, cx: &App) -> impl IntoElement {
+fn update_row(s: &SettingsView, cx: &App) -> AnyElement {
     use crate::update::UpdateStatus;
     let (text, pending) = match &s.update.status {
         UpdateStatus::Available(tag) if s.update.skipped => (format!("{tag} available — skipped"), Some(tag.clone())),
@@ -90,23 +90,26 @@ fn update_row(s: &SettingsView, cx: &App) -> impl IntoElement {
         UpdateStatus::UpToDate => ("You're up to date".to_string(), None),
         UpdateStatus::Unknown => ("Not checked yet".to_string(), None),
     };
-    div()
-        .flex()
-        .items_center()
-        .gap_4()
-        .child(div().w(px(120.)).text_sm().child("Updates"))
-        .child(
-            div()
-                .id("profile-update")
-                .test_support()
-                .aria_label(text.clone())
-                .flex_1()
-                .min_w_0()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child(text),
-        )
-        .child(update_buttons(s, pending))
+    s.search.wrap(
+        "Updates",
+        div()
+            .flex()
+            .items_center()
+            .gap_4()
+            .child(div().w(px(120.)).text_sm().child("Updates"))
+            .child(
+                div()
+                    .id("profile-update")
+                    .test_support()
+                    .aria_label(text.clone())
+                    .flex_1()
+                    .min_w_0()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(text),
+            )
+            .child(update_buttons(s, pending)),
+    )
 }
 
 /// The update row's actions: Download + Skip while a release is pending,
@@ -206,16 +209,21 @@ fn sign_out_all_button(s: &SettingsView) -> impl IntoElement {
 
 /// A label/value line in the About block — the value div carries the id +
 /// `aria_label` so tests can read it.
-fn info_row(id: &'static str, label: &'static str, value: impl Into<String>, cx: &App) -> impl IntoElement {
+fn info_row(
+    id: &'static str, label: &'static str, value: impl Into<String>, search: &crate::views::settings_search::SearchCtx, cx: &App,
+) -> AnyElement {
     let value = value.into();
-    div().flex().items_center().gap_4().child(div().w(px(120.)).text_sm().child(label)).child(
-        div()
-            .id(SharedString::from(id))
-            .test_support()
-            .aria_label(value.clone())
-            .text_xs()
-            .text_color(cx.theme().muted_foreground)
-            .child(value),
+    search.wrap(
+        label,
+        div().flex().items_center().gap_4().child(div().w(px(120.)).text_sm().child(label)).child(
+            div()
+                .id(SharedString::from(id))
+                .test_support()
+                .aria_label(value.clone())
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(value),
+        ),
     )
 }
 
@@ -229,34 +237,37 @@ pub(crate) fn data_dir() -> std::path::PathBuf {
 /// unimplemented under the test harness, so the button opens a `file://`
 /// URL instead — on macOS that lands in Finder, and the test platform
 /// records it as `opened_url`.
-fn data_dir_row(cx: &App) -> impl IntoElement {
+fn data_dir_row(search: &crate::views::settings_search::SearchCtx, cx: &App) -> AnyElement {
     let dir = data_dir();
     let shown = dir.display().to_string();
     let url = file_uri(&dir);
-    div()
-        .flex()
-        .items_center()
-        .gap_4()
-        .child(div().w(px(120.)).text_sm().child("Data directory"))
-        .child(
-            div()
-                .id("profile-data-dir")
-                .test_support()
-                .aria_label(shown.clone())
-                .flex_1()
-                .min_w_0()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child(shown),
-        )
-        .child(
-            Button::new("profile-reveal-data")
-                .label("Reveal in Finder")
-                .icon(IconName::FolderOpen)
-                .small()
-                .outline()
-                .on_click(move |_, _, cx| cx.open_url(&url)),
-        )
+    search.wrap(
+        "Data directory",
+        div()
+            .flex()
+            .items_center()
+            .gap_4()
+            .child(div().w(px(120.)).text_sm().child("Data directory"))
+            .child(
+                div()
+                    .id("profile-data-dir")
+                    .test_support()
+                    .aria_label(shown.clone())
+                    .flex_1()
+                    .min_w_0()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(shown),
+            )
+            .child(
+                Button::new("profile-reveal-data")
+                    .label("Reveal in Finder")
+                    .icon(IconName::FolderOpen)
+                    .small()
+                    .outline()
+                    .on_click(move |_, _, cx| cx.open_url(&url)),
+            ),
+    )
 }
 
 /// `file://` URI for a local path — percent-encodes everything outside

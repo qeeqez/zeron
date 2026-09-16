@@ -47,7 +47,7 @@ pub(crate) fn mcp_section(s: &SettingsView, cx: &App) -> impl IntoElement {
             div()
                 .flex()
                 .items_center()
-                .child(group_label("Configured servers", cx))
+                .child(group_label("Configured servers", &s.search, cx))
                 .child(div().flex_1())
                 .when(codex, |d| {
                     d.child(

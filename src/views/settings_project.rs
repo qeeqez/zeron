@@ -114,19 +114,20 @@ fn setup_script_block(s: &SettingsView, cx: &App) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap_3()
-        .child(group_label("Setup script", cx))
+        .child(group_label("Setup script", &s.search, cx))
         .child(
             div()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
                 .child("Runs inside each new thread worktree (sh -c) — install dependencies, symlink env files. Failures land as a note; they never block the thread."),
         )
-        .child(
+        .child(s.search.wrap(
+            "Setup script",
             div()
                 .id("setup-script-field")
                 .test_support()
                 .child(Textarea::new(&s.setup_script_input).aria_label("Setup script")),
-        )
+        ))
         .child(
             div()
                 .flex()
@@ -179,7 +180,7 @@ fn worktrees_block(s: &SettingsView, cx: &App) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap_2()
-        .child(group_label("Thread worktrees", cx))
+        .child(group_label("Thread worktrees", &s.search, cx))
         .child(list.children(worktrees.iter().map(|w| worktree_row(w, s, cx))))
 }
 

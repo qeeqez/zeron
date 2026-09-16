@@ -6,7 +6,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::input::Input;
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -59,14 +59,17 @@ pub(crate) fn detail_panel(p: Option<&ProviderInstance>, s: &SettingsView, cx: &
                 })),
         )
         .when_some(inputs.clone(), |d, inputs| {
-            d.child(field(
+            d.child(s.search.wrap(
                 "Display name",
-                Input::new(&inputs.name)
-                    .id(SharedString::from(format!("provider-name-{}", p.id)))
-                    .appearance(true)
-                    .into_any_element(),
+                field(
+                    "Display name",
+                    Input::new(&inputs.name)
+                        .id(SharedString::from(format!("provider-name-{}", p.id)))
+                        .appearance(true)
+                        .into_any_element(),
+                ),
             ))
-            .children(connection_fields(p, &inputs))
+            .children(connection_fields(p, &inputs, &s.search))
         })
         .child(account_section(p, inputs.as_ref(), s, cx))
         // The simulator spawns nothing — Variables would be a no-op.
@@ -78,38 +81,26 @@ pub(crate) fn detail_panel(p: Option<&ProviderInstance>, s: &SettingsView, cx: &
 
 /// The kind-specific connection inputs: acp/claude take a spawn command,
 /// http takes an endpoint URL plus the env var holding its token.
-fn connection_fields(p: &ProviderInstance, inputs: &ProviderInputs) -> Vec<AnyElement> {
+fn connection_fields(p: &ProviderInstance, inputs: &ProviderInputs, search: &crate::views::settings_search::SearchCtx) -> Vec<AnyElement> {
+    let conn_field = |label: &'static str, id: &str, input: &Entity<InputState>| {
+        search.wrap(
+            label,
+            field(
+                label,
+                Input::new(input)
+                    .id(SharedString::from(format!("{id}-{}", p.id)))
+                    .appearance(true)
+                    .into_any_element(),
+            ),
+        )
+    };
     match p.kind {
-        ProviderKind::Acp | ProviderKind::ClaudeCli => vec![field(
-            "Command",
-            Input::new(&inputs.command)
-                .id(SharedString::from(format!("provider-command-{}", p.id)))
-                .appearance(true)
-                .into_any_element(),
-        )],
+        ProviderKind::Acp | ProviderKind::ClaudeCli => vec![conn_field("Command", "provider-command", &inputs.command)],
         ProviderKind::Http => vec![
-            field(
-                "Endpoint URL",
-                Input::new(&inputs.command)
-                    .id(SharedString::from(format!("provider-url-{}", p.id)))
-                    .appearance(true)
-                    .into_any_element(),
-            ),
-            field(
-                "API key env var",
-                Input::new(&inputs.key_env)
-                    .id(SharedString::from(format!("provider-key-env-{}", p.id)))
-                    .appearance(true)
-                    .into_any_element(),
-            ),
+            conn_field("Endpoint URL", "provider-url", &inputs.command),
+            conn_field("API key env var", "provider-key-env", &inputs.key_env),
         ],
-        ProviderKind::Ollama => vec![field(
-            "Base URL",
-            Input::new(&inputs.command)
-                .id(SharedString::from(format!("provider-url-{}", p.id)))
-                .appearance(true)
-                .into_any_element(),
-        )],
+        ProviderKind::Ollama => vec![conn_field("Base URL", "provider-url", &inputs.command)],
         ProviderKind::CodexCli | ProviderKind::Sim => Vec::new(),
     }
 }
@@ -133,7 +124,7 @@ fn account_section(p: &ProviderInstance, inputs: Option<&ProviderInputs>, s: &Se
         .flex()
         .flex_col()
         .gap_1()
-        .child(group_label("Account", cx))
+        .child(group_label("Account", &s.search, cx))
         .child(div().text_xs().text_color(status_color).child(state.detail_status()));
     if let Some(err) = s.ws.read(cx).auth_error(&p.id) {
         section = section.child(div().text_xs().text_color(cx.theme().danger).child(err.to_string()));
@@ -209,7 +200,7 @@ fn models_section(p: &ProviderInstance, s: &SettingsView, cx: &App) -> impl Into
         .flex()
         .flex_col()
         .gap_1()
-        .child(group_label("Models", cx))
+        .child(group_label("Models", &s.search, cx))
         .child(div().text_xs().text_color(cx.theme().muted_foreground).child(format!(
             "{} models · {} hidden — order and visibility apply to the picker.",
             models.len(),
