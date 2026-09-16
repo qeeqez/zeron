@@ -71,7 +71,7 @@ fn picker_opens_two_panes_listing_providers_and_models() {
         open_picker(window, cx);
         assert!(window.find("model-picker-panes").visible(), "picker popover should open");
         // LEFT: every enabled instance renders a row.
-        for id in ["codex-cli", "claude-cli", "acp", "http", "sim"] {
+        for id in crate::providers::ProviderKind::ALL.map(|k| k.slug()) {
             assert!(window.find(format!("provider-{id}")).visible(), "provider {id} should be listed");
         }
         // RIGHT: the active provider's models — injected catalog, no default row.
@@ -165,7 +165,7 @@ fn disabling_last_provider_clears_selection() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     ws.update(cx, |this, cx| {
-        for id in ["codex-cli", "claude-cli", "acp", "http", "sim"] {
+        for id in crate::providers::ProviderKind::ALL.map(|k| k.slug()) {
             this.set_provider_enabled(id, false, cx);
         }
     });

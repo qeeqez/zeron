@@ -15,6 +15,7 @@ mod codex_turn;
 mod factory;
 mod http;
 mod models;
+mod ollama;
 mod rpc;
 mod sessions;
 mod sim;
@@ -52,6 +53,7 @@ pub(crate) use factory::apply_env;
 pub use factory::backend_for;
 pub use http::HttpBackend;
 pub use models::fetch_codex_models;
+pub use ollama::{OllamaBackend, fetch_ollama_models};
 pub use steer::TurnHandle;
 pub(crate) use steer::kill_slot;
 

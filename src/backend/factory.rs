@@ -2,7 +2,7 @@
 //! plus the shared env injection every subprocess spawn uses. Split from
 //! `backend.rs` to stay under the SLOC cap.
 
-use super::{AcpBackend, AgentBackend, ClaudeCliBackend, CodexCliBackend, HttpBackend, SimBackend};
+use super::{AcpBackend, AgentBackend, ClaudeCliBackend, CodexCliBackend, HttpBackend, OllamaBackend, SimBackend};
 
 /// Build the backend for one provider instance — `command`/`key_env` carry
 /// the kind-specific connection fields (acp spawn command, http endpoint)
@@ -15,6 +15,7 @@ pub fn backend_for(p: &crate::providers::ProviderInstance) -> std::sync::Arc<dyn
         ProviderKind::ClaudeCli => std::sync::Arc::new(ClaudeCliBackend::new(env)),
         ProviderKind::Acp => std::sync::Arc::new(AcpBackend::new(p.command.clone(), env)),
         ProviderKind::Http => std::sync::Arc::new(HttpBackend::new(p.command.clone(), p.key_env.clone(), env)),
+        ProviderKind::Ollama => std::sync::Arc::new(OllamaBackend::new(p.command.clone())),
         ProviderKind::Sim => std::sync::Arc::new(SimBackend),
     }
 }

@@ -194,18 +194,22 @@ impl Workspace {
             if !p.enabled {
                 continue;
             }
-            Self::spawn_catalog_fetch(p.id.clone(), p.env.clone(), fetch, cx);
+            Self::spawn_catalog_fetch(p.clone(), fetch, cx);
         }
     }
 
     /// One instance's catalog refresh: run `fetch` on the background
-    /// executor with the instance's Variables, then land the result on the
-    /// UI thread.
-    fn spawn_catalog_fetch(instance: String, env: Vec<(String, String)>, fetch: crate::providers::ModelFetch, cx: &mut Context<Self>) {
-        let task = cx.background_executor().spawn(async move { fetch(&env) });
+    /// executor with the instance's connection fields, then land the
+    /// result on the UI thread.
+    fn spawn_catalog_fetch(p: ProviderInstance, fetch: crate::providers::ModelFetch, cx: &mut Context<Self>) {
+        let task = cx.background_executor().spawn(async move {
+            let id = p.id.clone();
+            (id, fetch(&p))
+        });
         cx.spawn(async move |this, cx| {
-            let Ok(models) = task.await else { return };
-            let _ = this.update(cx, |this, cx| this.land_catalog(&instance, models, cx));
+            let (id, models) = task.await;
+            let Ok(models) = models else { return };
+            let _ = this.update(cx, |this, cx| this.land_catalog(&id, models, cx));
         })
         .detach();
     }
@@ -240,7 +244,7 @@ impl Workspace {
 /// picker would have nothing to send on. Blocking — call off the UI thread.
 pub(crate) fn probe_instance(p: &ProviderInstance) -> Result<Vec<ModelInfo>, String> {
     let models = match p.kind.info().fetch {
-        Some(fetch) => fetch(&p.env)?,
+        Some(fetch) => fetch(p)?,
         None => crate::backend::backend_for(p).models(),
     };
     if models.is_empty() {

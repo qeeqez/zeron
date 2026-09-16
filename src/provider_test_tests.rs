@@ -7,7 +7,7 @@
 use gpui_kit::TestAppContext;
 use gpui_kit::test::TestWindowExt;
 
-use super::{mi, mount, open_providers};
+use super::{mi, mount, open_providers, reveal_last_row};
 use crate::views::settings_provider_test::TestState;
 
 /// Land a probe outcome on the panel the way the background task would.
@@ -26,6 +26,7 @@ fn test_button_lands_ok_with_count_and_latency() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     open_providers(cx);
+    reveal_last_row(cx);
     cx.update(|window, cx| {
         assert!(window.find("provider-test-sim").visible(), "every instance row gets a Test button");
         window.click("provider-test-sim", cx);
@@ -59,6 +60,7 @@ fn test_button_lands_error_first_line() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     open_providers(cx);
+    reveal_last_row(cx);
     cx.update(|window, cx| {
         window.click("provider-test-sim", cx);
         window.draw(cx).clear(cx);
@@ -81,6 +83,7 @@ fn testing_state_blocks_reclick() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     open_providers(cx);
+    reveal_last_row(cx);
     cx.update(|window, cx| {
         window.click("provider-test-sim", cx);
         window.draw(cx).clear(cx);

@@ -170,6 +170,9 @@ pub(super) fn config_step(panel: &Entity<SettingsPanel>, kind: ProviderKind, cx:
                 .child(field("Endpoint URL", Input::new(&command).id("wizard-url").appearance(true).into_any_element()))
                 .child(field("API key env var", Input::new(&key_env).id("wizard-key-env").appearance(true).into_any_element()));
         },
+        ProviderKind::Ollama => {
+            d = d.child(field("Base URL", Input::new(&command).id("wizard-url").appearance(true).into_any_element()));
+        },
         ProviderKind::CodexCli | ProviderKind::Sim => {
             d = d.child(
                 div()

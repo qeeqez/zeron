@@ -103,6 +103,13 @@ fn connection_fields(p: &ProviderInstance, inputs: &ProviderInputs) -> Vec<AnyEl
                     .into_any_element(),
             ),
         ],
+        ProviderKind::Ollama => vec![field(
+            "Base URL",
+            Input::new(&inputs.command)
+                .id(SharedString::from(format!("provider-url-{}", p.id)))
+                .appearance(true)
+                .into_any_element(),
+        )],
         ProviderKind::CodexCli | ProviderKind::Sim => Vec::new(),
     }
 }

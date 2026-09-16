@@ -9,9 +9,9 @@ use gpui_kit::assets::IconName;
 use crate::model::ModelInfo;
 
 /// A provider catalog refresh — runs on a background thread with the
-/// instance's Variables applied to the spawned backend, returns the real
-/// model list or an error the picker ignores (cache/statics remain).
-pub type ModelFetch = fn(&[(String, String)]) -> Result<Vec<ModelInfo>, String>;
+/// instance's connection fields, returns the real model list or an error
+/// the picker ignores (cache/statics remain).
+pub type ModelFetch = fn(&ProviderInstance) -> Result<Vec<ModelInfo>, String>;
 
 /// One backend implementation's provider identity. The serde names match
 /// the legacy `backend` setting so old files migrate cleanly.
@@ -26,6 +26,8 @@ pub enum ProviderKind {
     Acp,
     /// Custom NDJSON HTTP endpoint.
     Http,
+    /// Local Ollama daemon over HTTP (`/api/chat` + `/api/tags`).
+    Ollama,
     /// Built-in simulator — no subprocess.
     Sim,
 }
@@ -46,7 +48,7 @@ pub struct ProviderKindInfo {
 
 impl ProviderKind {
     /// All kinds in picker display order — codex-cli first, it's the default.
-    pub const ALL: [ProviderKind; 5] = [Self::CodexCli, Self::ClaudeCli, Self::Acp, Self::Http, Self::Sim];
+    pub const ALL: [ProviderKind; 6] = [Self::CodexCli, Self::ClaudeCli, Self::Acp, Self::Http, Self::Ollama, Self::Sim];
 
     pub fn info(self) -> &'static ProviderKindInfo {
         const CODEX: ProviderKindInfo = ProviderKindInfo {
@@ -77,6 +79,13 @@ impl ProviderKind {
             icon: IconName::Globe,
             fetch: None,
         };
+        const OLLAMA: ProviderKindInfo = ProviderKindInfo {
+            slug: "ollama",
+            label: "Ollama",
+            tagline: "local models via an Ollama daemon",
+            icon: IconName::HardDrive,
+            fetch: Some(crate::backend::fetch_ollama_models),
+        };
         const SIM: ProviderKindInfo = ProviderKindInfo {
             slug: "sim",
             label: "Sim",
@@ -89,6 +98,7 @@ impl ProviderKind {
             Self::ClaudeCli => &CLAUDE,
             Self::Acp => &ACP,
             Self::Http => &HTTP,
+            Self::Ollama => &OLLAMA,
             Self::Sim => &SIM,
         }
     }
@@ -103,6 +113,7 @@ impl ProviderKind {
     pub fn default_command(self) -> &'static str {
         match self {
             Self::Acp => crate::backend::AcpBackend::DEFAULT_COMMAND,
+            Self::Ollama => crate::backend::OllamaBackend::DEFAULT_URL,
             _ => "",
         }
     }

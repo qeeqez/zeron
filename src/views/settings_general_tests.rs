@@ -89,7 +89,7 @@ fn default_model_picker_sets_default_not_selection() {
         open_general(&ws, window, cx);
         open_default_picker(window, cx);
         assert!(window.find("default-model-picker-panes").visible(), "picker popover should open");
-        for id in ["codex-cli", "claude-cli", "acp", "http", "sim"] {
+        for id in crate::providers::ProviderKind::ALL.map(|k| k.slug()) {
             assert!(window.find(format!("default-provider-{id}")).visible(), "provider {id} should be listed");
         }
         window.click("default-provider-sim", cx);

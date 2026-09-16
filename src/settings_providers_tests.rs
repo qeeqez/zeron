@@ -47,6 +47,14 @@ fn open_providers(cx: &mut VisualTestContext) {
         assert!(window.find("settings-section-providers").visible(), "providers section should show");
     });
 }
+/// Scroll the instance list to the bottom so the last row (sim) is inside
+/// the viewport — rows beyond the fold are clipped and can't be clicked.
+fn reveal_last_row(cx: &mut VisualTestContext) {
+    cx.update(|window, cx| {
+        window.scroll("provider-list", ScrollDelta::Pixels(point(px(0.), px(-10000.))), cx);
+        window.draw(cx).clear(cx);
+    });
+}
 
 /// Open the add-provider wizard and wait out its slide-down animation — the
 /// dialog animates on a real-time clock, so clicks issued before it settles
@@ -112,14 +120,19 @@ fn instance_list_shows_only_real_instances_and_scrolls() {
     let (ws, cx) = mount(&mut app);
     open_providers(cx);
     cx.update(|window, cx| {
-        // Every persisted instance renders a row; nothing else does.
+        // Every persisted instance renders a row — rows beyond the fold
+        // are clipped, so assert presence, not visibility.
         for p in ws.read(cx).provider_instances() {
-            assert!(window.find(SharedString::from(format!("provider-row-{}", p.id))).visible(), "missing row for {}", p.id);
+            assert!(window.try_find(SharedString::from(format!("provider-row-{}", p.id))).is_some(), "missing row for {}", p.id);
         }
         assert!(window.try_find("provider-row-ghost").is_none(), "no placeholder rows");
-        // The list is a real scroll container — a wheel event lands on it.
-        window.scroll("provider-list", ScrollDelta::Pixels(point(px(0.), px(120.))), cx);
+        // The list is a real scroll container — a wheel event lands on it
+        // and brings the last row into view.
+        window.scroll("provider-list", ScrollDelta::Pixels(point(px(0.), px(-10000.))), cx);
         window.draw(cx).clear(cx);
+        assert!(window.find("provider-list").visible());
+        let last = ws.read(cx).provider_instances().last().unwrap().id.clone();
+        assert!(window.find(SharedString::from(format!("provider-row-{last}"))).visible(), "scrolled-to row should be visible");
         assert!(window.find("provider-list").visible());
     });
 }
@@ -129,6 +142,7 @@ fn provider_enable_and_remove_work() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     open_providers(cx);
+    reveal_last_row(cx);
     cx.update(|window, cx| {
         window.click("provider-enable-sim", cx);
         window.draw(cx).clear(cx);
@@ -154,6 +168,7 @@ fn model_toggle_and_reorder_update_config() {
         this.land_catalog("sim", vec![mi("m1"), mi("m2"), mi("m3")], cx);
     });
     open_providers(cx);
+    reveal_last_row(cx);
     cx.update(|window, cx| {
         window.click("provider-row-sim", cx);
         window.draw(cx).clear(cx);

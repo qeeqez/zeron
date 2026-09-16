@@ -17,8 +17,8 @@ use crate::model::ModelInfo;
 /// override reaches the probe). Returns Err on spawn failure, handshake
 /// error, timeout, or EOF mid-list — callers fall back to the
 /// cached/static catalog.
-pub fn fetch_codex_models(env: &[(String, String)]) -> Result<Vec<ModelInfo>, String> {
-    super::sessions::exchange(env, |stdin, stdout| read_catalog(stdin, stdout))
+pub fn fetch_codex_models(p: &crate::providers::ProviderInstance) -> Result<Vec<ModelInfo>, String> {
+    super::sessions::exchange(&p.env, |stdin, stdout| read_catalog(stdin, stdout))
 }
 
 /// Drive the handshake then paginate `model/list` until `nextCursor` is
