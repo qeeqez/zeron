@@ -114,6 +114,9 @@ pub struct Workspace {
     /// Shared text field for the folder dialogs — "Move to folder" seeds it
     /// empty, "Rename folder" with the current name.
     pub folder_input: Entity<InputState>,
+    /// Shared text field for the saved-prompt dialogs — "Save prompt" seeds
+    /// it empty, "Rename prompt" with the current name.
+    pub prompt_input: Entity<InputState>,
     /// Folder names collapsed in the sidebar — runtime-only; folders are
     /// just `Chat::folder` values, so this set may name a folder that no
     /// longer exists.
@@ -139,6 +142,9 @@ pub struct Workspace {
     pub nav: Option<crate::msg_nav::MsgNav>,
     pub nav_focus: FocusHandle,
     pub pending_g: Option<std::time::Instant>,
+    /// Named reusable prompts — the composer ★ popover lists them and
+    /// `/save` adds to them; persisted per project as `prompts.json`.
+    pub prompts: crate::prompts::PromptStore,
     /// Agents-panel task input — Enter spawns a standalone backend turn.
     pub task_input: Entity<InputState>,
     pub chat_search_open: bool,

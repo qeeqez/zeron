@@ -133,6 +133,9 @@ mod project;
 mod project_tests;
 #[cfg(test)]
 mod project_ui_tests;
+mod prompts;
+#[cfg(test)]
+mod prompts_tests;
 mod provider_ops;
 #[cfg(test)]
 mod provider_tests;

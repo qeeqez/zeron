@@ -8,8 +8,8 @@ use gpui_kit::*;
 
 use crate::slash::SLASH_COMMANDS;
 use crate::views::{
-    EffortPickerSpec, ModelPickerSpec, PickerProvider, PickerSpec, attachment_chips, effort_picker, mention_item, model_picker, picker,
-    queued_item, slash_item, usage_popover,
+    EffortPickerSpec, ModelPickerSpec, PickerProvider, PickerSpec, SavedPromptsSpec, attachment_chips, effort_picker, mention_item,
+    model_picker, picker, queued_item, saved_prompts_popover, slash_item, usage_popover,
 };
 use crate::workspace::Workspace;
 
@@ -107,6 +107,13 @@ impl Workspace {
                 options: effort_options,
                 ws: ws.clone(),
             })
+        });
+        // The ★ popover lists saved prompts; "Save current…" is armed by a
+        // non-empty composer.
+        let prompts_popover = saved_prompts_popover(SavedPromptsSpec {
+            prompts: self.prompts.prompts.clone(),
+            can_save: !empty,
+            ws: ws.clone(),
         });
         let composer_text = self.composer.read(cx).value().to_string();
         // The mention menu tracks the LAST `@` token: it must sit at a word
@@ -240,6 +247,7 @@ impl Workspace {
                             .child(model_picker)
                             .child(mode_picker)
                             .when_some(effort, |d, e| d.child(e))
+                            .child(prompts_popover)
                             .child(div().flex_1())
                             .child(
                                 div()

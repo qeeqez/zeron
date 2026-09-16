@@ -29,6 +29,7 @@ mod model_picker;
 pub(crate) mod nav_row;
 mod plan_panel;
 mod project_switcher;
+mod saved_prompts;
 pub mod settings;
 pub mod settings_appearance;
 pub mod settings_default_model;
@@ -69,6 +70,7 @@ pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_it
 pub use empty::render_empty_state;
 pub use message::render_message;
 pub use model_picker::{EffortPickerSpec, ModelPickerSpec, PickerProvider, PickerSpec, effort_picker, model_picker, picker};
+pub use saved_prompts::{SavedPromptsSpec, saved_prompts_popover};
 pub use usage_popover::usage_popover;
 
 #[cfg(test)]

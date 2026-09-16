@@ -2,9 +2,9 @@
 //!
 //! `run_slash` dispatches a typed `/cmd arg` line — commands either act on
 //! the workspace directly (`/clear`, `/compact`, `/status`, `/help`,
-//! `/model`, `/export`, `/rename`) or send a canned prompt (`/init`).
-//! Anything that parses as a command but isn't in `SLASH_COMMANDS` gets a
-//! note instead of silently reaching the backend.
+//! `/model`, `/export`, `/rename`, `/prompts`, `/save`) or send a canned
+//! prompt (`/init`). Anything that parses as a command but isn't in
+//! `SLASH_COMMANDS` gets a note instead of silently reaching the backend.
 
 use std::rc::Rc;
 use std::time::SystemTime;
@@ -17,14 +17,16 @@ use crate::workspace::Workspace;
 
 /// `(name, description)` — the composer's `/` menu and `/help` both render
 /// this table, so a command ships with its help text or not at all.
-pub(crate) const SLASH_COMMANDS: [(&str, &str); 8] = [
+pub(crate) const SLASH_COMMANDS: [(&str, &str); 10] = [
     ("clear", "Clear this chat's messages"),
     ("compact", "Fold older messages into a context summary"),
     ("export", "Export this chat as Markdown"),
     ("help", "List the slash commands"),
     ("init", "Analyze the codebase and write AGENTS.md"),
     ("model", "Show or switch the model (`/model [instance/]id`)"),
+    ("prompts", "List saved prompts"),
     ("rename", "Rename this chat"),
+    ("save", "Save a prompt (`/save <name> [text]`)"),
     ("status", "Show provider, model, access and workspace"),
 ];
 
@@ -114,7 +116,9 @@ impl Workspace {
             },
             "init" => self.send_text(Queued::new(INIT_PROMPT.to_string(), Vec::new()), window, cx),
             "model" => self.model_command(arg, cx),
+            "prompts" => self.prompts_note(cx),
             "rename" => self.rename_active(window, cx),
+            "save" => self.save_prompt_command(arg, cx),
             "status" => self.status_note(cx),
             _ => {
                 let known = SLASH_COMMANDS.iter().map(|(c, _)| format!("`/{c}`")).collect::<Vec<_>>().join(" ");
