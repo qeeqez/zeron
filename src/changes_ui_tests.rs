@@ -111,6 +111,33 @@ fn changes_panel_lists_rows_and_refresh_recollects() {
     });
 }
 
+/// The header carries the diff rollup — `K files changed · +N −M` — while the
+/// tree is dirty and drops it once the list is clean.
+#[test]
+fn changes_panel_header_shows_diff_summary() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    cx.update(|window, cx| {
+        ws.update(cx, |this, cx| {
+            this.changes = vec![
+                change("src/edited.rs", ChangeStatus::Modified, 3, 1),
+                change("src/new.rs", ChangeStatus::Added, 12, 0),
+            ];
+            this.changes_panel_open = true;
+            cx.notify();
+        });
+        window.draw(cx).clear(cx);
+        assert_eq!(window.find("changes-summary").label(), Some("2 files changed · +15 −1"), "header rollup renders");
+
+        ws.update(cx, |this, cx| {
+            this.changes = vec![];
+            cx.notify();
+        });
+        window.draw(cx).clear(cx);
+        assert!(window.try_find("changes-summary").is_none(), "clean tree hides the summary");
+    });
+}
+
 #[test]
 fn change_row_expands_to_show_diff_lines_and_collapses() {
     let mut app = TestAppContext::single();

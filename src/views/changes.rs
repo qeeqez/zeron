@@ -23,8 +23,7 @@ impl Workspace {
             .enumerate()
             .map(|(ix, c)| change_entry(ix, c, &mut next_line, self, cx))
             .collect();
-        let added: u32 = self.changes.iter().map(|c| c.added).sum();
-        let deleted: u32 = self.changes.iter().map(|c| c.deleted).sum();
+        let summary = crate::changes::diff_summary(&self.changes);
         div()
             .id("changes-panel")
             .test_support()
@@ -38,35 +37,60 @@ impl Workspace {
             .child(
                 div()
                     .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_3()
-                    .py_2()
+                    .flex_col()
                     .border_b_1()
                     .border_color(cx.theme().border)
-                    .text_sm()
-                    .font_bold()
-                    .child(IconName::FileDiff)
-                    .child("Changes")
-                    .child(div().flex_1())
-                    .child(diff_mode_toggle(self.diff_mode, cx))
                     .child(
                         div()
-                            .id("refresh-changes")
-                            .test_support()
-                            .cursor_pointer()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(IconName::RefreshCcw)
-                            .on_click(cx.listener(|this, _, _, cx| this.refresh_changes(cx))),
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .px_3()
+                            .py_2()
+                            .text_sm()
+                            .font_bold()
+                            .child(IconName::FileDiff)
+                            .child("Changes")
+                            .child(div().flex_1())
+                            .child(diff_mode_toggle(self.diff_mode, cx))
+                            .child(
+                                div()
+                                    .id("refresh-changes")
+                                    .test_support()
+                                    .cursor_pointer()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(IconName::RefreshCcw)
+                                    .on_click(cx.listener(|this, _, _, cx| this.refresh_changes(cx))),
+                            )
+                            .child(
+                                div()
+                                    .id("close-changes")
+                                    .test_support()
+                                    .cursor_pointer()
+                                    .child(IconName::X)
+                                    .on_click(cx.listener(|this, _, _, cx| this.toggle_changes_panel(cx))),
+                            ),
                     )
-                    .child(
-                        div()
-                            .id("close-changes")
-                            .test_support()
-                            .cursor_pointer()
-                            .child(IconName::X)
-                            .on_click(cx.listener(|this, _, _, cx| this.toggle_changes_panel(cx))),
-                    ),
+                    // `K files changed · +N −M` — the same rollup real Codex
+                    // shows under the panel title; hidden on a clean tree.
+                    .when_some(summary, |d, s| {
+                        d.child(
+                            div()
+                                .id("changes-summary")
+                                .test_support()
+                                .aria_label(s.text())
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .px_3()
+                                .pb_2()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(format!("{} files changed ·", s.files))
+                                .child(div().text_color(cx.theme().success).child(format!("+{}", s.added)))
+                                .child(div().text_color(cx.theme().danger).child(format!("−{}", s.deleted))),
+                        )
+                    }),
             )
             .when(!self.review.comments.is_empty(), |d| d.child(crate::views::diff::review_banner(self, cx)))
             .child(
@@ -85,22 +109,6 @@ impl Workspace {
                     .children(rows),
             )
             .when_some(self.git.branch.clone(), |d, branch| d.child(crate::views::changes_git::git_block(self, &branch, cx)))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_3()
-                    .py_2()
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("{} files", self.changes.len()))
-                    .child(div().flex_1())
-                    .child(div().text_color(cx.theme().success).child(format!("+{added}")))
-                    .child(div().text_color(cx.theme().danger).child(format!("-{deleted}"))),
-            )
     }
 }
 

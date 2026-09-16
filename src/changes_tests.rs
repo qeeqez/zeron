@@ -6,7 +6,9 @@
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use crate::git::{self, BranchStatus};
+    use crate::changes::diff_summary;
+    use crate::changes_ui_tests::change;
+    use crate::git::{self, BranchStatus, ChangeStatus};
 
     fn run(dir: &Path, args: &[&str]) -> bool {
         std::process::Command::new("git")
@@ -268,5 +270,25 @@ mod tests {
         assert!(branches.iter().any(|b| b.name == "feature-x" && b.current));
         assert!(git::create_branch(&dir, "feature-x").is_err(), "duplicate name fails");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Untracked files surface as `Added` rows whose `added` is the on-disk
+    /// line count (`git::collect` fills it — `git_tests` covers that), so
+    /// they fold into the rollup like any numstat row.
+    #[test]
+    fn diff_summary_aggregates_numstat_counts() {
+        let changes = vec![
+            change("src/edited.rs", ChangeStatus::Modified, 3, 1),
+            change("src/untracked.rs", ChangeStatus::Added, 12, 0),
+            change("src/old.rs", ChangeStatus::Deleted, 0, 8),
+        ];
+        let summary = diff_summary(&changes).expect("changes present");
+        assert_eq!((summary.files, summary.added, summary.deleted), (3, 15, 9));
+        assert_eq!(summary.text(), "3 files changed · +15 −9");
+    }
+
+    #[test]
+    fn diff_summary_is_none_on_a_clean_tree() {
+        assert!(diff_summary(&[]).is_none(), "no rows → no header line");
     }
 }
