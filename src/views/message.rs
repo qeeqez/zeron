@@ -238,10 +238,14 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
             } else {
                 menu
             };
-            if role == Role::Assistant && mc.is_last {
-                menu.item(msg_item("Retry", IconName::RotateCcw, &ws_menu, move |this, _w, cx| this.retry_last(cx)))
-            } else {
-                menu
+            match (role, mc.is_last) {
+                (Role::Assistant, true) => {
+                    menu.item(msg_item("Retry", IconName::RotateCcw, &ws_menu, move |this, _w, cx| this.retry_last(cx)))
+                },
+                (Role::Assistant, false) => menu.item(msg_item("Regenerate", IconName::RotateCcw, &ws_menu, move |this, w, cx| {
+                    this.regenerate_from(ix, w, cx)
+                })),
+                _ => menu,
             }
         })
         .into_any_element()

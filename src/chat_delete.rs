@@ -99,9 +99,61 @@ impl Workspace {
         })
         .detach();
     }
+
+    /// Regenerate the reply at message `ix`: drop it and everything after,
+    /// then re-run the last user prompt. Truncating loses real messages,
+    /// so mid-chat regenerates confirm first — regenerating the last
+    /// message drops nothing extra and runs straight away.
+    pub fn regenerate_from(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let len = self.chats[self.active].messages.len();
+        if self.chats[self.active].running || ix >= len {
+            return;
+        }
+        // Regenerating the last message drops nothing extra — no confirm.
+        if ix + 1 == len {
+            self.regenerate_now(ix, cx);
+            return;
+        }
+        let rx = window.prompt(
+            gpui_kit::PromptLevel::Warning,
+            "Regenerate this reply?",
+            Some("Regenerating removes this reply and everything after it."),
+            &[gpui_kit::PromptButton::ok("Regenerate"), gpui_kit::PromptButton::cancel("Cancel")],
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            if rx.await != Ok(0) {
+                return;
+            }
+            let _ = this.update(cx, |this, cx| this.regenerate_now(ix, cx));
+        })
+        .detach();
+    }
+
+    /// The confirmed regenerate: truncate at `ix` and re-run the last user
+    /// prompt. Re-checks `running` — the prompt is async.
+    pub(crate) fn regenerate_now(&mut self, ix: usize, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[self.active];
+        if chat.running || ix >= chat.messages.len() {
+            return;
+        }
+        std::rc::Rc::make_mut(&mut chat.messages).truncate(ix);
+        // Entries pinned to dropped messages are unreachable
+        // (`for_message`'s `at` guard) — prune them.
+        chat.checkpoints.retain(|c| c.ix < ix);
+        // The truncated turn earned `last_turn` — don't let the new tail
+        // message inherit its duration label.
+        chat.last_turn = None;
+        self.clear_recall();
+        self.rerun_last_prompt(cx);
+    }
 }
 
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
 #[path = "temp_chat_tests.rs"]
 mod temp_chat_tests;
+
+#[cfg(test)]
+#[path = "regenerate_tests.rs"]
+mod regenerate_tests;

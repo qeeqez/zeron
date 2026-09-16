@@ -1,7 +1,7 @@
 //! The message row's hover-revealed footer: ghost action icons (copy,
-//! quote, edit, view-raw, retry, rating, read-aloud) plus the turn duration,
-//! token usage and timestamp. A thumbs-down also mounts a "what went
-//! wrong" note editor under the row (see `crate::feedback`).
+//! quote, edit, view-raw, regenerate, rating, read-aloud) plus the turn
+//! duration, token usage and timestamp. A thumbs-down also mounts a "what
+//! went wrong" note editor under the row (see `crate::feedback`).
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Escape as InputEscape, Input};
@@ -48,10 +48,10 @@ fn action_icon(
 }
 
 /// Hover-revealed action row under a message: copy, quote, edit (user
-/// messages), view-raw, retry (last assistant reply only), rating,
+/// messages), view-raw, regenerate (assistant replies), rating,
 /// read-aloud, then the turn duration, token usage and timestamp.
 pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Option<Entity<MarkdownState>>, cx: &mut App) -> Div {
-    let MsgCtx { ix, is_last, msg, .. } = mc;
+    let MsgCtx { ix, msg, .. } = mc;
     let muted = hsla(0.0, 0.0, 0.55, 1.0);
     let accent = cx.theme().accent;
     let group = SharedString::from(format!("msg-{ix}"));
@@ -83,12 +83,12 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
             let color = if md.read(cx).raw { accent } else { muted };
             row = row.child(action_icon(("raw", ix), IconName::Code, color, &group, toggle_raw(md, ws.clone(), ix)));
         }
-        // retry_last re-runs the final turn — only meaningful on the last
-        // message, so the icon is gated to it.
-        if is_last {
+        // Regenerate re-runs the turn that produced this reply — on the
+        // last message it's a plain retry, mid-chat it truncates first.
+        {
             let ws = ws.clone();
-            row = row.child(action_icon(("retry", ix), IconName::RotateCcw, muted, &group, move |_, _, cx| {
-                ws.update(cx, |this, cx| this.retry_last(cx));
+            row = row.child(action_icon(("retry", ix), IconName::RotateCcw, muted, &group, move |_, window, cx| {
+                ws.update(cx, |this, cx| this.regenerate_from(ix, window, cx));
             }));
         }
         let rating = msg.rating;

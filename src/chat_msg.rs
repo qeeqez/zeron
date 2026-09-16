@@ -126,6 +126,14 @@ impl Workspace {
         while matches!(chat.messages.last(), Some(m) if m.role == Role::Assistant) {
             Rc::make_mut(&mut chat.messages).pop();
         }
+        self.rerun_last_prompt(cx);
+    }
+
+    /// Mark the active chat running and re-send its last user prompt —
+    /// shared by `retry_last` and `regenerate_from` once the transcript's
+    /// tail is in place.
+    pub(crate) fn rerun_last_prompt(&mut self, cx: &mut Context<Self>) {
+        let chat = &mut self.chats[self.active];
         chat.running = true;
         chat.failed_flag = false;
         chat.started_at = Some(std::time::Instant::now());
@@ -135,24 +143,30 @@ impl Workspace {
             s.reset(count, cx);
         });
         cx.notify();
-        let (prompt, attachments) = self.chats[self.active]
-            .messages
-            .iter()
-            .rev()
-            .find(|m| m.role == Role::User)
-            .map(|m| match &m.kind {
-                MessageKind::Text(t) => (t.to_string(), m.attachments.clone()),
-                _ => (String::new(), vec![]),
-            })
-            .unwrap_or_default();
-        // Re-attach the files — the original prompt included them.
-        let prompt = if attachments.is_empty() {
-            prompt
-        } else {
-            let files = attachments.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", ");
-            format!("{prompt}\n\n[Attached files: {files}]")
-        };
+        let prompt = last_user_prompt(&self.chats[self.active]);
         self.start_reply(&prompt, cx);
+    }
+}
+
+/// The last user message's text with its attachments folded back in —
+/// the prompt a retry/regenerate re-sends.
+fn last_user_prompt(chat: &crate::model::Chat) -> String {
+    let (prompt, attachments) = chat
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == Role::User)
+        .map(|m| match &m.kind {
+            MessageKind::Text(t) => (t.to_string(), m.attachments.clone()),
+            _ => (String::new(), vec![]),
+        })
+        .unwrap_or_default();
+    // Re-attach the files — the original prompt included them.
+    if attachments.is_empty() {
+        prompt
+    } else {
+        let files = attachments.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", ");
+        format!("{prompt}\n\n[Attached files: {files}]")
     }
 }
 
