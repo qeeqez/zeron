@@ -1,24 +1,32 @@
-//! Update checking: the latest GitHub release for `rixlhq/code` compared
-//! against `CARGO_PKG_VERSION`, surfaced as a toast plus the About row in
-//! Profile settings and the About dialog. `start_update_check` runs a check
-//! at launch and re-checks daily; the "Check for Updates" menu item runs one
-//! on demand and always reports the outcome. `update_last_check`,
+//! Update checking: the latest GitHub release for the app's repository
+//! (`Cargo.toml`'s `repository`, mirrored by the git remote) compared against
+//! `CARGO_PKG_VERSION`. A manual "Check for Updates" reports in a dialog —
+//! up-to-date, the release notes with a View Release button, or a muted
+//! error line; the automatic daily check stays a toast plus the About row in
+//! Profile settings and the About dialog. `update_last_check`,
 //! `update_latest` and `update_skip` persist in settings.json so a dismissed
 //! release doesn't re-nag and a pending one survives restarts.
 
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use gpui_kit::*;
-
-use crate::workspace::Workspace;
-
 /// The repository's releases page — the Download target and the fallback
 /// URL when a restored pending update has no `html_url` on file.
-pub(crate) const RELEASES_PAGE: &str = "https://github.com/rixlhq/code/releases";
+pub(crate) const RELEASES_PAGE: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/releases");
+/// `"owner/repo"` from `CARGO_PKG_REPOSITORY` — the GitHub API path segment.
+/// The repository URL is `https://github.com/<owner>/<repo>` (with or
+/// without a `.git` suffix); anything else yields a slug that 404s, which
+/// the check reports as "no releases" rather than crashing.
+#[cfg(not(test))]
+fn repo_slug() -> String {
+    let repo = env!("CARGO_PKG_REPOSITORY").trim_end_matches(".git").trim_end_matches('/');
+    repo.rsplit_once("github.com/").map(|(_, slug)| slug).unwrap_or(repo).to_string()
+}
 /// Latest-release endpoint. `latest` already skips drafts and prereleases.
 #[cfg(not(test))]
-const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/rixlhq/code/releases/latest";
+fn latest_release_url() -> String {
+    format!("https://api.github.com/repos/{}/releases/latest", repo_slug())
+}
 /// Minimum time between automatic checks — one fetch per day at most.
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 /// How often the background loop re-reads `update_last_check`; the check
@@ -90,20 +98,21 @@ pub(crate) enum ReleaseOutcome {
     UpToDate,
 }
 
-/// Fold a fetched release into `state` and persist the outcome. The
+/// Fold a fetched release into `state` and persist the outcome — `None`
+/// means the repo has no releases yet, which counts as up-to-date. The
 /// notification decision lives here so it's unit-testable without a window.
-pub(crate) fn apply_release(state: &mut UpdateState, release: &Release) -> ReleaseOutcome {
-    let newer = semver_compare(&release.tag, env!("CARGO_PKG_VERSION")) == Some(std::cmp::Ordering::Greater);
+pub(crate) fn apply_release(state: &mut UpdateState, release: Option<&Release>) -> ReleaseOutcome {
+    let newer = release.is_some_and(|r| semver_compare(&r.tag, env!("CARGO_PKG_VERSION")) == Some(std::cmp::Ordering::Greater));
     persist_update(|s| {
         s.update_last_check = Some(SystemTime::now());
-        s.update_latest = if newer { release.tag.clone() } else { String::new() };
+        s.update_latest = if newer { release.map(|r| r.tag.clone()).unwrap_or_default() } else { String::new() };
     });
-    if !newer {
+    let Some(release) = release.filter(|_| newer) else {
         state.status = UpdateStatus::UpToDate;
         state.url.clear();
         state.skipped = false;
         return ReleaseOutcome::UpToDate;
-    }
+    };
     state.status = UpdateStatus::Available(release.tag.clone());
     state.url = release.url.clone();
     state.skipped = crate::persist::load_settings().update_skip == release.tag;
@@ -126,17 +135,23 @@ pub(crate) fn update_due() -> bool {
         .is_none_or(|t| t.elapsed().unwrap_or(CHECK_INTERVAL) >= CHECK_INTERVAL)
 }
 
-/// One GitHub release — `tag_name` plus its page URL.
+/// One GitHub release — `tag_name`, its page URL, and the release name and
+/// notes the update dialog shows.
 #[derive(Clone, Debug)]
 pub(crate) struct Release {
     pub tag: String,
     pub url: String,
+    /// The release's display name (`name` in the API) — often the tag again.
+    pub name: Option<String>,
+    /// Release notes (`body` in the API), markdown as published.
+    pub notes: Option<String>,
 }
 
 /// Where release info comes from — the seam tests fake so no test touches
-/// the network.
+/// the network. `Ok(None)` means the repo has no releases (the `latest`
+/// endpoint 404s) — a successful check, not an error.
 pub(crate) trait ReleaseSource: Send + Sync {
-    fn latest(&self) -> Result<Release, String>;
+    fn latest(&self) -> Result<Option<Release>, String>;
 }
 
 /// The real source: GitHub's latest-release API.
@@ -145,23 +160,60 @@ struct GitHubReleases;
 
 #[cfg(not(test))]
 impl ReleaseSource for GitHubReleases {
-    fn latest(&self) -> Result<Release, String> {
-        #[derive(serde::Deserialize)]
-        struct Latest {
-            tag_name: String,
-            html_url: String,
-        }
-        let mut resp = ureq::get(LATEST_RELEASE_URL)
+    fn latest(&self) -> Result<Option<Release>, String> {
+        let mut resp = ureq::get(latest_release_url())
             .config()
             .timeout_global(Some(Duration::from_secs(15)))
+            .http_status_as_error(false)
             .build()
             .header("User-Agent", concat!("rixlcode/", env!("CARGO_PKG_VERSION")))
             .header("Accept", "application/vnd.github+json")
             .call()
             .map_err(|e| e.to_string())?;
-        let latest: Latest = resp.body_mut().read_json().map_err(|e| e.to_string())?;
-        Ok(Release { tag: latest.tag_name, url: latest.html_url })
+        // A repo with no releases 404s the `latest` endpoint — that's a
+        // successful "nothing newer" answer, not a failure.
+        if resp.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        if !resp.status().is_success() {
+            return Err(format!("GitHub returned {}", resp.status()));
+        }
+        let body = resp.body_mut().read_to_string().map_err(|e| e.to_string())?;
+        parse_release(&body).map(Some)
     }
+}
+
+/// Parse the `releases/latest` response body into a `Release` — the seam
+/// `update_tests` exercises without a network. Blank `name`/`body` collapse
+/// to `None` so the dialog skips them instead of rendering empty lines.
+pub(crate) fn parse_release(body: &str) -> Result<Release, String> {
+    #[derive(serde::Deserialize)]
+    struct Latest {
+        tag_name: String,
+        html_url: String,
+        name: Option<String>,
+        body: Option<String>,
+    }
+    let latest: Latest = serde_json::from_str(body).map_err(|e| format!("unparseable release JSON: {e}"))?;
+    let nonblank = |s: Option<String>| s.filter(|s| !s.trim().is_empty());
+    Ok(Release {
+        tag: latest.tag_name,
+        url: latest.html_url,
+        name: nonblank(latest.name),
+        notes: nonblank(latest.body),
+    })
+}
+
+/// The first `NOTES_LINES` lines of release notes for the dialog — the full
+/// notes stay reachable via View Release.
+pub(crate) fn release_notes_excerpt(notes: &str) -> String {
+    const NOTES_LINES: usize = 20;
+    let mut lines = notes.lines().take(NOTES_LINES + 1);
+    let mut excerpt = lines.by_ref().take(NOTES_LINES).collect::<Vec<_>>().join("\n");
+    if lines.next().is_some() {
+        excerpt.push_str("\n…");
+    }
+    excerpt
 }
 
 /// The active source. Tests install a fake via `set_test_source`; the
@@ -187,8 +239,8 @@ struct NoReleases;
 
 #[cfg(test)]
 impl ReleaseSource for NoReleases {
-    fn latest(&self) -> Result<Release, String> {
-        Err("no releases".to_string())
+    fn latest(&self) -> Result<Option<Release>, String> {
+        Ok(None)
     }
 }
 
@@ -197,36 +249,6 @@ impl ReleaseSource for NoReleases {
 #[cfg(test)]
 pub(crate) fn set_test_source(src: Arc<dyn ReleaseSource>) {
     *TEST_SOURCE.write() = Some(src);
-}
-
-/// The "Check for Updates" menu item: run a manual check in the active
-/// window's workspace — or open a window first when none is open, the same
-/// fallback `show_about` uses. Deferred because the dispatching window is
-/// mid-update.
-pub fn check_for_updates(cx: &mut App) {
-    cx.defer(|cx| {
-        if let Some(handle) = cx.active_window() {
-            check_in_window(handle, cx);
-            return;
-        }
-        cx.spawn(async move |cx| {
-            let Ok(handle) = crate::lifecycle::open_workspace_window(cx) else { return };
-            check_in_window(*handle, cx);
-        })
-        .detach();
-    });
-}
-
-/// Run a manual check in `handle`'s workspace — a no-op for a window whose
-/// root isn't a `Workspace` (there are none today, but the downcast keeps
-/// the menu item safe if that changes).
-fn check_in_window<C: AppContext>(handle: AnyWindowHandle, cx: &mut C) {
-    let _ = handle.update(cx, |view, _window, cx| {
-        // The window's root view is `Root`; the workspace sits inside it.
-        let Ok(root) = view.downcast::<gpui_kit::component::Root>() else { return };
-        let Some(ws) = root.read(cx).view().clone().downcast::<Workspace>().ok() else { return };
-        ws.update(cx, |ws, cx| ws.check_updates(cx));
-    });
 }
 
 /// Semver ordering for release tags: optional `v` prefix, missing

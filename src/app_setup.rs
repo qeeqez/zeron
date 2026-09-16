@@ -5,7 +5,7 @@ use gpui_kit::*;
 
 use crate::{
     AboutApp, BringAllToFront, CheckForUpdates, FindInChat, HideApp, HideOthers, MsgNavDown, MsgNavTop, MsgNavUp, NewWindow, OpenProject,
-    QuitApp, SearchAllChats, TogglePlan, ToggleTerminal, ViewLogs, ZoomIn, lifecycle, menus, shortcuts, update,
+    QuitApp, SearchAllChats, TogglePlan, ToggleTerminal, ViewLogs, ZoomIn, lifecycle, menus, shortcuts, update_check,
 };
 
 /// The system-wide summon hotkey — declared here (not `main.rs`, which is
@@ -49,7 +49,7 @@ pub(crate) fn install_app_actions(cx: &mut App) {
     cx.on_action(|_: &NewWindow, cx| lifecycle::open_new_window(cx));
     cx.on_action(|_: &OpenProject, cx| lifecycle::prompt_open_project(cx));
     cx.on_action(|_: &AboutApp, cx| lifecycle::show_about(cx));
-    cx.on_action(|_: &CheckForUpdates, cx| update::check_for_updates(cx));
+    cx.on_action(|_: &CheckForUpdates, cx| update_check::check_for_updates(cx));
     cx.on_action(|_: &HideApp, cx| cx.hide());
     cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
     cx.on_action(|_: &BringAllToFront, cx| cx.activate(false));

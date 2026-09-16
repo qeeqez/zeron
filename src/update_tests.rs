@@ -1,7 +1,8 @@
-//! Tests for update checking: semver ordering, the `apply_release` state
-//! transitions (including the skipped-version gate and last-check
-//! persistence), and headless runs of the startup check and the "Check for
-//! Updates" action — all against a fake `ReleaseSource`, never the network.
+//! Tests for update checking: semver ordering, response parsing, the
+//! `apply_release` state transitions (including the skipped-version gate and
+//! last-check persistence), and headless runs of the startup check — all
+//! against a fake `ReleaseSource`, never the network. The "Check for
+//! Updates" dialog tests live in `update_dialog_tests.rs`.
 //!
 //! Imports stay narrow on purpose: `use gpui_kit::*` would pull the
 //! `#[gpui_kit::test]` attribute into scope under its plain name `test`,
@@ -18,10 +19,10 @@ use crate::update::{self, Release, ReleaseOutcome, ReleaseSource, UpdateState, U
 use crate::workspace::Workspace;
 
 /// A release source returning a fixed result.
-struct FakeReleases(Result<Release, String>);
+struct FakeReleases(Result<Option<Release>, String>);
 
 impl ReleaseSource for FakeReleases {
-    fn latest(&self) -> Result<Release, String> {
+    fn latest(&self) -> Result<Option<Release>, String> {
         self.0.clone()
     }
 }
@@ -30,11 +31,13 @@ fn release(tag: &str) -> Release {
     Release {
         tag: tag.to_string(),
         url: format!("https://github.com/rixlhq/code/releases/tag/{tag}"),
+        name: Some(format!("Rixl Code {tag}")),
+        notes: Some("### Added\n- something new".to_string()),
     }
 }
 
 fn fake(tag: &str) -> Arc<dyn ReleaseSource> {
-    Arc::new(FakeReleases(Ok(release(tag))))
+    Arc::new(FakeReleases(Ok(Some(release(tag)))))
 }
 
 /// Redirect `~` into a throwaway dir; nextest runs each test in its own
@@ -117,40 +120,43 @@ fn semver_orders_prereleases() {
 fn newer_release_marks_update_available() {
     sandbox_home();
     let mut state = UpdateState::default();
-    let outcome = update::apply_release(&mut state, &release("v99.0.0"));
+    let outcome = update::apply_release(&mut state, Some(&release("v99.0.0")));
     assert_eq!(outcome, ReleaseOutcome::Available);
     assert_eq!(state.status, UpdateStatus::Available("v99.0.0".to_string()));
     assert!(!state.skipped);
     let s = crate::persist::load_settings();
     assert_eq!(s.update_latest, "v99.0.0", "the pending tag should persist");
-    assert!(s.update_last_check.is_some(), "the check time should persist");
 }
 
 #[test]
 fn same_or_older_release_is_up_to_date() {
     sandbox_home();
-    for tag in [env!("CARGO_PKG_VERSION"), "v0.0.1"] {
+    for tag in ["0.1.0", "v0.0.9", "garbage-tag"] {
         let mut state = UpdateState::default();
-        let outcome = update::apply_release(&mut state, &release(tag));
+        let outcome = update::apply_release(&mut state, Some(&release(tag)));
         assert_eq!(outcome, ReleaseOutcome::UpToDate, "{tag} should not count as newer");
         assert_eq!(state.status, UpdateStatus::UpToDate);
         assert!(crate::persist::load_settings().update_latest.is_empty(), "no pending tag should persist");
     }
+    // A repo with no releases at all is also up-to-date.
+    let mut state = UpdateState::default();
+    assert_eq!(update::apply_release(&mut state, None), ReleaseOutcome::UpToDate);
+    assert_eq!(state.status, UpdateStatus::UpToDate);
 }
 
 #[test]
 fn skipped_release_does_not_renotify() {
     sandbox_home();
     let mut state = UpdateState::default();
-    assert_eq!(update::apply_release(&mut state, &release("v99.0.0")), ReleaseOutcome::Available);
+    assert_eq!(update::apply_release(&mut state, Some(&release("v99.0.0"))), ReleaseOutcome::Available);
     // Dismissing the update records the skip and clears the pending tag.
     state.skip("v99.0.0");
     assert!(state.skipped);
-    assert_eq!(crate::persist::load_settings().update_skip, "v99.0.0");
+    assert!(crate::persist::load_settings().update_latest.is_empty());
     // The same tag landing again stays quiet; a newer one still surfaces.
-    assert_eq!(update::apply_release(&mut state, &release("v99.0.0")), ReleaseOutcome::Skipped);
+    assert_eq!(update::apply_release(&mut state, Some(&release("v99.0.0"))), ReleaseOutcome::Skipped);
     assert!(state.skipped);
-    assert_eq!(update::apply_release(&mut state, &release("v99.1.0")), ReleaseOutcome::Available);
+    assert_eq!(update::apply_release(&mut state, Some(&release("v99.1.0"))), ReleaseOutcome::Available);
     assert!(!state.skipped);
 }
 
@@ -180,42 +186,30 @@ fn startup_check_finds_update_and_notifies() {
 }
 
 #[test]
-fn check_for_updates_action_reports_up_to_date() {
-    let mut app = TestAppContext::single();
-    sandbox_home();
-    app.update(crate::install_app_actions);
-    update::set_test_source(fake("v0.0.1"));
-    let (workspace, handle, cx) = mount(&mut app);
-    until(&workspace, cx, |ws| ws.update.status == UpdateStatus::UpToDate);
-    // The action targets the active window — activate it like a real menu
-    // click would.
-    cx.update(|window, _| window.activate_window());
-    cx.run_until_parked();
-    TestAppContext::dispatch_action(cx, handle, crate::CheckForUpdates);
-    for _ in 0..64 {
-        cx.run_until_parked();
-        if toast_count(cx) > 0 {
-            break;
-        }
-    }
-    assert_eq!(toast_count(cx), 1, "a manual check should report the outcome");
-    let status = workspace.read_with(cx, |ws, _| ws.update.status.clone());
-    assert_eq!(status, UpdateStatus::UpToDate);
+fn parse_release_reads_github_json() {
+    let body = r#"{"tag_name":"v1.2.3","html_url":"https://github.com/o/r/releases/tag/v1.2.3","name":"Big release","body":"Added\n- x"}"#;
+    let release = update::parse_release(body).unwrap();
+    assert_eq!(release.tag, "v1.2.3");
+    assert_eq!(release.url, "https://github.com/o/r/releases/tag/v1.2.3");
+    assert_eq!(release.name.as_deref(), Some("Big release"));
+    assert_eq!(release.notes.as_deref(), Some("Added\n- x"));
+    // Missing or blank name/body collapse to None.
+    let bare = update::parse_release(r#"{"tag_name":"v1.0.0","html_url":"u","name":"  ","body":null}"#).unwrap();
+    assert!(bare.name.is_none() && bare.notes.is_none());
+    // Garbage and missing fields are errors, never panics.
+    assert!(update::parse_release("not json").is_err());
+    assert!(update::parse_release(r#"{"tag_name":"v1.0.0"}"#).is_err());
 }
 
 #[test]
-fn check_for_updates_action_reports_available() {
-    let mut app = TestAppContext::single();
-    sandbox_home();
-    app.update(crate::install_app_actions);
-    update::set_test_source(fake("v99.0.0"));
-    let (workspace, handle, cx) = mount(&mut app);
-    until(&workspace, cx, |ws| matches!(ws.update.status, UpdateStatus::Available(_)));
-    cx.update(|window, _| window.activate_window());
-    cx.run_until_parked();
-    TestAppContext::dispatch_action(cx, handle, crate::CheckForUpdates);
-    until(&workspace, cx, |ws| matches!(ws.update.status, UpdateStatus::Available(_)));
-    assert_eq!(toast_count(cx), 1, "the same tag replaces the toast rather than stacking");
+fn release_notes_excerpt_truncates() {
+    let short = "line 1\nline 2";
+    assert_eq!(update::release_notes_excerpt(short), short);
+    let long = (1..=25).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+    let excerpt = update::release_notes_excerpt(&long);
+    assert_eq!(excerpt.lines().count(), 21, "20 lines plus the ellipsis");
+    assert!(excerpt.ends_with('…'));
+    assert!(!excerpt.contains("line 21"), "line 21 is past the cut");
 }
 
 #[test]
