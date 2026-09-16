@@ -55,6 +55,7 @@ impl Workspace {
             default_workspace: self.default_workspace.name().into(),
             word_wrap: self.word_wrap,
             diff_mode: self.diff_mode.name().into(),
+            diff_ignore_ws: self.git.ignore_ws,
             preferred_editor: self.preferred_editor.name().into(),
             font_size: self.font_size,
             font_family: self.font_family.clone(),

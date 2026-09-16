@@ -52,6 +52,9 @@ pub struct Settings {
     pub word_wrap: bool,
     /// Changes-panel diff layout — a `DiffMode::name` ("unified" | "split").
     pub diff_mode: String,
+    /// Changes-panel diffs hide whitespace-only changes — `git diff
+    /// --ignore-all-space`; the header's space toggle.
+    pub diff_ignore_ws: bool,
     /// Preferred editor for "Open in Editor" — a `PreferredEditor::name`
     /// ("vscode" | "cursor" | "zed" | "finder" | "ask"); empty = Ask.
     pub preferred_editor: String,

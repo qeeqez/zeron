@@ -54,6 +54,7 @@ impl Workspace {
                             .child("Changes")
                             .child(div().flex_1())
                             .child(diff_mode_toggle(self.diff_mode, cx))
+                            .child(ignore_ws_toggle(self.git.ignore_ws, cx))
                             .child(
                                 div()
                                     .id("refresh-changes")
@@ -217,4 +218,28 @@ fn diff_mode_toggle(mode: DiffMode, cx: &mut Context<Workspace>) -> impl IntoEle
         .child(segment("diff-mode-unified", "Unified", DiffMode::Unified))
         .child(div().w(px(1.)).h_full().bg(border))
         .child(segment("diff-mode-split", "Split", DiffMode::Split))
+}
+
+/// The ignore-whitespace chip in the panel header — a space-bar icon that
+/// carries the accent fill while on. Clicking flips `git.ignore_ws`,
+/// persists it, and re-fetches every expanded diff via
+/// `toggle_diff_ignore_ws`.
+fn ignore_ws_toggle(on: bool, cx: &mut Context<Workspace>) -> impl IntoElement {
+    let (border, muted_fg, accent, accent_fg) = {
+        let theme = cx.theme();
+        (theme.border, theme.muted_foreground, theme.accent, theme.accent_foreground)
+    };
+    let mut chip = div()
+        .id("diff-ignore-ws")
+        .test_support()
+        .aria_label("Ignore whitespace")
+        .cursor_pointer()
+        .px_1p5()
+        .py_0p5()
+        .rounded_md()
+        .border_1()
+        .border_color(border)
+        .child(IconName::Space);
+    chip = if on { chip.bg(accent).text_color(accent_fg) } else { chip.text_color(muted_fg) };
+    chip.on_click(cx.listener(|this, _, _, cx| this.toggle_diff_ignore_ws(cx)))
 }

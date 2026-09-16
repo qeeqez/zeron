@@ -178,12 +178,12 @@ mod tests {
             std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\n").unwrap();
             std::fs::write(dir.join("new.txt"), "fresh\n").unwrap();
 
-            let diff = diff_for_file(&dir, &change("a.txt", ChangeStatus::Modified, 2, 1)).unwrap();
+            let diff = diff_for_file(&dir, &change("a.txt", ChangeStatus::Modified, 2, 1), false).unwrap();
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Removed && l.text == "two"));
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text == "TWO"));
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text == "three"));
 
-            let diff = diff_for_file(&dir, &change("new.txt", ChangeStatus::Added, 1, 0)).unwrap();
+            let diff = diff_for_file(&dir, &change("new.txt", ChangeStatus::Added, 1, 0), false).unwrap();
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text == "fresh"));
         }
         let _ = std::fs::remove_dir_all(&dir);
@@ -207,7 +207,7 @@ mod tests {
 
             let mut renamed = change("new.txt", ChangeStatus::Renamed, 1, 1);
             renamed.source = Some("old.txt".into());
-            let diff = diff_for_file(&dir, &renamed).unwrap();
+            let diff = diff_for_file(&dir, &renamed, false).unwrap();
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Removed && l.text == "two"));
             assert!(diff.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text == "TWO"));
         }
@@ -229,7 +229,7 @@ mod tests {
             run(&["add", "f.txt"]);
             std::fs::write(dir.join("f.txt"), "a\nB\nc\n").unwrap();
 
-            let diff = diff_for_file(&dir, &change("f.txt", ChangeStatus::Added, 3, 0)).unwrap();
+            let diff = diff_for_file(&dir, &change("f.txt", ChangeStatus::Added, 3, 0), false).unwrap();
             let added: Vec<&str> = diff.lines.iter().filter(|l| l.kind == DiffLineKind::Added).map(|l| l.text.as_str()).collect();
             assert_eq!(added, ["a", "B", "c"], "net worktree content, no header junk");
             assert!(diff.lines.iter().all(|l| l.kind != DiffLineKind::Removed));
@@ -257,7 +257,7 @@ mod tests {
             run(&["add", "f.txt"]);
             std::fs::write(dir.join("f.txt"), "a\nB\nc\n").unwrap();
 
-            let diff = diff_for_file(&dir, &change("f.txt", ChangeStatus::Added, 3, 0)).unwrap();
+            let diff = diff_for_file(&dir, &change("f.txt", ChangeStatus::Added, 3, 0), false).unwrap();
             let added: Vec<&str> = diff.lines.iter().filter(|l| l.kind == DiffLineKind::Added).map(|l| l.text.as_str()).collect();
             assert_eq!(added, ["a", "B", "c"], "net worktree content via the sha256 empty tree");
         }
@@ -280,7 +280,7 @@ mod tests {
             // One ~600KB line — over the 512KB byte cap in a single row.
             std::fs::write(dir.join("big.txt"), "a".repeat(600 * 1024)).unwrap();
 
-            let diff = diff_for_file(&dir, &change("big.txt", ChangeStatus::Modified, 1, 1)).unwrap();
+            let diff = diff_for_file(&dir, &change("big.txt", ChangeStatus::Modified, 1, 1), false).unwrap();
             assert!(diff.truncated, "byte cap marks the diff truncated");
             assert!(diff.lines.len() <= 400);
         }

@@ -178,8 +178,9 @@ pub(crate) fn review_anchor(changes: &[FileChange], target: crate::model::Review
 
 /// Working-tree diff for `change` under `dir`. `None` only when git itself
 /// can't run; a file with no textual diff (binary, mode-only, vanished)
-/// yields an empty `FileDiff`.
-pub(crate) fn diff_for_file(dir: &Path, change: &FileChange) -> Option<FileDiff> {
+/// yields an empty `FileDiff`. `ignore_ws` passes `--ignore-all-space` so
+/// whitespace-only edits (reindents, tab↔space) collapse to no diff.
+pub(crate) fn diff_for_file(dir: &Path, change: &FileChange, ignore_ws: bool) -> Option<FileDiff> {
     let (raw, capped) = if change.status == ChangeStatus::Added && !tracked(dir, &change.path) {
         // Untracked files have no index entry — diff against /dev/null.
         let abs = dir.join(&change.path);
@@ -192,8 +193,8 @@ pub(crate) fn diff_for_file(dir: &Path, change: &FileChange) -> Option<FileDiff>
         // against the empty tree for the same net result — concatenating the
         // staged and unstaged halves would feed the second patch's headers
         // to `parse_diff` as content.
-        git_diff(dir, &diff_args("HEAD", change), MAX_DIFF_BYTES)
-            .or_else(|| git_diff(dir, &diff_args(&crate::git::empty_tree_id(dir)?, change), MAX_DIFF_BYTES))?
+        git_diff(dir, &diff_args("HEAD", change, ignore_ws), MAX_DIFF_BYTES)
+            .or_else(|| git_diff(dir, &diff_args(&crate::git::empty_tree_id(dir)?, change, ignore_ws), MAX_DIFF_BYTES))?
     };
     let mut diff = parse_diff(&raw);
     diff.truncated |= capped;
@@ -205,11 +206,15 @@ fn tracked(dir: &Path, path: &str) -> bool {
     git(dir, &["ls-files", "--error-unmatch", "--", path]).is_some()
 }
 
-/// `git diff <base> -- <path> [source]` — a rename needs both names in the
-/// pathspec (the source alone is gone from the worktree, the destination
-/// alone diffs as a new file).
-fn diff_args<'a>(base: &'a str, change: &'a FileChange) -> Vec<&'a str> {
-    let mut args = vec!["diff", base, "--", change.path.as_str()];
+/// `git diff [--ignore-all-space] <base> -- <path> [source]` — a rename
+/// needs both names in the pathspec (the source alone is gone from the
+/// worktree, the destination alone diffs as a new file).
+fn diff_args<'a>(base: &'a str, change: &'a FileChange, ignore_ws: bool) -> Vec<&'a str> {
+    let mut args = vec!["diff"];
+    if ignore_ws {
+        args.push("--ignore-all-space");
+    }
+    args.extend([base, "--", change.path.as_str()]);
     if let Some(source) = &change.source {
         args.push(source.as_str());
     }

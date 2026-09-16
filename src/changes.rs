@@ -70,6 +70,10 @@ pub struct ChangesGit {
     pub generating: bool,
     /// Last op's outcome — `(text, is_error)`; `None` before the first op.
     pub note: Option<(String, bool)>,
+    /// Expanded diffs hide whitespace-only changes — the panel header's
+    /// space toggle; persisted as `Settings.diff_ignore_ws` and passed to
+    /// `git diff` as `--ignore-all-space`.
+    pub ignore_ws: bool,
 }
 
 impl ChangesGit {
@@ -110,6 +114,7 @@ impl ChangesGit {
             busy: false,
             generating: false,
             note: None,
+            ignore_ws: false,
         }
     }
 }
@@ -133,19 +138,41 @@ impl Workspace {
             cx.notify();
             return;
         }
+        self.start_diff_load(ix, cx);
+    }
+
+    /// Issue a background diff load for row `ix` under a fresh token — a
+    /// still-running older load can't attach once this lands, so toggling
+    /// `ignore_ws` mid-load can't be reverted by the stale result.
+    fn start_diff_load(&mut self, ix: usize, cx: &mut Context<Self>) {
         let stamp: DiffStamp = (self.changes_generation, NEXT_DIFF_LOAD.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
-        let row = &mut self.changes[ix];
+        let Some(row) = self.changes.get_mut(ix) else { return };
         row.diff_load = stamp.1;
         let change = row.clone();
         let dir = self.project.root().to_path_buf();
+        let ignore_ws = self.git.ignore_ws;
         cx.spawn(async move |this, cx| {
             let diff = cx
                 .background_executor()
-                .spawn(async move { crate::changes_diff::diff_for_file(&dir, &change) })
+                .spawn(async move { crate::changes_diff::diff_for_file(&dir, &change, ignore_ws) })
                 .await;
             let _ = this.update(cx, |this, cx| this.land_change_diff(stamp, diff, cx));
         })
         .detach();
+    }
+
+    /// Flip the ignore-whitespace diff filter, persist it, and re-issue the
+    /// load for every expanded (or still-loading) row so the new flag takes
+    /// effect without a collapse+re-expand.
+    pub fn toggle_diff_ignore_ws(&mut self, cx: &mut Context<Self>) {
+        self.git.ignore_ws = !self.git.ignore_ws;
+        self.save_settings();
+        for ix in 0..self.changes.len() {
+            if self.changes[ix].diff.is_some() || self.changes[ix].diff_load != 0 {
+                self.start_diff_load(ix, cx);
+            }
+        }
+        cx.notify();
     }
 
     /// Store a loaded diff on the row stamped with the stamp's token —
@@ -336,3 +363,6 @@ mod changes_stale_tests;
 #[cfg(test)]
 #[path = "changes_tests.rs"]
 mod changes_tests;
+#[cfg(test)]
+#[path = "diff_ignore_ws_tests.rs"]
+mod diff_ignore_ws_tests;

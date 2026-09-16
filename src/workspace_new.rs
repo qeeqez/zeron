@@ -211,6 +211,7 @@ impl Workspace {
             terminal: crate::views::terminal::TerminalPanel::new(settings.terminal_open, terminal_input),
         };
         this.snapshots.retention_days = settings.snapshot_retention_days.unwrap_or(crate::snapshots::DEFAULT_RETENTION_DAYS);
+        this.git.ignore_ws = settings.diff_ignore_ws;
         this.snapshots.cap_mb = settings.snapshot_cap_mb.unwrap_or(0);
         let loaded = crate::persist::load_chats(&this.project.chats_dir(), &mut this.next_chat_id, !crate::lifecycle::any_turn_running(cx));
         if loaded.is_empty() {
