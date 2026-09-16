@@ -135,7 +135,7 @@ fn stat_row(id: impl Into<ElementId>, label: impl Into<SharedString>, value: Str
 
 /// A turn's token split: `300 in · 150 out`, plus `· 60 cached` when the
 /// backend reports cache tokens.
-fn token_split(t: TurnUsage) -> String {
+pub(crate) fn token_split(t: TurnUsage) -> String {
     let mut s = format!("{} in · {} out", fmt_tokens(t.input), fmt_tokens(t.output));
     if t.cached > 0 {
         s.push_str(&format!(" · {} cached", fmt_tokens(t.cached)));

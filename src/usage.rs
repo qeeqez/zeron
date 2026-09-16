@@ -167,6 +167,13 @@ impl ChatUsage {
         rows
     }
 
+    /// The thread's cumulative token split — the chat info dialog's
+    /// in/out/cached row. `usage_totals` reads the field directly (it's a
+    /// submodule); views go through this.
+    pub fn tokens(&self) -> TurnUsage {
+        self.tokens
+    }
+
     /// Estimated USD cost of the thread's cumulative tokens under the
     /// model's pricing — `None` when the model's rates are unknown, so the
     /// UI shows tokens only rather than a made-up number.

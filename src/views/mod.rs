@@ -10,6 +10,7 @@ mod changes_git;
 mod changes_git_branch;
 mod changes_pr;
 mod changes_stash;
+mod chat_info;
 mod chat_menu;
 mod chat_view;
 mod composer;
