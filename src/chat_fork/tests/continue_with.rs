@@ -176,7 +176,7 @@ fn continue_with_disabled_with_a_single_provider() {
     seed_transcript(&ws, cx);
     cx.update(|_, cx| {
         ws.update(cx, |this, cx| {
-            for id in ["claude-cli", "acp", "http", "ollama", "sim"] {
+            for id in ["claude-cli", "acp", "mcp", "http", "ollama", "sim"] {
                 this.set_provider_enabled(id, false, cx);
             }
         });
