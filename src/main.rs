@@ -61,6 +61,7 @@ mod chat_ops;
 mod chat_ops_tests;
 mod chat_search;
 mod chat_search_tests;
+mod chat_window;
 mod checkpoints;
 #[cfg(test)]
 mod checkpoints_tests;

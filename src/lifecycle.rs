@@ -172,8 +172,9 @@ pub fn spawn_launch_window(cx: &mut App) {
     .detach();
 }
 
-/// Open a workspace window bound to `project` — one window per project, so
-/// each keeps its own chats and cwd-scoped work.
+/// Open a workspace window bound to `project`. Each window keeps its own
+/// chats in memory and cwd-scoped work; two windows on one project share
+/// the on-disk chat store (see `open_chat_window`).
 pub fn open_workspace_window_for(
     project: crate::project::Project, cx: &mut gpui_kit::AsyncApp,
 ) -> gpui_kit::Result<gpui_kit::WindowHandle<Root>> {
@@ -227,6 +228,20 @@ pub fn open_workspace_window_for(
         });
     }
     Ok(handle)
+}
+
+/// Open a workspace window on `project` with `key`'s chat selected — the
+/// "Open in New Window" path. Unlike `open_project` this never focuses an
+/// existing window: the whole point is a second window on the same
+/// project, and `save_chats`' foreign-turn merge keeps the two windows'
+/// writes from clobbering each other.
+pub fn open_chat_window(project: crate::project::Project, key: crate::chat_window::LoadedChatKey, cx: &mut gpui_kit::AsyncApp) {
+    let Ok(handle) = open_workspace_window_for(project, cx) else { return };
+    let _ = handle.update(cx, |root, window, cx| {
+        if let Ok(ws) = root.view().clone().downcast::<Workspace>() {
+            ws.update(cx, |this, cx| this.select_loaded_chat(key, window, cx));
+        }
+    });
 }
 
 /// The open workspace window bound to `root`, if any.

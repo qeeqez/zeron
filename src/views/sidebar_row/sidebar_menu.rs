@@ -38,6 +38,7 @@ pub(super) fn chat_row_menu(
     let ws_export = ws.clone();
     let ws_del = ws.clone();
     let ws_arch = ws.clone();
+    let ws_window = ws.clone();
     menu.item(PopupMenuItem::new(pin_label).icon(IconName::Star).on_click(move |_, w, cx| {
         with_chat_ix(ChatIxArgs {
             ws: &ws_pin,
@@ -68,6 +69,9 @@ pub(super) fn chat_row_menu(
             cx,
             f: |this, ix, w, cx| this.duplicate_chat(ix, w, cx),
         });
+    }))
+    .item(PopupMenuItem::new("Open in New Window").icon(IconName::WindowRestore).on_click(move |_, _w, cx| {
+        ws_window.update(cx, |this, cx| this.open_chat_in_new_window(id, cx));
     }))
     .item(PopupMenuItem::new("Export").icon(IconName::Share).on_click(move |_, w, cx| {
         with_chat_ix(ChatIxArgs {

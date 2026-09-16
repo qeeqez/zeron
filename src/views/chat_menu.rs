@@ -18,6 +18,7 @@ pub fn chat_menu(
     let ws_wrap = ws.clone();
     let ws_snap = ws.clone();
     let ws_fork = ws.clone();
+    let ws_window = ws.clone();
     menu.item(
         PopupMenuItem::new(if pinned { "Unpin" } else { "Pin" })
             .icon(IconName::Star)
@@ -38,6 +39,12 @@ pub fn chat_menu(
         ws_fork.update(cx, |this, cx| {
             let ix = this.active;
             this.fork_chat(ix, None, window, cx);
+        });
+    }))
+    .item(PopupMenuItem::new("Open in New Window").icon(IconName::WindowRestore).on_click(move |_, _, cx| {
+        ws_window.update(cx, |this, cx| {
+            let id = this.chats[this.active].id;
+            this.open_chat_in_new_window(id, cx);
         });
     }))
     .item(PopupMenuItem::new("Snapshots").icon(IconName::Camera).on_click(move |_, _, cx| {
