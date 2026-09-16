@@ -16,6 +16,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::views::nav_row::NavRow;
+use crate::views::sidebar_row::ChatDrag;
 use crate::workspace::Workspace;
 
 type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
@@ -34,6 +35,8 @@ pub(super) struct ChatGroup {
     on_toggle: Option<ClickHandler>,
     context_menu: Option<MenuBuilder>,
     children: Vec<NavRow>,
+    /// Folder name this header files dropped chats under — `""` for Unfiled.
+    chat_drop: Option<(Entity<Workspace>, SharedString)>,
 }
 
 impl ChatGroup {
@@ -46,6 +49,7 @@ impl ChatGroup {
             on_toggle: None,
             context_menu: None,
             children: Vec::new(),
+            chat_drop: None,
         }
     }
 
@@ -77,6 +81,14 @@ impl ChatGroup {
 
     pub(super) fn child(mut self, child: NavRow) -> Self {
         self.children.push(child);
+        self
+    }
+
+    /// Drop target for chat drags: releasing a `ChatDrag` on this header files
+    /// the chat under `folder` (`""` unfiles). `drag_over` paints the header
+    /// while a chat drag hovers it.
+    pub(super) fn chat_drop_target(mut self, ws: &Entity<Workspace>, folder: impl Into<SharedString>) -> Self {
+        self.chat_drop = Some((ws.clone(), folder.into()));
         self
     }
 }
@@ -117,6 +129,13 @@ impl SidebarItem for ChatGroup {
                     .hover(|this| this.bg(muted_fg.opacity(0.2)))
                     .child(if self.folded { IconName::ChevronRight } else { IconName::ChevronDown })
                     .on_click(move |ev, window, cx| on_toggle(ev, window, cx))
+            })
+            .when_some(self.chat_drop, |this, (ws, folder)| {
+                this.drag_over::<ChatDrag>(|style, _, _, cx| style.bg(cx.theme().tokens.drop_target)).on_drop(
+                    move |drag: &ChatDrag, _window, cx| {
+                        ws.update(cx, |this, cx| this.set_chat_folder(drag.id, folder.as_ref(), cx));
+                    },
+                )
             })
             .map(|this| match self.context_menu {
                 Some(menu) => this.context_menu(move |m, window, cx| menu(m, window, cx)).into_any_element(),
@@ -190,12 +209,13 @@ pub(super) fn chat_groups(
                     .folded(folded)
                     .on_toggle(move |_, _, cx| ws_toggle.update(cx, |this, cx| this.toggle_folder(&toggle, cx)))
                     .context_menu(move |menu, _window, _cx| folder_menu(&ws_menu, &menu_name, menu))
-                    .children(items),
+                    .children(items)
+                    .chat_drop_target(ws, name.clone()),
             );
         }
         let unfiled: Vec<NavRow> = filtered.iter().copied().filter(|ix| state.chats[*ix].folder.is_empty()).map(&mut *row_of).collect();
         if !unfiled.is_empty() {
-            groups.push(ChatGroup::new("Unfiled").children(unfiled));
+            groups.push(ChatGroup::new("Unfiled").chat_drop_target(ws, "").children(unfiled));
         }
     }
     if !archived.is_empty() {

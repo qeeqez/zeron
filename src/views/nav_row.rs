@@ -13,6 +13,9 @@ use std::rc::Rc;
 type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 type RowContent = Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>;
 type MenuBuilder = Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>;
+/// Drag sources erase their payload type so `NavRow` stays non-generic — the
+/// closure applies the typed `on_drag` to the row's `Stateful<Div>` at render.
+type DragSource = Rc<dyn Fn(Stateful<Div>) -> Stateful<Div>>;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::StyledExt;
@@ -39,6 +42,9 @@ pub(crate) struct NavRow {
     /// Replaces the label + suffix entirely (the inline rename editor).
     body: Option<RowContent>,
     suffix: Option<RowContent>,
+    /// Drag source applied to the row's `Stateful<Div>` — the toolkit's 2px
+    /// threshold keeps plain clicks from starting a drag.
+    on_drag: Option<DragSource>,
     context_menu: Option<MenuBuilder>,
 }
 
@@ -55,6 +61,7 @@ impl NavRow {
             body: None,
             suffix: None,
             context_menu: None,
+            on_drag: None,
         }
     }
 
@@ -77,6 +84,24 @@ impl NavRow {
 
     pub(crate) fn on_click(mut self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Rc::new(handler));
+        self
+    }
+
+    /// Drag source: `value` is the payload drop targets downcast to, `preview`
+    /// builds the view that follows the cursor. Mirrors `Div::on_drag`; the
+    /// payload must be `Clone` because the erased closure is `Fn`, not `FnOnce`.
+    pub(crate) fn on_drag<T, W>(
+        mut self, value: T, preview: impl Fn(&T, Point<Pixels>, &mut Window, &mut App) -> Entity<W> + 'static,
+    ) -> Self
+    where
+        T: Clone + 'static,
+        W: 'static + Render,
+    {
+        let preview = Rc::new(preview);
+        self.on_drag = Some(Rc::new(move |row| {
+            let preview = preview.clone();
+            row.on_drag(value.clone(), move |value, offset, window, cx| preview(value, offset, window, cx))
+        }));
         self
     }
 
@@ -132,6 +157,9 @@ impl SidebarItem for NavRow {
         let row = h_flex()
             .size_full()
             .id(self.id)
+            // The drag listener needs the stateful element — `test_support`
+            // wraps it in `Observed` under the test feature.
+            .when_some(self.on_drag, |this, on_drag| on_drag(this))
             .test_support()
             .overflow_x_hidden()
             .flex_shrink_0()

@@ -27,9 +27,14 @@ impl Workspace {
 
     /// File the chat with `id` under `folder`; empty unfiles it.
     pub fn set_chat_folder(&mut self, id: u64, folder: &str, cx: &mut Context<Self>) {
-        if let Some(chat) = self.chats.iter_mut().find(|c| c.id == id) {
-            chat.folder = folder.trim().to_string();
+        let folder = folder.trim();
+        let Some(chat) = self.chats.iter_mut().find(|c| c.id == id) else { return };
+        // Dropping a chat on the folder it already sits in is a no-op —
+        // skip the churn of a redundant save.
+        if chat.folder == folder {
+            return;
         }
+        chat.folder = folder.to_string();
         cx.notify();
         self.save();
     }

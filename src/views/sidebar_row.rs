@@ -21,6 +21,44 @@ use crate::workspace::Workspace;
 
 use sidebar_menu::{RowFlags, RowMenu, chat_row_menu};
 
+/// Drag payload a chat row carries — the id is what folder headers file on
+/// drop; the title feeds the ghost preview. `Clone` because `NavRow`'s erased
+/// drag source is `Fn`, not `FnOnce`.
+#[derive(Clone)]
+pub(super) struct ChatDrag {
+    pub(super) id: u64,
+    title: SharedString,
+}
+
+/// The floating preview that follows the cursor while a chat row drags — a
+/// small pill with the chat's title, styled like the row it came from.
+struct ChatDragGhost {
+    title: SharedString,
+}
+
+impl Render for ChatDragGhost {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .id("chat-drag-ghost")
+            .cursor_grabbing()
+            .gap_2()
+            .py_1()
+            .px_3()
+            .max_w_64()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().tokens.sidebar)
+            .text_sm()
+            .text_color(cx.theme().sidebar_foreground)
+            .opacity(0.85)
+            .child(IconName::FileText)
+            .child(self.title.clone())
+    }
+}
+
 /// One chat row: icon + title (or inline rename editor) + status + "…" menu.
 pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<Workspace>) -> NavRow {
     let chat_id = chat.id;
@@ -51,6 +89,10 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
             } else {
                 select_row(&ws_click, chat_id, window, cx);
             }
+        })
+        .on_drag(ChatDrag { id: chat_id, title: chat.title.clone() }, |drag, _, _, cx| {
+            cx.stop_propagation();
+            cx.new(|_| ChatDragGhost { title: drag.title.clone() })
         })
         .suffix(row_suffix(cx.entity(), chat_id, flags, (chat.running, chat.unread)))
     }
@@ -162,3 +204,8 @@ fn row_suffix(ws: Entity<Workspace>, chat_id: u64, flags: RowFlags, status: (boo
             .into_any_element()
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "../sidebar_dnd_tests.rs"]
+mod sidebar_dnd_tests;
