@@ -9,7 +9,7 @@ use gpui_kit::*;
 use crate::slash::SLASH_COMMANDS;
 use crate::views::{
     EffortPickerSpec, ModelPickerSpec, PickerProvider, PickerSpec, attachment_chips, effort_picker, mention_item, model_picker, picker,
-    queued_item, slash_item, usage_indicator,
+    queued_item, slash_item, usage_popover,
 };
 use crate::workspace::Workspace;
 
@@ -253,7 +253,7 @@ impl Workspace {
                                     .text_color(cx.theme().muted_foreground)
                                     .child(format!("{} chars", self.composer.read(cx).value().len())),
                             )
-                            .when_some(usage_indicator(&self.chats[self.active].usage, cx), |d, meter| d.child(meter)),
+                            .when_some(usage_popover(&self.chats[self.active].usage, &ws, cx), |d, meter| d.child(meter)),
                     ),
             )
     }

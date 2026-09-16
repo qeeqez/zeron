@@ -1,11 +1,13 @@
-//! Headless tests for the usage meter: `AgentEvent::Usage` streams fold
-//! onto the chat and the composer indicator updates live.
+//! Headless tests for the usage meter and popover: `AgentEvent::Usage`
+//! streams fold onto the chat, the composer indicator updates live, and
+//! clicking the meter opens the per-turn/cost breakdown.
 
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{App, AppContext, Entity, TestAppContext, VisualTestContext, Window};
 
 use crate::backend::{AgentBackend, AgentEvent, ReplyStream};
+use crate::usage::UsageReport;
 use crate::workspace::Workspace;
 
 /// Redirect persistence into a throwaway dir so tests never read or write
@@ -145,5 +147,76 @@ fn acp_usage_reports_fill_the_context_meter() {
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert_eq!(window.find("usage-meter").label(), Some("1.2k / 200k"));
+    });
+}
+
+/// Seed a chat's usage without driving a backend — the popover reads the
+/// folded state, not the stream.
+fn seed_usage(ws: &Entity<Workspace>, cx: &mut VisualTestContext, chat: usize, model: &str, reports: &[UsageReport]) {
+    ws.update(cx, |this, _| {
+        this.chats[chat].model = model.into();
+        for &r in reports {
+            this.chats[chat].usage.record(r);
+        }
+    });
+}
+
+#[test]
+fn meter_click_opens_the_usage_breakdown() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    // Two turns: one completed (folded by begin_turn), one in flight.
+    seed_usage(&ws, cx, 0, "gpt-5", &[UsageReport::tokens(100, 40)]);
+    ws.update(cx, |this, _| this.chats[0].usage.begin_turn());
+    seed_usage(&ws, cx, 0, "gpt-5", &[UsageReport::tokens(50, 10)]);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.click("usage-meter", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.find("usage-breakdown").visible(), "meter click opens the breakdown");
+        assert_eq!(window.find("usage-total").label(), Some("This chat: 200 tok"));
+        assert_eq!(window.find(("usage-turn", 0usize)).label(), Some("Turn 1: 100 in · 40 out"));
+        assert_eq!(window.find(("usage-turn", 1usize)).label(), Some("Turn 2: 50 in · 10 out"));
+        // gpt-5 is priced: 140·$1.25/1M + 60·$10/1M ≈ $0.000775.
+        let cost = window.find("usage-cost").label().unwrap_or_default().to_string();
+        assert!(cost.starts_with("Est. cost: ~$"), "priced model shows an estimate, got {cost}");
+        assert!(window.try_find("usage-session").is_none(), "one chat — no session row");
+    });
+}
+
+#[test]
+fn unknown_model_shows_tokens_only() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    seed_usage(&ws, cx, 0, "sim-x", &[UsageReport::tokens(100, 40)]);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.click("usage-meter", cx);
+        window.draw(cx).clear(cx);
+        assert_eq!(window.find("usage-cost").label(), Some("Est. cost: —"), "unpriced model shows no estimate");
+        assert_eq!(window.find("usage-total").label(), Some("This chat: 140 tok"));
+    });
+}
+
+#[test]
+fn session_row_aggregates_across_chats() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    seed_usage(&ws, cx, 0, "gpt-5", &[UsageReport::tokens(100, 40)]);
+    ws.update(cx, |this, cx| {
+        this.new_chat(cx);
+        this.chats[this.active].model = "sim-x".into();
+        this.chats[this.active].usage.record(UsageReport::tokens(10, 10));
+    });
+    let s = ws.read_with(cx, |ws, _| ws.session_usage());
+    assert_eq!(s.total, 160);
+    assert!(s.cost_partial, "sim-x has no pricing — the sum is a lower bound");
+    assert!(s.cost > 0., "the priced chat still contributes");
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.click("usage-meter", cx);
+        window.draw(cx).clear(cx);
+        let session = window.find("usage-session").label().unwrap_or_default().to_string();
+        assert!(session.starts_with("Session: 160 tok"), "session row totals both chats, got {session}");
     });
 }

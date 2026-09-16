@@ -62,11 +62,13 @@ pub(crate) mod terminal;
 #[cfg(test)]
 mod tool_group_tests;
 pub(crate) mod trust;
+mod usage_popover;
 
-pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_item, slash_item, usage_indicator};
+pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_item, slash_item};
 pub use empty::render_empty_state;
 pub use message::render_message;
 pub use model_picker::{EffortPickerSpec, ModelPickerSpec, PickerProvider, PickerSpec, effort_picker, model_picker, picker};
+pub use usage_popover::usage_popover;
 
 #[cfg(test)]
 #[path = "../settings_mcp_tests.rs"]

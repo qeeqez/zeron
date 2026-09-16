@@ -118,6 +118,7 @@ mod persist_tests;
 mod plan_panel;
 #[cfg(test)]
 mod plan_panel_tests;
+mod pricing;
 mod project;
 #[cfg(test)]
 mod project_tests;
@@ -177,6 +178,8 @@ mod update_check;
 #[cfg(test)]
 mod update_tests;
 mod usage;
+#[cfg(test)]
+mod usage_tests;
 mod views;
 mod voice;
 #[cfg(target_os = "macos")]

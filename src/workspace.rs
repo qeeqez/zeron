@@ -205,3 +205,26 @@ pub struct Workspace {
 
     pub backend: std::sync::Arc<dyn crate::backend::AgentBackend>,
 }
+
+impl Workspace {
+    /// Session-wide usage folded across this window's chats — the usage
+    /// popover's bottom row. A chat's cost is priced on its own model,
+    /// falling back to the current selection for legacy chats (empty
+    /// `model`); chats on unknown models contribute tokens only and mark
+    /// the cost a lower bound.
+    pub fn session_usage(&self) -> crate::usage::SessionUsage {
+        let mut s = crate::usage::SessionUsage::default();
+        for chat in &self.chats {
+            s.total += chat.usage.total;
+            if chat.usage.total == 0 {
+                continue;
+            }
+            let model = if chat.model.is_empty() { self.model.as_ref() } else { chat.model.as_str() };
+            match chat.usage.cost(model) {
+                Some(c) => s.cost += c,
+                None => s.cost_partial = true,
+            }
+        }
+        s
+    }
+}

@@ -1,7 +1,7 @@
 //! Token-usage accumulation for a chat thread. Backends stream
 //! `AgentEvent::Usage` reports; `ChatUsage` folds them into per-turn and
-//! cumulative counters plus the context-window occupancy the composer
-//! meter renders.
+//! cumulative counters, a per-turn breakdown and cost estimate for the
+//! usage popover, plus the context-window occupancy the meter renders.
 
 /// One backend usage report. Token backends fill `input`/`output`/`cached`;
 /// occupancy backends (acp's `usage_update`) fill `context_used`/`context`
@@ -34,10 +34,43 @@ impl UsageReport {
     }
 }
 
+/// Token split for one turn — or, folded onto `ChatUsage`, the thread's
+/// cumulative split. `cached` is billed like input but priced apart.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TurnUsage {
+    pub input: u64,
+    pub output: u64,
+    pub cached: u64,
+}
+
+impl TurnUsage {
+    /// `self` minus `earlier`, per component — `earlier` is the
+    /// running-total baseline the next report's delta is measured against.
+    fn delta_since(&self, e: Self) -> Self {
+        Self {
+            input: self.input.saturating_sub(e.input),
+            output: self.output.saturating_sub(e.output),
+            cached: self.cached.saturating_sub(e.cached),
+        }
+    }
+
+    fn accrue(&mut self, d: Self) {
+        self.input += d.input;
+        self.output += d.output;
+        self.cached += d.cached;
+    }
+
+    /// Total tokens across the split.
+    pub fn total(&self) -> u64 {
+        self.input + self.output + self.cached
+    }
+}
+
 /// Usage folded onto a chat: the in-flight turn's tokens, the thread's
-/// cumulative tokens, and the context window's fill when a backend reports
-/// it. Runtime state — not persisted.
-#[derive(Clone, Copy, Debug, Default)]
+/// cumulative tokens, a per-turn breakdown for the usage popover, and the
+/// context window's fill when a backend reports it. Runtime state — not
+/// persisted.
+#[derive(Clone, Debug, Default)]
 pub struct ChatUsage {
     /// Tokens used by the current (or last) turn.
     pub turn: u64,
@@ -48,16 +81,28 @@ pub struct ChatUsage {
     /// Context tokens in use — explicit when reported, else `total` stands
     /// in as the fill numerator.
     pub context_used: Option<u64>,
-    /// Sum of the last token report — reports are running totals for the
-    /// turn, so the delta since `last` is what accrues.
-    last: u64,
+    /// Completed turns' token splits, oldest first — the popover's rows.
+    /// The in-flight turn isn't here yet; `turn_rows` appends it.
+    turns: Vec<TurnUsage>,
+    /// The in-flight turn's split — becomes a `turns` row on `begin_turn`.
+    turn_tokens: TurnUsage,
+    /// The thread's cumulative split — what `cost` prices.
+    tokens: TurnUsage,
+    /// Last token report — reports are running totals for the turn, so the
+    /// delta since `last` is what accrues.
+    last: TurnUsage,
 }
 
 impl ChatUsage {
-    /// A new turn starts: the per-turn counter and report baseline reset.
+    /// A new turn starts: the completed turn's split joins `turns` and the
+    /// per-turn counters and report baseline reset.
     pub fn begin_turn(&mut self) {
+        if self.turn_tokens.total() > 0 {
+            self.turns.push(self.turn_tokens);
+        }
         self.turn = 0;
-        self.last = 0;
+        self.turn_tokens = TurnUsage::default();
+        self.last = TurnUsage::default();
     }
 
     /// Fold one report in. Token reports arrive as the turn's running
@@ -72,11 +117,34 @@ impl ChatUsage {
             self.context_used = Some(used);
             return;
         }
-        let sum = report.input + report.output + report.cached;
-        let delta = sum.saturating_sub(self.last);
+        let sum = TurnUsage {
+            input: report.input,
+            output: report.output,
+            cached: report.cached,
+        };
+        let delta = sum.delta_since(self.last);
         self.last = sum;
-        self.turn += delta;
-        self.total += delta;
+        self.turn += delta.total();
+        self.total += delta.total();
+        self.turn_tokens.accrue(delta);
+        self.tokens.accrue(delta);
+    }
+
+    /// Completed turns plus the in-flight one when it has tokens — the
+    /// popover's per-turn rows, oldest first.
+    pub fn turn_rows(&self) -> Vec<TurnUsage> {
+        let mut rows = self.turns.clone();
+        if self.turn_tokens.total() > 0 {
+            rows.push(self.turn_tokens);
+        }
+        rows
+    }
+
+    /// Estimated USD cost of the thread's cumulative tokens under the
+    /// model's pricing — `None` when the model's rates are unknown, so the
+    /// UI shows tokens only rather than a made-up number.
+    pub fn cost(&self, model: &str) -> Option<f64> {
+        crate::pricing::model_pricing(model).map(|p| p.cost(self.tokens))
     }
 
     /// Context-window fill as a 0..=1 fraction — `None` when no backend
@@ -104,8 +172,19 @@ impl ChatUsage {
     }
 }
 
+/// Session-wide usage folded across chats — the popover's bottom row.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SessionUsage {
+    /// Cumulative tokens across every chat in the window.
+    pub total: u64,
+    /// Sum of the priced chats' estimated cost.
+    pub cost: f64,
+    /// Some chat has tokens but no known pricing — `cost` is a lower bound.
+    pub cost_partial: bool,
+}
+
 /// `1234` → `1.2k`, `12600` → `13k`, `1_500_000` → `1.5M`.
-fn fmt_tokens(n: u64) -> String {
+pub(crate) fn fmt_tokens(n: u64) -> String {
     if n >= 1_000_000 {
         format!("{:.1}M", n as f64 / 1_000_000.)
     } else if n >= 10_000 {
@@ -119,7 +198,7 @@ fn fmt_tokens(n: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ChatUsage, UsageReport, fmt_tokens};
+    use super::{ChatUsage, TurnUsage, UsageReport, fmt_tokens};
 
     #[test]
     fn token_reports_accumulate_turn_and_total() {
@@ -145,6 +224,44 @@ mod tests {
     }
 
     #[test]
+    fn turns_collect_for_the_popover() {
+        let mut u = ChatUsage::default();
+        u.begin_turn(); // first send — nothing to collect yet
+        u.record(UsageReport::tokens(100, 40));
+        u.begin_turn();
+        u.record(UsageReport::tokens(50, 10));
+        let rows = u.turn_rows();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0], TurnUsage { input: 100, output: 40, cached: 0 });
+        assert_eq!(rows[1], TurnUsage { input: 50, output: 10, cached: 0 });
+    }
+
+    #[test]
+    fn cost_computes_from_the_pricing_table() {
+        let mut u = ChatUsage::default();
+        u.record(UsageReport {
+            input: 1_000_000,
+            output: 500_000,
+            cached: 0,
+            ..UsageReport::default()
+        });
+        // gpt-5: $1.25/1M in, $10/1M out → 1.25 + 5.00.
+        assert_eq!(u.cost("gpt-5"), Some(6.25));
+        // Aliases match by substring.
+        assert!(u.cost("claude-sonnet-4-5").is_some());
+        assert!(u.cost("sonnet").is_some());
+    }
+
+    #[test]
+    fn cost_is_none_for_unknown_models() {
+        let mut u = ChatUsage::default();
+        u.record(UsageReport::tokens(100, 40));
+        assert_eq!(u.cost("fable"), None);
+        assert_eq!(u.cost("sim-x"), None);
+        assert_eq!(u.cost(""), None);
+    }
+
+    #[test]
     fn context_size_tracked_and_fill_computed() {
         let mut u = ChatUsage::default();
         u.record(UsageReport { context: Some(200_000), ..UsageReport::tokens(100, 40) });
@@ -163,6 +280,7 @@ mod tests {
         assert_eq!(u.context, Some(200_000));
         assert_eq!(u.context_used, Some(1_200));
         assert_eq!(u.label().as_deref(), Some("1.2k / 200k"));
+        assert!(u.turn_rows().is_empty(), "occupancy isn't a token turn");
     }
 
     #[test]

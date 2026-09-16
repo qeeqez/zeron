@@ -118,7 +118,22 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
     }
     let row = row
         .child(div().flex_1())
-        .when_some(msg.usage, |d, u| d.child(div().text_xs().text_color(muted).child(format!("{} in · {} out", u.input, u.output))))
+        .when_some(msg.usage, |d, u| {
+            // The chat's current model prices the estimate — turns predate
+            // model switches are approximate, and unknown models show
+            // tokens only.
+            let model = {
+                let ws = ws.read(cx);
+                ws.chats[ws.active].model.clone()
+            };
+            let mut text = format!("{} in · {} out", u.input, u.output);
+            if let Some(cost) = crate::pricing::model_pricing(&model)
+                .map(|p| p.cost(crate::usage::TurnUsage { input: u.input, output: u.output, cached: 0 }))
+            {
+                text.push_str(&format!(" · ~{}", crate::pricing::fmt_cost(cost)));
+            }
+            d.child(div().text_xs().text_color(muted).child(text))
+        })
         .child(div().text_xs().text_color(muted).child(format_time(msg.at)));
     let mut footer = div().flex().flex_col().child(row);
     if msg.role == Role::Assistant {
