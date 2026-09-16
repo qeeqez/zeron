@@ -4,6 +4,8 @@
 //! ordering, and the connection-field → `configure_provider` wiring.
 
 mod env_tests;
+#[path = "provider_test_tests.rs"]
+mod provider_test_tests;
 
 use gpui_kit::component::Root;
 use gpui_kit::component::input::InputEvent;

@@ -184,14 +184,15 @@ impl Workspace {
             if !p.enabled {
                 continue;
             }
-            Self::spawn_catalog_fetch(p.id.clone(), fetch, cx);
+            Self::spawn_catalog_fetch(p.id.clone(), p.env.clone(), fetch, cx);
         }
     }
 
     /// One instance's catalog refresh: run `fetch` on the background
-    /// executor, then land the result on the UI thread.
-    fn spawn_catalog_fetch(instance: String, fetch: crate::providers::ModelFetch, cx: &mut Context<Self>) {
-        let task = cx.background_executor().spawn(async move { fetch() });
+    /// executor with the instance's Variables, then land the result on the
+    /// UI thread.
+    fn spawn_catalog_fetch(instance: String, env: Vec<(String, String)>, fetch: crate::providers::ModelFetch, cx: &mut Context<Self>) {
+        let task = cx.background_executor().spawn(async move { fetch(&env) });
         cx.spawn(async move |this, cx| {
             let Ok(models) = task.await else { return };
             let _ = this.update(cx, |this, cx| this.land_catalog(&instance, models, cx));
@@ -220,4 +221,20 @@ impl Workspace {
         }
         cx.notify();
     }
+}
+
+/// The lightest real check that an instance works: run the same catalog
+/// fetch `refresh_model_catalogs` uses — the kind's `fetch` when it has
+/// one (codex's `model/list` spawns the backend and handshakes), else the
+/// backend's own `models()` catalog. An empty catalog is a failure — the
+/// picker would have nothing to send on. Blocking — call off the UI thread.
+pub(crate) fn probe_instance(p: &ProviderInstance) -> Result<Vec<ModelInfo>, String> {
+    let models = match p.kind.info().fetch {
+        Some(fetch) => fetch(&p.env)?,
+        None => crate::backend::backend_for(p).models(),
+    };
+    if models.is_empty() {
+        return Err("provider reported no models".to_string());
+    }
+    Ok(models)
 }

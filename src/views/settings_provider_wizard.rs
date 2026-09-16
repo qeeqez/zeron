@@ -30,6 +30,8 @@ pub(crate) struct ProviderWizard {
     pub command: Entity<InputState>,
     pub key_env: Entity<InputState>,
     pub accent: Option<String>,
+    /// The Config step's "Test connection" outcome against the draft.
+    pub test_state: crate::views::settings_provider_test::TestState,
     /// Shown when the finish step rejects the instance id.
     pub error: Option<String>,
 }
@@ -64,8 +66,18 @@ impl ProviderWizard {
             command,
             key_env,
             accent: None,
+            test_state: crate::views::settings_provider_test::TestState::Idle,
             error: None,
         }
+    }
+
+    /// The instance the wizard would create right now — the Config step's
+    /// "Test connection" probes this draft before it exists.
+    pub(crate) fn draft_instance(&self, cx: &App) -> crate::providers::ProviderInstance {
+        let mut p = crate::providers::ProviderInstance::new(self.kind, String::new());
+        p.command = self.command.read(cx).value().to_string();
+        p.key_env = self.key_env.read(cx).value().to_string();
+        p
     }
 }
 
@@ -98,6 +110,7 @@ impl SettingsPanel {
         if let Some(w) = self.provider_wizard.as_mut() {
             w.kind = kind;
             w.error = None;
+            w.test_state = crate::views::settings_provider_test::TestState::Idle;
             w.instance_id.update(cx, |s, cx| s.set_value(id, window, cx));
             w.command.update(cx, |s, cx| s.set_value(kind.default_command(), window, cx));
             w.key_env.update(cx, |s, cx| s.set_value(kind.default_key_env(), window, cx));

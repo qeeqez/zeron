@@ -35,6 +35,9 @@ pub struct SettingsPanel {
     pub(crate) provider_env_inputs: HashMap<String, Vec<EnvRow>>,
     /// The instance the Providers detail panel shows.
     pub(crate) provider_selection: Option<String>,
+    /// Per-instance "Test connection" probe outcomes, keyed by instance id
+    /// — runtime only, never persisted.
+    pub(crate) test_state: HashMap<String, crate::views::settings_provider_test::TestState>,
     /// In-flight "Add provider" wizard state — `None` when closed.
     pub(crate) provider_wizard: Option<ProviderWizard>,
     /// Interface font family picker — `SearchableVec<String>` delegate over
@@ -169,6 +172,7 @@ impl SettingsPanel {
             provider_inputs: HashMap::new(),
             provider_env_inputs: HashMap::new(),
             provider_selection,
+            test_state: HashMap::new(),
             provider_wizard: None,
             font_select,
             code_font_select,
@@ -218,6 +222,7 @@ impl Render for SettingsPanel {
             mcp_inputs: self.mcp_inputs.clone(),
             provider_env_inputs: self.provider_env_inputs.clone(),
             provider_selection: self.provider_selection.clone(),
+            test_state: self.test_state.clone(),
             font_select: self.font_select.clone(),
             code_font_select: self.code_font_select.clone(),
             contrast_slider: self.contrast_slider.clone(),

@@ -8,9 +8,10 @@ use gpui_kit::assets::IconName;
 
 use crate::model::ModelInfo;
 
-/// A provider catalog refresh — runs on a background thread, returns the
-/// real model list or an error the picker ignores (cache/statics remain).
-pub type ModelFetch = fn() -> Result<Vec<ModelInfo>, String>;
+/// A provider catalog refresh — runs on a background thread with the
+/// instance's Variables applied to the spawned backend, returns the real
+/// model list or an error the picker ignores (cache/statics remain).
+pub type ModelFetch = fn(&[(String, String)]) -> Result<Vec<ModelInfo>, String>;
 
 /// One backend implementation's provider identity. The serde names match
 /// the legacy `backend` setting so old files migrate cleanly.

@@ -179,5 +179,5 @@ pub(super) fn config_step(panel: &Entity<SettingsPanel>, kind: ProviderKind, cx:
             );
         },
     }
-    d.into_any_element()
+    d.child(crate::views::settings_provider_test::wizard_test_row(panel, cx)).into_any_element()
 }

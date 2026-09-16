@@ -40,6 +40,8 @@ pub struct SettingsView {
     pub provider_env_inputs: HashMap<String, Vec<EnvRow>>,
     /// The instance the Providers detail panel shows.
     pub provider_selection: Option<String>,
+    /// Per-instance "Test connection" probe outcomes, keyed by instance id.
+    pub test_state: HashMap<String, crate::views::settings_provider_test::TestState>,
     pub access: AccessMode,
     pub font_select: Entity<SelectState<SearchableVec<String>>>,
     pub code_font_select: Entity<SelectState<SearchableVec<String>>>,

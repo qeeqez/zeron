@@ -81,6 +81,7 @@ impl SettingsPanel {
         let instances: Vec<ProviderInstance> = self.ws.upgrade().map(|ws| ws.read(cx).provider_instances().to_vec()).unwrap_or_default();
         let ids: std::collections::HashSet<&str> = instances.iter().map(|p| p.id.as_str()).collect();
         self.provider_inputs.retain(|id, _| ids.contains(id.as_str()));
+        self.test_state.retain(|id, _| ids.contains(id.as_str()));
         for p in &instances {
             if !self.provider_inputs.contains_key(&p.id) {
                 let inputs = self.new_provider_inputs(p, window, cx);
@@ -225,9 +226,11 @@ fn instance_row(p: &ProviderInstance, s: &SettingsView, cx: &App) -> impl IntoEl
                 .flex_col()
                 .min_w_0()
                 .child(div().text_xs().font_semibold().overflow_hidden().child(p.name.clone()))
-                .child(div().text_xs().text_color(status_color).child(status)),
+                .child(div().text_xs().text_color(status_color).child(status))
+                .children(crate::views::settings_provider_test::test_result(p, s, cx)),
         )
         .child(div().flex_1())
+        .child(crate::views::settings_provider_test::test_button(p, s))
         .when(matches!(auth, AuthState::SignedOut) && p.enabled && crate::auth::can_sign_in(p.kind), |d| {
             d.child(
                 Button::new(SharedString::from(format!("provider-sign-in-{id_in}")))

@@ -6,47 +6,19 @@
 //! `Workspace::refresh_model_catalogs`.
 
 use std::io::{BufRead, Write};
-use std::time::Duration;
 
 use serde_json::Value;
 
 use super::rpc::{initialize_req, model_list_req, parse_model_page};
 use crate::model::ModelInfo;
 
-/// How long one `model/list` fetch may take before the child is killed —
-/// a wedged app-server must not pin an executor thread forever.
-const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
-
-/// Fetch the real model catalog from `codex app-server`. Returns Err on
-/// spawn failure, handshake error, timeout, or EOF mid-list — callers fall
-/// back to the cached/static catalog.
-pub fn fetch_codex_models() -> Result<Vec<ModelInfo>, String> {
-    let mut cmd = std::process::Command::new("codex");
-    cmd.arg("app-server")
-        .current_dir(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")))
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    let mut child = cmd.spawn().map_err(|e| format!("codex spawn: {e}"))?;
-    let stdout = child.stdout.take().expect("piped");
-    let mut stdin = child.stdin.take().expect("piped");
-
-    // The read loop blocks on stdout, so it runs on its own thread — the
-    // caller bounds the whole exchange with `recv_timeout` and kills the
-    // child (closing stdout, ending the thread) on timeout.
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let _ = tx.send(read_catalog(&mut stdin, stdout));
-    });
-    let result = match rx.recv_timeout(FETCH_TIMEOUT) {
-        Ok(r) => r,
-        Err(_) => Err("codex model/list timed out".into()),
-    };
-    // The fetch is one-shot: kill the server whether we got a catalog or
-    // timed out. Reap inline — the child exits on stdin EOF/SIGKILL fast.
-    let _ = child.kill();
-    let _ = child.wait();
-    result
+/// Fetch the real model catalog from `codex app-server`. The instance's
+/// Variables land on the spawned child (a custom `CODEX_HOME` or base-URL
+/// override reaches the probe). Returns Err on spawn failure, handshake
+/// error, timeout, or EOF mid-list — callers fall back to the
+/// cached/static catalog.
+pub fn fetch_codex_models(env: &[(String, String)]) -> Result<Vec<ModelInfo>, String> {
+    super::sessions::exchange(env, |stdin, stdout| read_catalog(stdin, stdout))
 }
 
 /// Drive the handshake then paginate `model/list` until `nextCursor` is
