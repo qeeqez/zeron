@@ -81,6 +81,11 @@ impl AgentBackend for CodexCliBackend {
     fn resume_session(&self, thread_id: &str) -> Option<super::ResumedSession> {
         super::sessions::resume_codex_session(thread_id, &self.env).ok()
     }
+
+    /// `codex resume <id>` — the same hint the CLI prints on exit.
+    fn resume_command(&self, thread_id: &str) -> Option<String> {
+        Some(format!("codex resume {thread_id}"))
+    }
 }
 
 /// Everything one codex turn needs — bundled so the spawn helpers stay

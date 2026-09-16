@@ -121,3 +121,8 @@ impl Workspace {
         self.save();
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "resume_cmd_tests.rs"]
+mod resume_cmd_tests;

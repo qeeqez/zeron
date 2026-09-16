@@ -77,4 +77,33 @@ impl Workspace {
             .join("\n\n");
         cx.write_to_clipboard(ClipboardItem::new_string(text));
     }
+
+    /// The shell command that continues the active chat's backend thread in
+    /// a terminal: `cd <workdir> && <backend resume cmd>`. `None` when the
+    /// chat has no backend thread or the backend has no CLI resume — the ⋯
+    /// menu hides its item then. `cd` is always prefixed: claude keys
+    /// sessions by project dir, and codex prompts to pick a directory when
+    /// the session's recorded cwd differs from the shell's.
+    pub fn resume_command(&self) -> Option<String> {
+        let chat = &self.chats[self.active];
+        if chat.thread_id.is_empty() {
+            return None;
+        }
+        let cmd = self.backend.resume_command(&chat.thread_id)?;
+        let dir = crate::worktree::workdir_for(chat, self.project.root());
+        Some(format!("cd {} && {cmd}", shell_quote(&dir.to_string_lossy())))
+    }
+
+    /// Copy the resume command to the clipboard and note it in the chat —
+    /// a silent copy leaves the user guessing whether it worked.
+    pub fn copy_resume_command(&mut self, cx: &mut Context<Self>) {
+        let Some(cmd) = self.resume_command() else { return };
+        cx.write_to_clipboard(ClipboardItem::new_string(cmd.clone()));
+        self.push_note(format!("Copied: `{cmd}`"), cx);
+    }
+}
+
+/// Single-quote a path for the shell — `'` inside becomes `'\''`.
+fn shell_quote(path: &str) -> String {
+    format!("'{}'", path.replace('\'', "'\\''"))
 }

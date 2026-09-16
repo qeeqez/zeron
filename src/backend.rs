@@ -8,6 +8,7 @@ mod acp_rpc;
 mod approval;
 mod appserver;
 mod claude;
+mod claude_auth;
 mod claude_parse;
 mod codex;
 mod codex_turn;
@@ -41,7 +42,7 @@ mod sessions_tests;
 pub use acp::AcpBackend;
 pub use approval::{ApprovalCard, ApprovalDecision, ApprovalKind, ApprovalResponder, ApprovalRoute};
 pub use claude::ClaudeCliBackend;
-pub(crate) use claude::{auth_status as claude_auth_status, login as claude_login, logout as claude_logout};
+pub(crate) use claude_auth::{auth_status as claude_auth_status, login as claude_login, logout as claude_logout};
 pub use codex::CodexCliBackend;
 pub use codex::fetch_mcp_status;
 #[cfg(test)]
@@ -358,6 +359,13 @@ pub trait AgentBackend: Send + Sync {
     /// when unsupported or the resume failed — the caller still binds the
     /// thread id so the next send continues it. Blocking.
     fn resume_session(&self, _thread_id: &str) -> Option<ResumedSession> {
+        None
+    }
+    /// The shell command that continues this thread in a terminal —
+    /// `codex resume <id>`, `claude --resume <id>`. `None` when the backend
+    /// has no CLI resume (acp/http/sim); the ⋯ menu hides its "Copy resume
+    /// command" item then.
+    fn resume_command(&self, _thread_id: &str) -> Option<String> {
         None
     }
 }

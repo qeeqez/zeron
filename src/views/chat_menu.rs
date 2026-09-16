@@ -1,6 +1,9 @@
 //! The chat header's ⋯ menu and worktree badge — split from `chat_view.rs`
 //! for the SLOC cap.
 
+mod bookmarks;
+use bookmarks::bookmarks_submenu;
+
 use gpui_kit::assets::IconName;
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::theme::ActiveTheme;
@@ -147,6 +150,16 @@ pub fn chat_menu(
                     });
                 }),
         );
+    // "Copy resume command" only exists when the chat is bound to a backend
+    // thread AND the backend has a CLI resume (codex/claude).
+    let menu = if ws.read(cx).resume_command().is_some() {
+        let ws_resume = ws.clone();
+        menu.item(PopupMenuItem::new("Copy resume command").icon(IconName::Terminal).on_click(move |_, _, cx| {
+            ws_resume.update(cx, |this, cx| this.copy_resume_command(cx));
+        }))
+    } else {
+        menu
+    };
     let menu = bookmarks_submenu(menu, ws, window, cx);
     let menu = if worktree { worktree_items(menu, ws, window, cx) } else { menu };
     menu.item(PopupMenuItem::new("Snapshots").icon(IconName::Camera).on_click(move |_, _, cx| {
@@ -165,10 +178,6 @@ pub fn chat_menu(
         ws_info.update(cx, |this, cx| this.open_chat_info(window, cx));
     }))
 }
-
-#[path = "chat_menu/bookmarks.rs"]
-mod bookmarks;
-use bookmarks::bookmarks_submenu;
 
 /// The worktree-only section of the ⋯ menu: reveal the checkout in Finder
 /// and open it in the preferred editor (`Ask` expands to a picker, same as

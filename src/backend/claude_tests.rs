@@ -254,7 +254,7 @@ mod command_tests {
 
 mod auth_tests {
     use crate::auth::AuthEvent;
-    use crate::backend::claude::{parse_auth_status, pump_login};
+    use crate::backend::claude_auth::{parse_auth_status, pump_login};
 
     #[test]
     fn auth_status_parses_json() {
