@@ -144,14 +144,14 @@ impl Workspace {
         self.terminal.open
     }
 
-    /// Enter in the input line: write the text plus a carriage return to
-    /// the active PTY (what a real terminal sends) and clear the field.
+    /// Enter in the input line: submit the text to the active PTY — the
+    /// session writes it plus a carriage return and opens a command
+    /// block at the cursor's row — and clear the field.
     pub(crate) fn terminal_send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.terminal.input.read(cx).value().to_string();
         self.terminal.input.update(cx, |s, cx| s.set_value("", window, cx));
         if let Some(session) = self.terminal.active_session_mut() {
-            session.write(text.as_bytes());
-            session.write(b"\r");
+            session.submit_command(&text);
             self.terminal.scroll.scroll_to_bottom();
             cx.notify();
         }

@@ -194,56 +194,6 @@ impl Workspace {
             self.mention_file(&link.target, window, cx);
         }
     }
-
-    /// The active session's contents as one interactive text element: find
-    /// matches paint as background highlights (the current hit stronger),
-    /// links get an underline and a Cmd-click target. Plain clicks fall
-    /// through untouched — no navigation, no selection interference.
-    pub(crate) fn terminal_contents(&self, cx: &mut Context<Self>) -> AnyElement {
-        let contents = self.terminal.active_session().map_or_else(String::new, crate::terminal::TermSession::contents);
-        let matches = self.term_find_matches(cx);
-        let current = matches.get(self.terminal.find.match_ix).map(|m| m.range.clone());
-        let links = self.term_links(&contents);
-        let mut highlights: Vec<(std::ops::Range<usize>, HighlightStyle)> = matches
-            .iter()
-            .map(|m| {
-                let bg = if current.as_ref() == Some(&m.range) {
-                    cx.theme().selection.alpha(0.6)
-                } else {
-                    cx.theme().selection
-                };
-                (m.range.clone(), HighlightStyle { background_color: Some(bg), ..Default::default() })
-            })
-            .collect();
-        // Matches win the paint — a link under a hit stays clickable but
-        // skips the underline so the highlight ranges never overlap.
-        for link in &links {
-            if matches.iter().any(|m| m.range.start < link.range.end && link.range.start < m.range.end) {
-                continue;
-            }
-            highlights.push((
-                link.range.clone(),
-                HighlightStyle {
-                    underline: Some(UnderlineStyle {
-                        thickness: px(1.),
-                        color: Some(cx.theme().accent),
-                        wavy: false,
-                    }),
-                    ..Default::default()
-                },
-            ));
-        }
-        let ws = cx.entity();
-        InteractiveText::new("terminal-text", StyledText::new(contents).with_highlights(highlights))
-            .on_click(links.iter().map(|l| l.range.clone()).collect(), move |ix, window, cx| {
-                if !window.modifiers().platform {
-                    return;
-                }
-                let link = links[ix].clone();
-                ws.update(cx, |this, cx| this.term_link_click(&link, window, cx));
-            })
-            .into_any_element()
-    }
 }
 
 #[cfg(test)]

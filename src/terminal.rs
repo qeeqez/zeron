@@ -16,6 +16,11 @@ use std::sync::mpsc::{Receiver, Sender};
 #[path = "terminal_links.rs"]
 pub(crate) mod links;
 
+/// Command-block bookkeeping: submitted lines become blocks over the
+/// transcript, OSC 133 marks refine them — `#[path]` for the SLOC cap.
+#[path = "terminal_blocks.rs"]
+pub(crate) mod blocks;
+
 /// Bytes the shell produced, or its exit. `Exited` is sent exactly once,
 /// when the reader hits EOF or an error.
 pub(crate) enum PtyEvent {
@@ -50,8 +55,23 @@ const SCROLLBACK: usize = 2000;
 pub(crate) struct TermSession {
     pty: Box<dyn Pty>,
     events: Receiver<PtyEvent>,
-    screen: vt100::Parser,
+    screen: vt100::Parser<blocks::TermCallbacks>,
     pub exited: bool,
+    /// Submitted commands, oldest first — the block boundaries the panel
+    /// renders headers and per-block actions for.
+    pub(crate) blocks: Vec<blocks::CmdBlock>,
+    /// Rows that scrolled off the screen top, capped at `HISTORY_CAP` —
+    /// the transcript's scrollback half.
+    history: std::collections::VecDeque<blocks::Row>,
+    /// Rows ever pushed into scrollback — the eternal-coordinate base.
+    pushed: u64,
+    /// The parser's current scrollback length after the last sync.
+    sb_len: usize,
+    /// The scrollback tail's text — the diff source for push counting
+    /// once the parser's scrollback is full.
+    sb_tail: std::collections::VecDeque<String>,
+    /// The last OSC 133;A mark — where the live prompt begins.
+    last_prompt: Option<u64>,
 }
 
 impl TermSession {
@@ -68,15 +88,21 @@ impl TermSession {
         Self {
             pty,
             events,
-            screen: vt100::Parser::new(rows, cols, SCROLLBACK),
+            screen: vt100::Parser::new_with_callbacks(rows, cols, SCROLLBACK, blocks::TermCallbacks::default()),
             exited: false,
+            blocks: Vec::new(),
+            history: std::collections::VecDeque::new(),
+            pushed: 0,
+            sb_len: 0,
+            sb_tail: std::collections::VecDeque::new(),
+            last_prompt: None,
         }
     }
 
     /// The screen's text — scrollback plus the visible grid, ANSI already
     /// resolved by the parser.
     pub(crate) fn contents(&self) -> String {
-        self.screen.screen().contents()
+        self.transcript().lines.join("\n")
     }
 
     /// The visible grid size — `(rows, cols)`. The link scan covers only
@@ -90,6 +116,35 @@ impl TermSession {
         self.pty.write(bytes);
     }
 
+    /// Submit a command line: write it plus a carriage return to the PTY
+    /// and open a block for it. The block starts on the row the cursor
+    /// sits on — where the shell echoes the command — and its output is
+    /// estimated to begin after the echo's height until an OSC 133;C
+    /// mark pins it exactly.
+    pub(crate) fn submit_command(&mut self, text: &str) {
+        self.write(text.as_bytes());
+        self.write(b"\r");
+        if self.exited || text.is_empty() {
+            return;
+        }
+        let (row, col) = self.screen.screen().cursor_position();
+        let (_, cols) = self.screen.screen().size();
+        let start = self.pushed + u64::from(row);
+        let echo_rows = (u64::from(col) + text.len() as u64) / u64::from(cols.max(1)) + 1;
+        self.blocks.push(blocks::CmdBlock::new(text.to_string(), start, start + echo_rows));
+    }
+
+    /// Re-run a block's command — the same submit path the input line
+    /// takes, so the re-run opens its own block. Dead sessions can't.
+    pub(crate) fn rerun(&mut self, ix: usize) {
+        if self.exited {
+            return;
+        }
+        if let Some(command) = self.blocks.get(ix).map(|b| b.command.clone()) {
+            self.submit_command(&command);
+        }
+    }
+
     /// Forward a size change to both the PTY (SIGWINCH for the child) and
     /// the parser (re-wrap the screen).
     pub(crate) fn resize(&mut self, rows: u16, cols: u16) {
@@ -101,19 +156,25 @@ impl TermSession {
         self.screen.screen_mut().set_size(rows, cols);
     }
 
-    /// Drain pending output into the screen. Returns `false` once the
-    /// session has ended — the caller stops polling.
+    /// Drain pending output into the screen, then sync the transcript
+    /// mirror and apply any OSC 133 marks the parser collected. Returns
+    /// `false` once the session has ended — the caller stops polling.
     pub(crate) fn drain(&mut self) -> bool {
+        let mut alive = true;
         loop {
             match self.events.try_recv() {
                 Ok(PtyEvent::Output(bytes)) => self.screen.process(&bytes),
                 Ok(PtyEvent::Exited) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.exited = true;
-                    return false;
+                    alive = false;
+                    break;
                 },
-                Err(std::sync::mpsc::TryRecvError::Empty) => return !self.exited,
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
             }
         }
+        self.sync_scrollback();
+        self.apply_marks();
+        alive && !self.exited
     }
 }
 
@@ -219,3 +280,7 @@ fn read_loop(reader: &mut dyn Read, tx: &Sender<PtyEvent>) {
     }
     let _ = tx.send(PtyEvent::Exited);
 }
+
+#[cfg(test)]
+#[path = "terminal_blocks_tests.rs"]
+mod terminal_blocks_tests;
