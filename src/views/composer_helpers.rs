@@ -97,10 +97,15 @@ pub fn attachment_chips(chat: &Chat, ws: &Entity<Workspace>, cx: &mut App) -> Ve
                 .unwrap_or(full.clone());
             // Image attachments preview as a thumbnail; other files keep
             // the text icon. The marker id lets headless tests see the kind.
+            // Clicking the thumbnail opens the lightbox; the name still
+            // reveals the file and ✕ removes it.
             let preview: AnyElement = if crate::attachment::is_image_path(&full) {
+                let ws_thumb = ws.clone();
+                let thumb_path = full.clone();
                 div()
                     .id(SharedString::from(format!("attach-thumb-{ix}")))
                     .test_support()
+                    .cursor_pointer()
                     .child(
                         img(std::path::PathBuf::from(&full))
                             .size(px(20.))
@@ -108,6 +113,9 @@ pub fn attachment_chips(chat: &Chat, ws: &Entity<Workspace>, cx: &mut App) -> Ve
                             .object_fit(ObjectFit::Cover)
                             .with_fallback(|| IconName::Image.into_any_element()),
                     )
+                    .on_click(move |_, _, cx| {
+                        ws_thumb.update(cx, |this, cx| this.open_image_view(thumb_path.clone(), cx));
+                    })
                     .into_any_element()
             } else {
                 IconName::FileText.into_any_element()

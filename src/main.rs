@@ -80,6 +80,9 @@ mod git_tests;
 mod global_search;
 #[cfg(test)]
 mod global_search_tests;
+mod image_view;
+#[cfg(test)]
+mod image_view_tests;
 mod instructions;
 #[cfg(test)]
 mod instructions_tests;

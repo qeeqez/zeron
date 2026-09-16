@@ -53,6 +53,33 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
     let body = if let Some(input) = edit_input {
         super::message_edit::message_editor(ix, &input, ws, cx)
     } else {
+        // Image attachments render as thumbnails inside the bubble — a click
+        // opens the lightbox (see `crate::image_view`).
+        let thumbs: Vec<AnyElement> = msg
+            .attachments
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| crate::attachment::is_image_path(a))
+            .map(|(j, a)| {
+                let ws_thumb = ws.clone();
+                let path = a.to_string();
+                div()
+                    .id(SharedString::from(format!("msg-thumb-{ix}-{j}")))
+                    .test_support()
+                    .cursor_pointer()
+                    .child(
+                        img(std::path::PathBuf::from(&path))
+                            .size(px(96.))
+                            .rounded_md()
+                            .object_fit(ObjectFit::Cover)
+                            .with_fallback(|| IconName::Image.into_any_element()),
+                    )
+                    .on_click(move |_, _, cx| {
+                        ws_thumb.update(cx, |this, cx| this.open_image_view(path.clone(), cx));
+                    })
+                    .into_any_element()
+            })
+            .collect();
         div()
             .id(("md-body", ix))
             .test_support()
@@ -63,6 +90,9 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
             // flat Markdown on the chat surface — no bubble.
             .when(role == Role::User, |d| {
                 d.rounded_lg().bg(cx.theme().accent).text_color(cx.theme().accent_foreground)
+            })
+            .when(!thumbs.is_empty(), |d| {
+                d.child(div().flex().flex_wrap().gap_2().pb_1().children(thumbs))
             })
             .child(if let Some(state) = &md_state {
                 super::markdown::assistant_markdown(ix, text, state, cx)

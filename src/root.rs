@@ -142,12 +142,7 @@ impl Render for Workspace {
                     ws.update(cx, |this, cx| this.copy_transcript(cx));
                 }
             })
-            .on_action({
-                let ws = cx.entity();
-                move |_: &EscapeKey, window, cx| {
-                    ws.update(cx, |this, cx| this.escape(window, cx));
-                }
-            })
+            .on_action(escape_key(cx.entity()))
             .on_action({
                 let ws = cx.entity();
                 move |_: &ShortcutsHelp, window, cx| {
@@ -244,6 +239,23 @@ impl Render for Workspace {
             .children(Root::render_notification_layer(window, cx))
             .children(Root::render_sheet_layer(window, cx))
             .children(Root::render_dialog_layer(window, cx))
+            // Image lightbox — topmost layer: a click on an image thumbnail
+            // shows it full-size over everything, dialogs included.
+            .when_some(self.image_view.clone(), |d, path| {
+                d.child(crate::image_view::image_view_overlay(&path, window, cx))
+            })
+    }
+}
+
+/// Esc: the lightbox sits above every other layer, so it dismisses first;
+/// otherwise the workspace's usual Esc cascade runs.
+fn escape_key(ws: Entity<Workspace>) -> impl Fn(&EscapeKey, &mut Window, &mut App) + 'static {
+    move |_: &EscapeKey, window, cx| {
+        if ws.read(cx).image_view.is_some() {
+            ws.update(cx, |this, cx| this.close_image_view(cx));
+        } else {
+            ws.update(cx, |this, cx| this.escape(window, cx));
+        }
     }
 }
 

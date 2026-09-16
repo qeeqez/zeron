@@ -137,6 +137,9 @@ pub struct Workspace {
     pub settings_panel: Entity<crate::views::settings::SettingsPanel>,
     /// Cmd-/ cheat sheet — a centered overlay rendered over the workspace.
     pub shortcuts_open: bool,
+    /// Image lightbox — the open image path while the full-size overlay is
+    /// up; `None` is closed (see `crate::image_view`).
+    pub image_view: Option<SharedString>,
     pub search_match_ix: usize,
     /// One-shot bypass for the close prompt — `remove_window` re-fires
     /// `on_window_should_close`, so the confirmed path sets this to skip it.
