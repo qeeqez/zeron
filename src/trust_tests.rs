@@ -146,6 +146,11 @@ fn untrusted_open_shows_trust_dialog() {
     let handle = open_project_window(&mut app, &dir);
     let ws = workspace_of(&app, handle);
     let mut cx = VisualTestContext::from_window(handle, &app);
+    // The trust dialog is pushed via a deferred `handle.update` after the
+    // window's first draw, then animates in over 250ms — settle past both so
+    // the row's observed bounds are final before we assert/click.
+    app.executor().advance_clock(std::time::Duration::from_millis(300));
+    app.run_until_parked();
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert!(window.find("trust-dialog").visible(), "untrusted folder should prompt on open");
