@@ -13,7 +13,8 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::changes_diff::{DiffLine, DiffLineKind, DiffMode};
+use crate::changes_diff::diff_highlight::MarkedDiff;
+use crate::changes_diff::{DiffLineKind, DiffMode};
 use crate::git::FileChange;
 use crate::model::{ReviewComment, ReviewTarget};
 use crate::workspace::Workspace;
@@ -67,12 +68,13 @@ pub fn render_diff(file_ix: usize, change: &FileChange, next_line: &mut usize, w
 fn unified_rows(
     file_ix: usize, diff: &crate::changes_diff::FileDiff, next_line: &mut usize, ws: &Workspace, cx: &mut Context<Workspace>,
 ) -> Vec<AnyElement> {
+    let marked = MarkedDiff::new(diff, !ws.git.ignore_ws);
     let mut rows = Vec::with_capacity(diff.lines.len());
-    for (line_ix, line) in diff.lines.iter().enumerate() {
+    for line_ix in 0..diff.lines.len() {
         let id = *next_line;
         *next_line += 1;
         let target = ReviewTarget { file_ix, line_ix };
-        rows.push(diff_line(id, target, line, ws, cx));
+        rows.push(diff_line(id, target, &marked, ws, cx));
         if ws.review.target == Some(target) {
             rows.push(comment_editor(target, ws, cx));
         }
@@ -83,7 +85,9 @@ fn unified_rows(
 /// One numbered diff row: `old new │ sign text`, tinted by line kind. Rows
 /// with a line number are clickable — a click anchors the comment editor —
 /// and a row whose line already has a comment shows it after the code.
-pub(crate) fn diff_line(id: usize, target: ReviewTarget, line: &DiffLine, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
+/// Paired removed/added lines carry their changed range as a stronger wash.
+pub(crate) fn diff_line(id: usize, target: ReviewTarget, marked: &MarkedDiff, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
+    let line = &marked.diff.lines[target.line_ix];
     let theme = cx.theme();
     let (tint, fg, sign) = match line.kind {
         DiffLineKind::Added => (Some(theme.success.opacity(0.12)), theme.success, "+"),
@@ -111,7 +115,7 @@ pub(crate) fn diff_line(id: usize, target: ReviewTarget, line: &DiffLine, ws: &W
         .child(gutter(line.old))
         .child(gutter(line.new))
         .child(div().w(px(14.)).flex_shrink_0().text_center().text_color(fg).child(sign))
-        .child(div().text_color(fg).child(line.text.clone()));
+        .child(div().text_color(fg).child(marked.code_text(target.line_ix, fg)));
     if let Some(tint) = tint {
         row = row.bg(tint);
     }

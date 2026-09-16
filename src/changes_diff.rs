@@ -6,6 +6,12 @@ use std::path::Path;
 
 use crate::git::{ChangeStatus, FileChange, git, git_diff};
 
+/// Intra-line (word-level) highlighting for paired removed/added lines —
+/// kept beside the diff model it consumes; `#[path]` because `main.rs` is
+/// at the SLOC cap and can't take another `mod`.
+#[path = "diff_highlight.rs"]
+pub(crate) mod diff_highlight;
+
 /// Most lines kept per file — a huge generated diff can't flood the panel.
 const MAX_DIFF_LINES: usize = 400;
 

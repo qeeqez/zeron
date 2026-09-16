@@ -9,6 +9,7 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::changes_diff::diff_highlight::MarkedDiff;
 use crate::changes_diff::{DiffLineKind, FileDiff, SplitRow};
 use crate::model::ReviewTarget;
 use crate::workspace::Workspace;
@@ -17,9 +18,10 @@ use crate::workspace::Workspace;
 /// full-width hunk/marker rows, with the comment editor mounted under the
 /// row its anchor lives in.
 pub(crate) fn render_rows(file_ix: usize, diff: &FileDiff, ws: &Workspace, cx: &mut Context<Workspace>) -> Vec<AnyElement> {
+    let marked = MarkedDiff::new(diff, !ws.git.ignore_ws);
     let mut rows = Vec::with_capacity(diff.lines.len());
     for row in crate::changes_diff::split_rows(diff) {
-        rows.push(render_row(file_ix, row, diff, ws, cx));
+        rows.push(render_row(file_ix, row, &marked, ws, cx));
         if let Some(t) = ws.review.target.filter(|t| t.file_ix == file_ix && row.contains(t.line_ix)) {
             rows.push(crate::views::diff::comment_editor(t, ws, cx));
         }
@@ -31,16 +33,16 @@ pub(crate) fn render_rows(file_ix: usize, diff: &FileDiff, ws: &Workspace, cx: &
 /// the unified renderer, or an old|new cell pair. Cell ids are
 /// `("diff-cell-old"|"diff-cell-new", line_ix)` — keyed by diff-line index,
 /// unique within the file's diff.
-fn render_row(file_ix: usize, row: SplitRow, diff: &FileDiff, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
+fn render_row(file_ix: usize, row: SplitRow, marked: &MarkedDiff, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     let target = |ix: usize| ReviewTarget { file_ix, line_ix: ix };
     match row {
-        SplitRow::Wide(ix) => crate::views::diff::diff_line(ix, target(ix), &diff.lines[ix], ws, cx),
+        SplitRow::Wide(ix) => crate::views::diff::diff_line(ix, target(ix), marked, ws, cx),
         SplitRow::Pair { old, new } => div()
             .flex()
             .items_stretch()
             .w_full()
-            .child(cell(old.map(target), Side::Old, diff, ws, cx))
-            .child(cell(new.map(target), Side::New, diff, ws, cx))
+            .child(cell(old.map(target), Side::Old, marked, ws, cx))
+            .child(cell(new.map(target), Side::New, marked, ws, cx))
             .into_any_element(),
     }
 }
@@ -56,7 +58,7 @@ enum Side {
 /// the unified view (danger on the old side, success on the new). An empty
 /// cell — the missing half of an unpaired removal or addition — gets a
 /// muted fill. Commented lines carry the same chip as unified rows.
-fn cell(target: Option<ReviewTarget>, side: Side, diff: &FileDiff, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
+fn cell(target: Option<ReviewTarget>, side: Side, marked: &MarkedDiff, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     // Copy theme fields up front — `cx.theme()` borrows `*cx` and the
     // listeners below need `&mut cx`.
     let (border, muted, muted_fg, success, danger, fg) = {
@@ -74,7 +76,7 @@ fn cell(target: Option<ReviewTarget>, side: Side, diff: &FileDiff, ws: &Workspac
             .bg(muted.opacity(0.15))
             .into_any_element();
     };
-    let line = &diff.lines[target.line_ix];
+    let line = &marked.diff.lines[target.line_ix];
     let (tint, text_fg) = match line.kind {
         DiffLineKind::Added => (Some(success.opacity(0.12)), success),
         DiffLineKind::Removed => (Some(danger.opacity(0.12)), danger),
@@ -107,7 +109,14 @@ fn cell(target: Option<ReviewTarget>, side: Side, diff: &FileDiff, ws: &Workspac
                 .text_color(muted_fg)
                 .child(number.map(|n| n.to_string()).unwrap_or_default()),
         )
-        .child(div().min_w_0().overflow_hidden().text_ellipsis().text_color(text_fg).child(line.text.clone()));
+        .child(
+            div()
+                .min_w_0()
+                .overflow_hidden()
+                .text_ellipsis()
+                .text_color(text_fg)
+                .child(marked.code_text(target.line_ix, text_fg)),
+        );
     if line.new.or(line.old).is_some() {
         cell = cell
             .cursor_pointer()
