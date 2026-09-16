@@ -96,6 +96,8 @@ impl ProviderKind {
             label: "MCP",
             tagline: "MCP server — its tools are the models",
             icon: IconName::PlugZap,
+            cli: None,
+            daemon: None,
             fetch: Some(crate::backend::fetch_mcp_tools),
         };
         const HTTP: ProviderKindInfo = ProviderKindInfo {
