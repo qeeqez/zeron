@@ -178,8 +178,9 @@ fn panel(ws: &Workspace, cx: &mut Context<Workspace>) -> impl IntoElement {
         )
 }
 
-/// One feed row: kind icon, chat title + preview, and a relative timestamp.
-/// Clicking opens the chat (approval entries also scroll to the card).
+/// One feed row: kind icon, chat title + preview, a relative timestamp, an
+/// unread dot, and a per-row dismiss ×. Clicking opens the chat (approval
+/// entries also scroll to the card); the × removes the row without opening.
 fn entry_row(ix: usize, entry: &ActivityEntry, cx: &mut Context<Workspace>) -> AnyElement {
     let (icon, color) = match entry.kind {
         ActivityKind::TurnFinished => (IconName::CircleCheck, cx.theme().success),
@@ -209,6 +210,17 @@ fn entry_row(ix: usize, entry: &ActivityEntry, cx: &mut Context<Workspace>) -> A
                         .flex()
                         .items_center()
                         .gap_2()
+                        .when(entry.unread, |d| {
+                            d.child(
+                                div()
+                                    .id(("activity-unread", ix))
+                                    .test_support()
+                                    .flex_shrink_0()
+                                    .size(px(6.))
+                                    .rounded_full()
+                                    .bg(cx.theme().accent),
+                            )
+                        })
                         .child(
                             div()
                                 .flex_1()
@@ -219,7 +231,23 @@ fn entry_row(ix: usize, entry: &ActivityEntry, cx: &mut Context<Workspace>) -> A
                                 .text_ellipsis()
                                 .child(entry.chat_title.clone()),
                         )
-                        .child(div().text_color(cx.theme().muted_foreground).text_size(px(10.)).child(relative_time(entry.at))),
+                        .child(div().text_color(cx.theme().muted_foreground).text_size(px(10.)).child(relative_time(entry.at)))
+                        .child(
+                            div()
+                                .id(("activity-dismiss", ix))
+                                .test_support()
+                                .flex_shrink_0()
+                                .cursor_pointer()
+                                .text_size(px(10.))
+                                .text_color(cx.theme().muted_foreground)
+                                .hover(|d| d.text_color(cx.theme().foreground))
+                                .child(IconName::X)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    // Keep the click off the row — dismissing must not open the chat.
+                                    cx.stop_propagation();
+                                    this.dismiss_activity_entry(ix, cx);
+                                })),
+                        ),
                 )
                 .child(
                     div()

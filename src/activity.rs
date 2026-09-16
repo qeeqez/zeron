@@ -42,7 +42,8 @@ pub struct ActivityEntry {
     /// while `Chat::id` is reassigned on every load.
     pub chat_created: SystemTime,
     pub at: SystemTime,
-    /// Unread entries drive the bell's badge; opening the panel clears them.
+    /// Unread entries drive the bell's badge and the row's dot; opening
+    /// the entry's chat clears them.
     pub unread: bool,
 }
 
@@ -92,13 +93,15 @@ impl ActivityFeed {
         self.entries.iter().filter(|e| e.unread).count()
     }
 
-    /// Mark every entry read; returns whether anything changed so callers
-    /// only persist on a real transition.
-    pub fn mark_all_read(&mut self) -> bool {
+    /// Mark every entry for `chat_created` read; returns whether anything
+    /// changed so callers only persist on a real transition.
+    pub fn mark_chat_read(&mut self, chat_created: SystemTime) -> bool {
         let mut changed = false;
         for e in &mut self.entries {
-            changed |= e.unread;
-            e.unread = false;
+            if e.chat_created == chat_created {
+                changed |= e.unread;
+                e.unread = false;
+            }
         }
         changed
     }
@@ -186,13 +189,10 @@ impl Workspace {
         self.activity.persist(self.project.dir());
     }
 
-    /// The bell toggles the panel; opening marks the feed read, clearing the
-    /// badge until the next event lands.
+    /// The bell toggles the panel. Viewing the list doesn't clear the
+    /// badge — an entry's dot clears when its chat is opened.
     pub fn toggle_activity_panel(&mut self, cx: &mut Context<Self>) {
         self.activity_open = !self.activity_open;
-        if self.activity_open && self.activity.mark_all_read() {
-            self.persist_activity();
-        }
         cx.notify();
     }
 
@@ -216,6 +216,9 @@ impl Workspace {
         // Overlay state is cleared too — a click while settings is open must
         // reveal the chat, not leave the overlay covering it.
         self.settings_open = false;
+        // The row led somewhere, so the chat's unread dots are done even
+        // when the chat itself is gone.
+        self.mark_chat_activity_read(chat_created);
         if let Some(ix) = self.chats.iter().position(|c| c.created_at == chat_created) {
             self.select_chat(ix, window, cx);
             if kind == ActivityKind::Approval {
@@ -223,6 +226,23 @@ impl Workspace {
             }
         }
         cx.notify();
+    }
+
+    /// Remove one row — the per-row × next to the header's Clear-all.
+    pub fn dismiss_activity_entry(&mut self, ix: usize, cx: &mut Context<Self>) {
+        if ix < self.activity.entries.len() {
+            self.activity.entries.remove(ix);
+            self.persist_activity();
+        }
+        cx.notify();
+    }
+
+    /// Clear the unread flag on every entry for a chat — called wherever
+    /// the chat is opened (sidebar select, activity row, notice click).
+    pub(crate) fn mark_chat_activity_read(&mut self, chat_created: SystemTime) {
+        if self.activity.mark_chat_read(chat_created) {
+            self.persist_activity();
+        }
     }
 
     /// Scroll the active chat to its pending approval card — the last
@@ -244,3 +264,8 @@ impl Workspace {
         }
     }
 }
+
+// Declared here, not in `main.rs` — that file is at the SLOC cap.
+#[cfg(test)]
+#[path = "activity_ui_tests.rs"]
+mod activity_ui_tests;

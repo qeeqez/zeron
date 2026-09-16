@@ -60,6 +60,7 @@ impl Workspace {
         };
         if ix == self.active {
             self.chats[ix].unread = false;
+            self.mark_chat_activity_read(self.chats[ix].created_at);
             crate::dock_badge::update(cx);
             cx.notify();
             return;

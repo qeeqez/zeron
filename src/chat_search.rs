@@ -119,6 +119,7 @@ impl Workspace {
     pub(crate) fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
         self.pill_anchor = None;
         self.chats[self.active].unread = false;
+        self.mark_chat_activity_read(self.chats[self.active].created_at);
         crate::dock_badge::update(cx);
         self.scroller.update(cx, |s, cx| s.scroll_to_end(cx));
         cx.notify();

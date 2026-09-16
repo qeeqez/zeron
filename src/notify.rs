@@ -74,6 +74,7 @@ impl Workspace {
     fn open_notified_chat(&mut self, chat_id: u64, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_open = false;
         if let Some(ix) = self.chat_index(chat_id) {
+            self.mark_chat_activity_read(self.chats[ix].created_at);
             self.select_chat(ix, window, cx);
         }
         cx.notify();

@@ -84,6 +84,7 @@ impl Workspace {
         self.editing = None;
         self.find.match_ix = 0;
         self.chats[index].unread = false;
+        self.mark_chat_activity_read(self.chats[index].created_at);
         crate::dock_badge::update(cx);
         let draft = self.chats[index].draft.clone();
         self.composer.update(cx, |s, cx| {

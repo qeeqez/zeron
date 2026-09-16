@@ -8,7 +8,6 @@
 //! shadowing the built-in `#[test]` the expansion relies on.
 
 use gpui_kit::component::Root;
-use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext};
 
 use crate::activity::{ACTIVITY_LIMIT, ActivityEntry, ActivityFeed, ActivityKind};
@@ -27,7 +26,7 @@ fn sandbox_home() {
 }
 
 /// Mount a `Workspace` in a headless window (same pattern as ui_tests).
-fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
+pub(crate) fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
     sandbox_home();
     cx.update(gpui_kit::init);
     let mut ws = None;
@@ -40,7 +39,7 @@ fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext)
     (ws.unwrap(), cx)
 }
 
-fn stream(events: Vec<AgentEvent>) -> ReplyStream {
+pub(crate) fn stream(events: Vec<AgentEvent>) -> ReplyStream {
     let (tx, rx) = std::sync::mpsc::channel();
     for e in events {
         let _ = tx.send(e);
@@ -55,7 +54,7 @@ fn stream(events: Vec<AgentEvent>) -> ReplyStream {
 
 /// A backend whose turn completes immediately — deterministic, unlike
 /// `SimBackend`, which fails a quarter of replies at random.
-struct OkBackend;
+pub(crate) struct OkBackend;
 
 impl AgentBackend for OkBackend {
     fn name(&self) -> &'static str {
@@ -69,7 +68,7 @@ impl AgentBackend for OkBackend {
 
 /// A backend whose turn fails immediately — the channel closes after the
 /// error, so the pump sees Disconnected and finishes the reply.
-struct FailBackend;
+pub(crate) struct FailBackend;
 
 impl AgentBackend for FailBackend {
     fn name(&self) -> &'static str {
@@ -83,7 +82,7 @@ impl AgentBackend for FailBackend {
 
 /// A backend that asks for approval, then hangs — the request's sender stays
 /// alive so the pump never sees the channel close and the turn stays running.
-struct AskBackend;
+pub(crate) struct AskBackend;
 
 impl AgentBackend for AskBackend {
     fn name(&self) -> &'static str {
@@ -119,7 +118,9 @@ impl AgentBackend for AskBackend {
 /// Type into the composer and send; the backend replies on timers, so the
 /// test clock is advanced until the turn ends (or `wait_idle` is false and
 /// the first events have landed).
-fn send_reply(workspace: &Entity<Workspace>, backend: std::sync::Arc<dyn AgentBackend>, wait_idle: bool, cx: &mut VisualTestContext) {
+pub(crate) fn send_reply(
+    workspace: &Entity<Workspace>, backend: std::sync::Arc<dyn AgentBackend>, wait_idle: bool, cx: &mut VisualTestContext,
+) {
     cx.update(|window, cx| {
         workspace.update(cx, |ws, cx| {
             ws.backend = backend;
@@ -180,86 +181,6 @@ fn records_approval() {
         assert!(e.body.contains("Run command"), "the entry names the approval kind, got {:?}", e.body);
         assert!(e.body.contains("rm -rf /tmp/x"), "the entry carries the detail, got {:?}", e.body);
     });
-}
-
-#[test]
-fn badge_counts_and_clears_on_open() {
-    let mut app = TestAppContext::single();
-    let (ws, cx) = mount(&mut app);
-    send_reply(&ws, std::sync::Arc::new(OkBackend), true, cx);
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        assert!(window.find("activity-bell").visible(), "the bell renders in the top bar");
-        assert!(window.find("activity-badge").visible(), "one unread entry shows the badge");
-        assert!(window.try_find("activity-panel").is_none(), "panel starts closed");
-
-        window.click("activity-bell", cx);
-        window.draw(cx).clear(cx);
-        assert!(window.find("activity-panel").visible(), "clicking the bell opens the panel");
-        assert!(window.find(("activity-entry", 0usize)).visible(), "the entry row renders");
-        assert!(window.try_find("activity-badge").is_none(), "opening the panel clears the badge");
-    });
-    ws.read_with(cx, |ws, _| {
-        assert!(ws.activity_open);
-        assert_eq!(ws.activity.unread_count(), 0, "opening the panel marks the feed read");
-    });
-}
-
-#[test]
-fn entry_click_opens_its_chat() {
-    let mut app = TestAppContext::single();
-    let (ws, cx) = mount(&mut app);
-    send_reply(&ws, std::sync::Arc::new(OkBackend), true, cx);
-    // A second chat takes focus; the entry must lead back to chat 0.
-    cx.update(|_window, cx| ws.update(cx, |ws, cx| ws.new_chat(cx)));
-    assert_eq!(ws.read_with(cx, |ws, _| ws.active), 1);
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        window.click("activity-bell", cx);
-        window.draw(cx).clear(cx);
-        window.click(("activity-entry", 0usize), cx);
-        window.draw(cx).clear(cx);
-    });
-    ws.read_with(cx, |ws, _| {
-        assert_eq!(ws.active, 0, "clicking the entry selects its chat");
-        assert!(!ws.activity_open, "the panel closes after the click");
-    });
-}
-
-#[test]
-fn approval_entry_scrolls_to_pending_card() {
-    let mut app = TestAppContext::single();
-    let (ws, cx) = mount(&mut app);
-    send_reply(&ws, std::sync::Arc::new(AskBackend), false, cx);
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        // The card sits at message 1 under 40 filler messages — the virtual
-        // scroller is tail-anchored, so it isn't rendered yet.
-        assert!(window.try_find(("approval", 1usize)).is_none(), "pending card starts off-screen");
-        window.click("activity-bell", cx);
-        window.draw(cx).clear(cx);
-        window.click(("activity-entry", 0usize), cx);
-        window.draw(cx).clear(cx);
-        assert!(window.find(("approval", 1usize)).visible(), "clicking the entry scrolls the pending card into view");
-    });
-}
-
-#[test]
-fn clear_empties_feed_and_file() {
-    let mut app = TestAppContext::single();
-    let (ws, cx) = mount(&mut app);
-    send_reply(&ws, std::sync::Arc::new(OkBackend), true, cx);
-    let dir = ws.read_with(cx, |ws, _| ws.project.dir().to_path_buf());
-    assert!(dir.join("activity.json").exists(), "recording persists the feed");
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        window.click("activity-bell", cx);
-        window.draw(cx).clear(cx);
-        window.click("activity-clear", cx);
-        window.draw(cx).clear(cx);
-    });
-    ws.read_with(cx, |ws, _| assert!(ws.activity.entries.is_empty(), "Clear empties the feed"));
-    assert!(!dir.join("activity.json").exists(), "Clear removes the persisted feed");
 }
 
 #[test]
