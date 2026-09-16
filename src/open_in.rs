@@ -139,7 +139,14 @@ fn run(cmd: &OpenCommand) -> Result<(), String> {
 impl Workspace {
     /// `open -R` the project-relative file — selects it in Finder.
     pub fn reveal_in_finder(&mut self, rel: &str, cx: &mut Context<Self>) {
-        let cmd = reveal_command(&self.project.root().join(rel));
+        let abs = self.project.root().join(rel);
+        self.reveal_path_in_finder(&abs, cx);
+    }
+
+    /// `open -R` an absolute path — the worktree menu's entry point, where
+    /// the directory lives outside the project-relative scheme.
+    pub fn reveal_path_in_finder(&mut self, abs: &std::path::Path, cx: &mut Context<Self>) {
+        let cmd = reveal_command(abs);
         self.run_open_command(cmd, cx);
     }
 
@@ -147,8 +154,15 @@ impl Workspace {
     /// when `None`). `Ask` resolves to `None` — the menu shows a picker, so
     /// reaching this with `Ask` is a no-op rather than a guessed app.
     pub fn open_in_editor(&mut self, rel: &str, editor: Option<PreferredEditor>, cx: &mut Context<Self>) {
+        let abs = self.project.root().join(rel);
+        self.open_path_in_editor(&abs, editor, cx);
+    }
+
+    /// Open an absolute path in `editor` (or the preferred editor when
+    /// `None`) — the worktree menu's entry point. Same `Ask` no-op rule.
+    pub fn open_path_in_editor(&mut self, abs: &std::path::Path, editor: Option<PreferredEditor>, cx: &mut Context<Self>) {
         let editor = editor.unwrap_or(self.preferred_editor);
-        let Some(cmd) = open_command(editor, &self.project.root().join(rel)) else { return };
+        let Some(cmd) = open_command(editor, abs) else { return };
         self.run_open_command(cmd, cx);
     }
 

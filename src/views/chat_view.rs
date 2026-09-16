@@ -28,6 +28,10 @@ impl Workspace {
         let last_turn = chat.last_turn;
         let title = chat.title.clone();
         let pinned = chat.pinned;
+        // Worktree threads get a titlebar chip + the ⋯ menu's reveal/open
+        // items; the chip's tooltip carries the checkout path.
+        let worktree = chat.worktree;
+        let workdir = chat.workdir.clone();
         let ws = cx.entity();
         let ws_empty = cx.entity();
         let ws_menu = cx.entity();
@@ -94,6 +98,7 @@ impl Workspace {
                 .border_color(cx.theme().border)
                 .text_sm()
                 .child(title)
+                .when(worktree, |d| d.child(crate::views::chat_menu::worktree_badge("worktree-badge", &workdir, cx)))
                 .child(div().flex_1())
                 .child(
                     div()
@@ -136,7 +141,8 @@ impl Workspace {
                 )
                 .child(Button::new("chat-menu").ghost().icon(IconName::Ellipsis).dropdown_menu({
                     let word_wrap = self.word_wrap;
-                    move |menu, _window, _cx| chat_menu(menu, &ws_menu, pinned, word_wrap)
+                    let state = crate::views::chat_menu::ChatMenuState { pinned, word_wrap, worktree };
+                    move |menu, window, cx| chat_menu(menu, &ws_menu, state, window, cx)
                 })),
         );
 

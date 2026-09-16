@@ -127,3 +127,8 @@ fn git_err(dir: &Path, args: &[&str]) -> Result<String, String> {
 #[cfg(test)]
 #[path = "worktree_tests.rs"]
 mod worktree_tests;
+
+// Same — the header badge + ⋯ menu tests live beside the subsystem.
+#[cfg(test)]
+#[path = "worktree_ui_tests.rs"]
+mod worktree_ui_tests;

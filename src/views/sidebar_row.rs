@@ -10,6 +10,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Enter as InputEnter, Escape as InputEscape, Input, InputState};
 use gpui_kit::component::menu::DropdownMenu;
+use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::component::{Sizable, h_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -27,6 +28,7 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
         pinned: chat.pinned,
         archived: chat.archived,
         only_chat: ws.chats.len() <= 1,
+        worktree: chat.worktree,
     };
     // Only an inline rename mounts the editor — a dialog rename shares
     // `ws.rename`, and its outside-click would commit behind the dialog.
@@ -117,6 +119,17 @@ fn row_suffix(ws: Entity<Workspace>, chat_id: u64, flags: RowFlags, status: (boo
         h_flex()
             .items_center()
             .gap_1()
+            // Worktree threads carry a small glyph ahead of the status
+            // affordances — the header badge is the primary indicator.
+            .when(flags.worktree, |d| {
+                d.child(
+                    div()
+                        .id(("worktree-glyph", chat_id))
+                        .test_support()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(IconName::FolderGit),
+                )
+            })
             .child(if running {
                 IconName::LoaderCircle.into_any_element()
             } else if unread {

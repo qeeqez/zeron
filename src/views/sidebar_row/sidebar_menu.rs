@@ -16,6 +16,9 @@ pub(super) struct RowFlags {
     /// The last chat can't be deleted — `delete_chat` no-ops, so the item is
     /// disabled instead of offering a dead action.
     pub only_chat: bool,
+    /// Worktree threads get a small glyph in the row suffix (the ⋯ menu
+    /// doesn't read this — it's a row-render flag).
+    pub worktree: bool,
 }
 
 /// What the menu needs to know about its row — the stable chat id plus the
@@ -30,7 +33,7 @@ pub(super) fn chat_row_menu(
     ws: &Entity<Workspace>, row: RowMenu, menu: PopupMenu, window: &mut Window, cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
     let RowMenu { id, flags } = row;
-    let RowFlags { pinned, archived, only_chat } = flags;
+    let RowFlags { pinned, archived, only_chat, .. } = flags;
     let pin_label = if pinned { "Unpin" } else { "Pin" };
     let ws_pin = ws.clone();
     let ws_rename = ws.clone();
