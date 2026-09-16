@@ -142,18 +142,9 @@ impl Workspace {
         self.save();
         // Poll like the backend event pump — a blocking recv would park the
         // test executor, which is the same clock the approval click needs.
-        cx.spawn(async move |this, cx| loop {
-            use std::sync::mpsc::TryRecvError::{Disconnected, Empty};
-            let decision = match rx.try_recv() {
-                Ok(d) => Some(d),
-                Err(Disconnected) => None,
-                Err(Empty) => {
-                    cx.background_executor().timer(Duration::from_millis(30)).await;
-                    continue;
-                },
-            };
+        cx.spawn(async move |this, cx| {
+            let decision = poll_run_decision(&rx, cx).await;
             let _ = this.update(cx, |this, cx| this.answer_command_run(run, decision, cx));
-            break;
         })
         .detach();
     }
@@ -226,6 +217,21 @@ impl Workspace {
         }
         cx.notify();
         self.save();
+    }
+}
+
+/// Poll the approval channel until a decision lands or the responder drops.
+/// A blocking `recv` would park the test executor — the same clock the
+/// approval click needs — so this yields on a 30ms timer like the backend
+/// event pump. `Some(d)` = answered; `None` = responder dropped.
+async fn poll_run_decision(rx: &std::sync::mpsc::Receiver<ApprovalDecision>, cx: &mut gpui_kit::AsyncApp) -> Option<ApprovalDecision> {
+    use std::sync::mpsc::TryRecvError::{Disconnected, Empty};
+    loop {
+        match rx.try_recv() {
+            Ok(d) => return Some(d),
+            Err(Disconnected) => return None,
+            Err(Empty) => cx.background_executor().timer(Duration::from_millis(30)).await,
+        }
     }
 }
 
