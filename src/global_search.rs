@@ -12,10 +12,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 
-use gpui_kit::assets::IconName;
-use gpui_kit::component::command::{Command, CommandGroup, CommandItem, CommandState};
-use gpui_kit::component::theme::ActiveTheme;
-use gpui_kit::component::{IndexPath, WindowExt, h_flex};
+use gpui_kit::component::{IndexPath, WindowExt};
 use gpui_kit::*;
 use serde::Deserialize;
 
@@ -37,9 +34,14 @@ pub(crate) struct SearchDoc {
     /// The chat's `N.json` slot — loads the file when there's no live chat.
     pub file_ix: usize,
     pub title: SharedString,
+    /// Provider instance id the chat sends on (`Chat.provider`) — may be
+    /// empty on legacy chats; the Provider filter matches it verbatim.
+    pub provider: String,
+    /// Model id within the provider's catalog (`Chat.model`) — same
+    /// lifecycle as `provider`.
+    pub model: String,
     pub messages: Rc<Vec<ChatMessage>>,
 }
-
 impl SearchDoc {
     /// A loaded chat — `file_ix` is its position in `Workspace::chats`,
     /// which is also the slot `save_chats` writes it to.
@@ -48,16 +50,18 @@ impl SearchDoc {
             chat_id: Some(chat.id),
             file_ix: ix,
             title: chat.title.clone(),
+            provider: chat.provider.clone(),
+            model: chat.model.clone(),
             messages: chat.messages.clone(),
         }
     }
-
-    /// A chat file this window never loaded.
     fn stored(file_ix: usize, stored: StoredChatFile) -> Self {
         Self {
             chat_id: None,
             file_ix,
             title: stored.title.into(),
+            provider: stored.provider,
+            model: stored.model,
             messages: Rc::new(stored.messages),
         }
     }
@@ -73,8 +77,69 @@ pub(crate) struct SearchHit {
     pub msg_ix: usize,
     pub title: SharedString,
     pub snippet: SharedString,
+    /// The hit chat's provider/model stamps — what the Provider and Model
+    /// filters matched on.
+    pub provider: String,
+    pub model: String,
     /// The message's timestamp — results sort newest-first on it.
     pub at: SystemTime,
+}
+
+/// The Date chip's presets — rolling windows like the sidebar's recency
+/// buckets ("Today" = the last 24h), so a kept selection never goes stale
+/// the way a frozen calendar boundary would.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum DateRange {
+    /// No date bound — the default.
+    #[default]
+    Any,
+    /// The last 24 hours.
+    Day,
+    /// The last 7 days.
+    Week,
+    /// The last 30 days.
+    Month,
+}
+
+impl DateRange {
+    /// The chip/menu label.
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Any => "Any date",
+            Self::Day => "Today",
+            Self::Week => "This week",
+            Self::Month => "This month",
+        }
+    }
+
+    /// The preset's lower bound, evaluated now — `None` for `Any`.
+    fn cutoff(self) -> Option<SystemTime> {
+        let days = match self {
+            Self::Any => return None,
+            Self::Day => 1,
+            Self::Week => 7,
+            Self::Month => 30,
+        };
+        SystemTime::now().checked_sub(std::time::Duration::from_secs(days * 86_400))
+    }
+}
+
+/// The filter row's selections, applied by `search` after the text match.
+/// Every `None` means "no constraint" — an all-default value filters
+/// nothing. Session-scoped on `Workspace::search_filters`, never persisted.
+#[derive(Clone, Default)]
+pub(crate) struct SearchFilters {
+    /// Drop hits older than this — wins over `date` when both are set.
+    pub date_from: Option<SystemTime>,
+    /// Drop hits newer than this.
+    pub date_to: Option<SystemTime>,
+    /// The Date chip's preset — supplies the lower bound while `date_from`
+    /// is unset, and is what the chip labels.
+    pub date: DateRange,
+    /// Drop hits whose chat's `model` differs.
+    pub model: Option<String>,
+    /// Drop hits whose chat's `provider` differs.
+    pub provider: Option<String>,
 }
 
 /// Mirror of `persist::StoredChat` for targeted single-file reads — its
@@ -137,14 +202,22 @@ fn read_stored(path: &Path) -> Option<StoredChatFile> {
 
 /// Every match for `query` across `docs`, newest message first. An empty
 /// query matches nothing — the dialog shows its hint instead of flooding
-/// the list with every message ever written.
-pub(crate) fn search(docs: &[SearchDoc], query: &str) -> Vec<SearchHit> {
+/// the list with every message ever written. `filters` narrows the text
+/// matches: provider/model drop whole chats, the date bound drops
+/// individual messages.
+pub(crate) fn search(docs: &[SearchDoc], query: &str, filters: &SearchFilters) -> Vec<SearchHit> {
     let query = query.trim().to_lowercase();
     if query.is_empty() {
         return Vec::new();
     }
+    let from = filters.date_from.or_else(|| filters.date.cutoff());
     let mut hits = Vec::new();
     for doc in docs {
+        if filters.provider.as_ref().is_some_and(|p| *p != doc.provider)
+            || filters.model.as_ref().is_some_and(|m| *m != doc.model)
+        {
+            continue;
+        }
         let mut taken = 0;
         // Newest-first within a chat, capped — see PER_CHAT.
         for (msg_ix, m) in doc.messages.iter().enumerate().rev() {
@@ -154,6 +227,9 @@ pub(crate) fn search(docs: &[SearchDoc], query: &str) -> Vec<SearchHit> {
             if !crate::chat_search::msg_matches(m, &query) {
                 continue;
             }
+            if from.is_some_and(|f| m.at < f) || filters.date_to.is_some_and(|t| m.at > t) {
+                continue;
+            }
             taken += 1;
             hits.push(SearchHit {
                 chat_id: doc.chat_id,
@@ -161,6 +237,8 @@ pub(crate) fn search(docs: &[SearchDoc], query: &str) -> Vec<SearchHit> {
                 msg_ix,
                 title: doc.title.clone(),
                 snippet: crate::chat_search::match_snippet(m, &query).into(),
+                provider: doc.provider.clone(),
+                model: doc.model.clone(),
                 at: m.at,
             });
         }
@@ -168,69 +246,6 @@ pub(crate) fn search(docs: &[SearchDoc], query: &str) -> Vec<SearchHit> {
     hits.sort_by_key(|h| std::cmp::Reverse(h.at));
     hits.truncate(MAX_HITS);
     hits
-}
-
-/// A result row: chat title over the match snippet, relative age at the
-/// trailing edge — same shape as the palette's chat rows.
-fn hit_item(hit: SearchHit) -> CommandItem {
-    let title = hit.title.clone();
-    let snippet = hit.snippet.clone();
-    CommandItem::new().label(hit.title).child(move |_, cx| {
-        h_flex()
-            .flex_1()
-            .gap_2()
-            .items_center()
-            .child(IconName::MessageSquare)
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .child(div().text_sm().whitespace_nowrap().text_ellipsis().child(title.clone()))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .child(snippet.clone()),
-                    ),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(crate::palette_items::rel_time(hit.at)),
-            )
-    })
-}
-
-/// The dialog's `Command` element, rebuilt on every workspace render —
-/// `on_query` notifies so each keystroke re-runs `search` with the live
-/// query against the docs snapshot.
-fn search_command(state: &Entity<CommandState>, docs: &[SearchDoc], ws: &Entity<Workspace>, cx: &mut App) -> Command {
-    let ws_confirm = ws.clone();
-    let ws_query = ws.clone();
-    let hits = search(docs, &state.read(cx).query(cx));
-    let group = CommandGroup::new().label("Messages").items(hits.into_iter().map(hit_item));
-    Command::new(state)
-        .placeholder("Search all chats…")
-        // Matching happens in `search`, not the component's substring filter.
-        .filterable(false)
-        .group(group)
-        .empty(|state, _, cx| {
-            let hint = if state.query(cx).trim().is_empty() { "Search messages across every chat" } else { "No matches" };
-            div().py_6().w_full().text_center().text_sm().text_color(cx.theme().muted_foreground).child(hint)
-        })
-        .footer(|_, _, cx| crate::palette::command_footer("↵ open chat", cx))
-        .on_query(move |_, _, cx| {
-            ws_query.update(cx, |_, cx| cx.notify());
-        })
-        .on_confirm(move |path, window, cx| {
-            ws_confirm.update(cx, |this, cx| this.confirm_global_hit(path, window, cx));
-        })
-        .on_cancel(|window, cx| window.close_dialog(cx))
 }
 
 impl Workspace {
@@ -246,9 +261,10 @@ impl Workspace {
         // the workspace lease, so it can't read `self`.
         let docs = self.search_docs();
         let state = self.global_search.clone();
+        let filters = self.search_filters.clone();
         let ws = cx.entity();
         window.open_dialog(cx, move |dialog, _window, cx| {
-            dialog.close_button(false).overlay_closable(true).child(search_command(&state, &docs, &ws, cx))
+            dialog.close_button(false).overlay_closable(true).child(crate::views::global_search::search_command(&state, &docs, &filters, &ws, cx))
         });
         // The dialog focuses its own handle on open; the query field needs
         // focus so typing and ↑↓/Enter reach the Command context.
@@ -275,10 +291,10 @@ impl Workspace {
     /// Resolve a confirmed row to its hit and open it. The search re-runs
     /// so `path.row` resolves against the same ranked list the dialog
     /// showed — and against any disk state that moved since it opened.
-    fn confirm_global_hit(&mut self, path: IndexPath, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn confirm_global_hit(&mut self, path: IndexPath, window: &mut Window, cx: &mut Context<Self>) {
         window.close_dialog(cx);
         let query = self.global_search.read(cx).query(cx).to_string();
-        let hits = search(&self.search_docs(), &query);
+        let hits = search(&self.search_docs(), &query, self.search_filters.read(cx));
         if let Some(hit) = hits.get(path.row) {
             self.open_hit(hit, &query, window, cx);
         }
@@ -322,3 +338,8 @@ impl Workspace {
         Some(chat)
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "search_filter_tests.rs"]
+mod search_filter_tests;

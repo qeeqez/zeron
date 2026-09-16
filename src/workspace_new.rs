@@ -35,6 +35,9 @@ impl Workspace {
         // workspace borrow (the click listener already holds it).
         let ws = cx.entity();
         let settings_panel = cx.new(|cx| crate::views::settings::SettingsPanel::new(ws.clone(), &settings, window, cx));
+        // An entity, not a field: the search dialog reads it while the
+        // workspace is mid-render, and the observe below re-renders on change.
+        let search_filters = cx.new(|_| crate::global_search::SearchFilters::default());
         let mut this = Self {
             chats: Vec::new(),
             active: 0,
@@ -104,6 +107,7 @@ impl Workspace {
             recall_ix: None,
             palette: inputs.palette,
             global_search: inputs.global_search,
+            search_filters: search_filters.clone(),
             file_palette: inputs.file_palette,
             apply_palette: cx.new(|cx| CommandState::new(window, cx)),
             recent_files: Vec::new(),
@@ -177,6 +181,9 @@ impl Workspace {
             budget_cap_input: inputs.budget_cap_input,
             budget_input: cx.new(|cx| InputState::new(window, cx).placeholder("e.g. 5.00 — empty = global default")),
         };
+        // Filter changes re-render the workspace — the dialog rebuilds its
+        // Command (and re-runs `search`) on every render.
+        cx.observe(&search_filters, |_, _, cx| cx.notify()).detach();
         this.snapshots.retention_days = settings.snapshot_retention_days.unwrap_or(crate::snapshots::DEFAULT_RETENTION_DAYS);
         this.git.ignore_ws = settings.diff_ignore_ws;
         this.snapshots.cap_mb = settings.snapshot_cap_mb.unwrap_or(0);

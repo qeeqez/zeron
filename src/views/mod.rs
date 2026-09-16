@@ -33,6 +33,7 @@ mod explorer_git_tests;
 #[cfg(test)]
 mod explorer_tests;
 pub(crate) mod file_inspect;
+pub(crate) mod global_search;
 pub(crate) mod logs;
 mod markdown;
 #[cfg(test)]

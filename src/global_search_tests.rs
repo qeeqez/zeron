@@ -11,7 +11,7 @@ use gpui_kit::component::dialog::Confirm;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Entity, Focusable, TestAppContext, VisualTestContext};
 
-use crate::global_search::{SearchDoc, SearchHit, search};
+use crate::global_search::{SearchDoc, SearchFilters, SearchHit, search};
 use crate::model::{ChatMessage, MessageKind, Role};
 use crate::workspace::Workspace;
 
@@ -42,6 +42,8 @@ fn doc(chat_id: Option<u64>, file_ix: usize, title: &str, texts: &[&str]) -> Sea
         chat_id,
         file_ix,
         title: title.into(),
+        provider: String::new(),
+        model: String::new(),
         messages: Rc::new(messages),
     }
 }
@@ -86,7 +88,7 @@ fn search_matches_across_chats() {
         doc(Some(2), 1, "Second chat", &["say hello again", "unrelated"]),
         doc(Some(3), 2, "Third chat", &["no match"]),
     ];
-    let hits = search(&docs, "hello");
+    let hits = search(&docs, "hello", &SearchFilters::default());
     assert_eq!(hits.len(), 2, "one hit per matching chat");
     assert_eq!(hits[0].title.as_ref(), "Second chat", "newest message ranks first");
     assert_eq!(hits[0].msg_ix, 0);
@@ -98,15 +100,15 @@ fn search_matches_across_chats() {
 #[test]
 fn search_empty_query_returns_nothing() {
     let docs = vec![doc(Some(1), 0, "Chat", &["hello"])];
-    assert!(search(&docs, "").is_empty());
-    assert!(search(&docs, "   ").is_empty(), "whitespace-only is still empty");
+    assert!(search(&docs, "", &SearchFilters::default()).is_empty());
+    assert!(search(&docs, "   ", &SearchFilters::default()).is_empty(), "whitespace-only is still empty");
 }
 
 #[test]
 fn search_caps_results_per_chat() {
     let texts: Vec<String> = (0..10).map(|i| format!("hit number {i}")).collect();
     let docs = vec![doc(Some(1), 0, "Busy", &texts.iter().map(String::as_str).collect::<Vec<_>>())];
-    let hits = search(&docs, "hit");
+    let hits = search(&docs, "hit", &SearchFilters::default());
     assert_eq!(hits.len(), 3, "PER_CHAT keeps the newest three matches");
     assert_eq!(hits[0].msg_ix, 9, "newest message first");
 }
@@ -115,7 +117,7 @@ fn search_caps_results_per_chat() {
 fn snippet_centers_on_match() {
     let long = format!("{} needle {}", "x".repeat(120), "y".repeat(120));
     let docs = vec![doc(Some(1), 0, "Chat", &[&long])];
-    let hits = search(&docs, "needle");
+    let hits = search(&docs, "needle", &SearchFilters::default());
     let snippet = &hits[0].snippet;
     assert!(snippet.starts_with('…') && snippet.ends_with('…'), "clipped both sides: {snippet}");
     assert!(snippet.contains("needle"));
@@ -135,7 +137,7 @@ fn search_docs_include_disk_only_chats() {
             assert_eq!(docs.len(), 2, "loaded chat plus the on-disk file");
             assert_eq!(docs[1].chat_id, None);
             assert_eq!(docs[1].title.as_ref(), "Disk chat");
-            let hits = search(&docs, "needle");
+            let hits = search(&docs, "needle", &SearchFilters::default());
             assert_eq!(hits.len(), 2, "both loaded and disk chats match");
             assert!(hits.iter().any(|h| h.chat_id.is_none() && h.file_ix == 1));
         });
@@ -161,6 +163,8 @@ fn open_hit_selects_chat_and_jumps_to_message() {
                 msg_ix: 2,
                 title: this.chats[0].title.clone(),
                 snippet: "needle two".into(),
+                provider: String::new(),
+                model: String::new(),
                 at: std::time::SystemTime::now(),
             };
             this.open_hit(&hit, "needle", window, cx);
@@ -182,7 +186,7 @@ fn open_hit_loads_disk_only_chat() {
         ws.update(cx, |this, cx| {
             write_chat_file(&this.project.chats_dir(), this.chats.len(), "Disk chat", &["disk needle"]);
             let docs = this.search_docs();
-            let hits = search(&docs, "needle");
+            let hits = search(&docs, "needle", &SearchFilters::default());
             assert_eq!(hits.len(), 1);
             this.open_hit(&hits[0], "needle", window, cx);
             assert_eq!(this.chats.len(), 2, "the file loads as a live chat");

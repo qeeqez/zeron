@@ -100,6 +100,10 @@ pub struct Workspace {
     pub palette: Entity<CommandState>,
     /// Cmd-Shift-F cross-chat search dialog's state (see `crate::global_search`).
     pub global_search: Entity<CommandState>,
+    /// The global-search dialog's filter row — an entity so the dialog can
+    /// read it while the workspace is mid-render; session-scoped, never
+    /// persisted (see `crate::global_search::SearchFilters`).
+    pub search_filters: Entity<crate::global_search::SearchFilters>,
     /// Cmd-P go-to-file picker's state (see `crate::file_palette`).
     pub file_palette: Entity<CommandState>,
     /// Apply-code-block picker's state (see `crate::apply_code`).
