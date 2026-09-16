@@ -1,13 +1,14 @@
 //! Headless tests for the usage meter and popover: `AgentEvent::Usage`
 //! streams fold onto the chat, the composer indicator updates live, and
-//! clicking the meter opens the per-turn/cost breakdown.
+//! clicking the meter opens the per-turn/cost breakdown. The plain unit
+//! test at the bottom lives here because `usage.rs` is at the SLOC cap.
 
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{App, AppContext, Entity, TestAppContext, VisualTestContext, Window};
 
 use crate::backend::{AgentBackend, AgentEvent, ReplyStream};
-use crate::usage::UsageReport;
+use crate::usage::{ChatUsage, UsageReport};
 use crate::workspace::Workspace;
 
 /// Redirect persistence into a throwaway dir so tests never read or write
@@ -164,14 +165,40 @@ fn titlebar_meter_shows_fill_or_token_fallback() {
         window.draw(cx).clear(cx);
         let chip = window.find("context-meter");
         assert!(chip.visible());
-        assert_eq!(chip.label(), Some("140 tokens this chat"), "aria label carries the exact count");
+        // gpt-5 is priced: 100 in + 40 out ≈ $0.000525 — the aria label
+        // carries the exact counts plus the estimate and its rate.
+        assert_eq!(chip.label(), Some("140 tokens this chat · ~$0.000525 est · $1.25 in / $10 out per Mtok"));
     });
     // Occupancy backend: the chip switches to the window's fill percent.
     seed_usage(&ws, cx, 0, "gpt-5", &[UsageReport::occupancy(170_000, 200_000)]);
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
-        assert_eq!(window.find("context-meter").label(), Some("170,000 / 200,000 tokens"));
+        assert_eq!(window.find("context-meter").label(), Some("170,000 / 200,000 tokens · ~$0.000525 est · $1.25 in / $10 out per Mtok"));
     });
+}
+
+#[test]
+fn chip_shows_no_cost_for_local_models() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    // An ollama-style model id has no pricing row — the chip shows tokens
+    // only, no cost suffix.
+    seed_usage(&ws, cx, 0, "llama3.2", &[UsageReport::tokens(100, 40)]);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert_eq!(window.find("context-meter").label(), Some("140 tokens this chat"));
+    });
+}
+
+#[test]
+fn cost_accumulates_across_turns() {
+    let mut u = ChatUsage::default();
+    u.record(UsageReport::tokens(1_000_000, 0));
+    u.begin_turn();
+    u.record(UsageReport::tokens(0, 500_000));
+    // gpt-5: $1.25/1M in + $10/1M out → the running estimate prices
+    // both turns, not just the in-flight one.
+    assert_eq!(u.cost("gpt-5"), Some(6.25));
 }
 
 /// Seed a chat's usage without driving a backend — the popover reads the

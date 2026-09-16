@@ -38,6 +38,9 @@ impl Workspace {
         // A color tag shows as a small dot beside the title — same slot as
         // the worktree/temp chips; all three can coexist.
         let color = chat.color;
+        // The context chip prices the chat's model — empty falls back to
+        // the workspace default, same as the usage popover.
+        let model: &str = if chat.model.is_empty() { self.model.as_ref() } else { chat.model.as_str() };
         let ws = cx.entity();
         let ws_empty = cx.entity();
         let ws_menu = cx.entity();
@@ -119,7 +122,7 @@ impl Workspace {
                 .when(chat.instructions.is_some(), |d| d.child(crate::chat_ops::instructions::instructions_badge("instructions-badge", cx)))
                 // Context-window meter — the latest usage report's occupancy,
                 // or cumulative tokens when the backend reports no window.
-                .when_some(crate::views::chat_menu::context_chip("context-meter", &chat.usage, cx), |d, chip| d.child(chip))
+                .when_some(crate::views::chat_menu::context_chip("context-meter", &chat.usage, model, cx), |d, chip| d.child(chip))
                 .child(div().flex_1())
                 .child(
                     div()

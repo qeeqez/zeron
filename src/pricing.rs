@@ -50,9 +50,22 @@ pub(crate) fn fmt_cost(usd: f64) -> String {
     s.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
+/// Compact USD for the titlebar chip: `$0.43`, `$12.50` — two decimals,
+/// except a positive sub-cent estimate shows `<$0.01` rather than a
+/// misleading `$0.00`.
+pub(crate) fn fmt_cost_compact(usd: f64) -> String {
+    if usd <= 0. {
+        "$0".into()
+    } else if usd < 0.01 {
+        "<$0.01".into()
+    } else {
+        format!("${usd:.2}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{fmt_cost, model_pricing};
+    use super::{fmt_cost, fmt_cost_compact, model_pricing};
 
     #[test]
     fn pricing_prefers_the_specific_row() {
@@ -66,6 +79,9 @@ mod tests {
         assert!(model_pricing("fable").is_none());
         assert!(model_pricing("sim-x").is_none());
         assert!(model_pricing("").is_none());
+        // Local/free providers price nothing — no cost suffix anywhere.
+        assert!(model_pricing("llama3.2").is_none());
+        assert!(model_pricing("qwen3-coder").is_none());
     }
 
     #[test]
@@ -74,5 +90,15 @@ mod tests {
         assert_eq!(fmt_cost(6.25), "$6.25");
         assert_eq!(fmt_cost(0.0234), "$0.0234");
         assert_eq!(fmt_cost(0.000125), "$0.000125");
+    }
+
+    #[test]
+    fn fmt_cost_compact_rounds_to_cents() {
+        assert_eq!(fmt_cost_compact(0.), "$0");
+        assert_eq!(fmt_cost_compact(0.43), "$0.43");
+        assert_eq!(fmt_cost_compact(12.5), "$12.50");
+        assert_eq!(fmt_cost_compact(0.01), "$0.01");
+        // Positive sub-cent stays honest — never "$0.00".
+        assert_eq!(fmt_cost_compact(0.007), "<$0.01");
     }
 }
