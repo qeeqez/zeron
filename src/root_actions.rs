@@ -11,6 +11,7 @@ use crate::{
     EscapeKey, FindInChat, GoToFile, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats,
     SearchAllChats, SearchChat, ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleDictation, ToggleExplorer,
     TogglePlan, ToggleSidebar, ToggleSnapshots, ToggleTerminal, ViewLogs, ZoomIn, ZoomOut, ZoomReset, ZoomWindow,
+    chat_msg::bookmarks_panel::ToggleBookmarks,
 };
 
 /// Every `on_action` listener on the workspace root — chat switching, panel
@@ -60,6 +61,12 @@ pub(crate) fn workspace_actions(root: Div, window: &Window, cx: &mut Context<Wor
         let ws = cx.entity();
         move |_: &TogglePlan, _, cx| {
             ws.update(cx, |this, cx| this.toggle_plan_panel(cx));
+        }
+    })
+    .on_action({
+        let ws = cx.entity();
+        move |_: &ToggleBookmarks, _, cx| {
+            ws.update(cx, |this, cx| this.toggle_bookmarks_panel(cx));
         }
     })
     .on_action({

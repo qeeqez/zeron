@@ -14,6 +14,7 @@ Codex-style left sidebar.
 - [x] Inline rename editing (dialog)
 - [x] Settings gear opens settings sheet
 - [x] Clear-all button in footer
+- [x] Bookmarks row opens the bookmarks panel — every starred message grouped by chat; click jumps to it, × unstars, header Clear all
 
 ## Todo
 

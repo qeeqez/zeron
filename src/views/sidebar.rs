@@ -139,16 +139,18 @@ impl Workspace {
             groups.push(filter::no_match_group());
         }
 
-        // Plan + Scheduled panel rows — their suffixes are the live
-        // indicators (plan progress, enabled-automation count).
+        // Plan + Scheduled + Bookmarks panel rows — their suffixes are the
+        // live indicators (plan progress, enabled-automation count, total
+        // star count).
         let plan_row = super::plan_panel::plan_nav_row(self, cx);
         let scheduled_row = super::scheduled_panel::scheduled_nav_row(self, cx);
+        let bookmarks_row = super::bookmarks_panel::bookmarks_nav_row(self, cx);
 
         let mut actions = group::ChatGroup::new("").child(new_chat).child(search_all);
         if let Some(resume) = resume {
             actions = actions.child(resume);
         }
-        let actions = actions.child(plan_row).child(scheduled_row);
+        let actions = actions.child(plan_row).child(scheduled_row).child(bookmarks_row);
 
         let footer = div()
             .flex()

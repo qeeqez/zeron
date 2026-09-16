@@ -65,6 +65,7 @@ impl Workspace {
                     .placeholder("Prompt to send on every run — e.g. \"Summarize new commits on main.\"")
             }),
             schedule_interval: crate::automations::AutomationInterval::H1,
+            bookmarks_panel: crate::chat_msg::bookmarks_panel::BookmarksPanel { open: settings.bookmarks_panel_open },
             snapshots: crate::snapshots::SnapshotsState::default(),
             changes: Vec::new(),
             changes_generation: 0,

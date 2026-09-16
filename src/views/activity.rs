@@ -263,8 +263,9 @@ fn entry_row(ix: usize, entry: &ActivityEntry, cx: &mut Context<Workspace>) -> A
         .into_any_element()
 }
 
-/// "now" / "5m" / "2h" / "3d" — coarse age for the row's trailing label.
-fn relative_time(at: SystemTime) -> String {
+/// "now" / "5m" / "2h" / "3d" — coarse age for a row's trailing label;
+/// shared with the bookmarks panel.
+pub(crate) fn relative_time(at: SystemTime) -> String {
     let secs = at.elapsed().map(|d| d.as_secs()).unwrap_or(0);
     if secs < 60 {
         "now".to_string()

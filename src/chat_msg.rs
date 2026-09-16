@@ -7,6 +7,11 @@ pub(crate) mod copy;
 #[cfg(test)]
 mod copy_tests;
 
+/// The Bookmarks panel — every loaded chat's starred messages in one
+/// right-side list. Declared here, not in `main.rs` — the crate root is at
+/// the SLOC cap.
+pub(crate) mod bookmarks_panel;
+
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
 #[path = "quote_selection_tests.rs"]

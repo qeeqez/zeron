@@ -51,6 +51,7 @@ impl Render for Workspace {
                     .when(self.changes_panel_open, |d| d.child(self.render_changes_panel(window, cx)))
                     .when(self.plan_panel.open, |d| d.child(self.render_plan_panel(window, cx)))
                     .when(self.scheduled_panel_open, |d| d.child(self.render_scheduled_panel(window, cx)))
+                    .when(self.bookmarks_panel.open, |d| d.child(self.render_bookmarks_panel(window, cx)))
                     .when(self.snapshots.open, |d| d.child(self.render_snapshots_panel(window, cx))),
             )
             // Bottom terminal panel — full width below the sidebar + chat

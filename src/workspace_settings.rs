@@ -114,6 +114,7 @@ impl Workspace {
             terminal_open: self.terminal.open,
             plan_panel_open: self.plan_panel.open,
             scheduled_panel_open: self.scheduled_panel_open,
+            bookmarks_panel_open: self.bookmarks_panel.open,
             theme,
             ..Default::default()
         });

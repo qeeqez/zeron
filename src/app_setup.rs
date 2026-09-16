@@ -5,7 +5,8 @@ use gpui_kit::*;
 
 use crate::{
     AboutApp, BringAllToFront, CheckForUpdates, FindInChat, HideApp, HideOthers, MsgNavDown, MsgNavTop, MsgNavUp, NewWindow, OpenProject,
-    QuitApp, SearchAllChats, TogglePlan, ToggleTerminal, ViewLogs, ZoomIn, lifecycle, menus, shortcuts, update_check,
+    QuitApp, SearchAllChats, TogglePlan, ToggleTerminal, ViewLogs, ZoomIn, chat_msg::bookmarks_panel::ToggleBookmarks, lifecycle, menus,
+    shortcuts, update_check,
 };
 
 /// The system-wide summon hotkey — declared here (not `main.rs`, which is
@@ -60,13 +61,14 @@ pub(crate) fn install_app_actions(cx: &mut App) {
 
 /// Extra workspace bindings that aren't in the cheat-sheet table: the
 /// terminal (Cmd-`, Ctrl-` fallback — macOS may claim Cmd-` for window
-/// cycling), the plan panel (Cmd-Shift-P), and the logs panel
-/// (Cmd-Shift-L).
-pub(crate) fn panel_keys() -> [KeyBinding; 4] {
+/// cycling), the plan panel (Cmd-Shift-P), the bookmarks panel
+/// (Cmd-Shift-B), and the logs panel (Cmd-Shift-L).
+pub(crate) fn panel_keys() -> [KeyBinding; 5] {
     [
         KeyBinding::new("cmd-`", ToggleTerminal, Some("workspace")),
         KeyBinding::new("ctrl-`", ToggleTerminal, Some("workspace")),
         KeyBinding::new("cmd-shift-p", TogglePlan, Some("workspace")),
+        KeyBinding::new("cmd-shift-b", ToggleBookmarks, Some("workspace")),
         KeyBinding::new("cmd-shift-l", ViewLogs, Some("workspace")),
     ]
 }

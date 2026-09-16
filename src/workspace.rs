@@ -47,6 +47,10 @@ pub struct Workspace {
     /// The interval chip last picked in the schedule dialog — reset to
     /// `H1` on each open.
     pub schedule_interval: crate::automations::AutomationInterval,
+    /// Bookmarks panel state — every loaded chat's starred messages in one
+    /// side panel (see `crate::chat_msg::bookmarks_panel`). `open` persists via
+    /// `Settings`.
+    pub bookmarks_panel: crate::chat_msg::bookmarks_panel::BookmarksPanel,
     /// Snapshots panel + retention policy (see `crate::snapshots`).
     pub snapshots: crate::snapshots::SnapshotsState,
     /// The activity-center dropdown is open — see `crate::activity`.

@@ -18,7 +18,7 @@ pub(super) fn bookmarks_submenu(menu: PopupMenu, ws: &Entity<Workspace>, window:
         .iter()
         .enumerate()
         .filter(|(_, m)| m.bookmarked)
-        .map(|(ix, m)| (ix, bookmark_label(m)))
+        .map(|(ix, m)| (ix, crate::chat_msg::bookmarks_panel::snippet(m, 60)))
         .collect();
     let ws = ws.clone();
     menu.submenu_with_icon(Some(IconName::Star.into()), "Bookmarks", window, cx, move |m, _w, _cx| {
@@ -34,12 +34,4 @@ pub(super) fn bookmarks_submenu(menu: PopupMenu, ws: &Entity<Workspace>, window:
             }))
         })
     })
-}
-
-/// One-line preview for a bookmarked message — whitespace squashed, clipped
-/// at 60 chars so long replies stay one menu row.
-fn bookmark_label(msg: &crate::model::ChatMessage) -> String {
-    let squashed = msg.markdown().split_whitespace().collect::<Vec<_>>().join(" ");
-    let clipped: String = squashed.chars().take(60).collect();
-    if squashed.chars().count() > 60 { format!("{clipped}…") } else { clipped }
 }
