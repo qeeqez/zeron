@@ -6,6 +6,7 @@ mod cards;
 mod changes;
 mod changes_commits;
 mod changes_git;
+mod changes_git_branch;
 mod changes_stash;
 mod chat_menu;
 mod chat_view;

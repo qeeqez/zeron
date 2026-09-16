@@ -6,7 +6,7 @@
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use crate::changes::diff_summary;
+    use crate::changes_diff::diff_summary;
     use crate::changes_ui_tests::change;
     use crate::git::{self, BranchStatus, ChangeStatus};
 

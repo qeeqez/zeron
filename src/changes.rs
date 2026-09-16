@@ -30,36 +30,6 @@ pub(crate) struct ChangesSnapshot {
     pub stashes: Vec<StashEntry>,
 }
 
-/// The header's diff-stat rollup — files touched plus summed insertions and
-/// deletions across every row. `None` on a clean tree so the line hides.
-pub(crate) struct DiffSummary {
-    pub files: usize,
-    pub added: u32,
-    pub deleted: u32,
-}
-
-impl DiffSummary {
-    /// `K files changed · +N −M` — the row's aria label and the string tests
-    /// assert on.
-    pub(crate) fn text(&self) -> String {
-        format!("{} files changed · +{} −{}", self.files, self.added, self.deleted)
-    }
-}
-
-/// Sum the per-file numstat counts into the header's summary. Untracked
-/// files already carry their line count in `added` (see `git::collect`), so
-/// they fold in like any other row.
-pub(crate) fn diff_summary(changes: &[FileChange]) -> Option<DiffSummary> {
-    if changes.is_empty() {
-        return None;
-    }
-    Some(DiffSummary {
-        files: changes.len(),
-        added: changes.iter().map(|c| c.added).sum(),
-        deleted: changes.iter().map(|c| c.deleted).sum(),
-    })
-}
-
 /// Git-action state for the Changes panel: the branch header, the commit
 /// message input, a busy flag that serializes ops, and the status note shown
 /// under the buttons.
@@ -89,6 +59,9 @@ pub struct ChangesGit {
     /// A git op is running on the background executor — buttons stay up but
     /// re-entry is refused so ops can't interleave.
     pub busy: bool,
+    /// An AI commit-message turn is in flight (see `crate::changes_generate`)
+    /// — the ✦ button shows a spinner and refuses re-entry.
+    pub generating: bool,
     /// Last op's outcome — `(text, is_error)`; `None` before the first op.
     pub note: Option<(String, bool)>,
 }
@@ -128,6 +101,7 @@ impl ChangesGit {
             stash_input,
             new_branch_input,
             busy: false,
+            generating: false,
             note: None,
         }
     }
@@ -377,3 +351,7 @@ impl Workspace {
         cx.notify();
     }
 }
+
+#[cfg(test)]
+#[path = "changes_stale_tests.rs"]
+mod changes_stale_tests;

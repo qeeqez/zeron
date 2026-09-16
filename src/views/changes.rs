@@ -23,7 +23,7 @@ impl Workspace {
             .enumerate()
             .map(|(ix, c)| change_entry(ix, c, &mut next_line, self, cx))
             .collect();
-        let summary = crate::changes::diff_summary(&self.changes);
+        let summary = crate::changes_diff::diff_summary(&self.changes);
         div()
             .id("changes-panel")
             .test_support()

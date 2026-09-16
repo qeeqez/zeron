@@ -41,10 +41,7 @@ mod changes_commits_ui_tests;
 mod changes_diff;
 #[cfg(test)]
 mod changes_diff_tests;
-#[cfg(test)]
-mod changes_git_ui_tests;
-#[cfg(test)]
-mod changes_stale_tests;
+mod changes_generate;
 mod changes_stash;
 #[cfg(test)]
 mod changes_tests;

@@ -291,3 +291,33 @@ fn hunk_starts(header: &str) -> Option<(u32, u32)> {
     let new = spans.next()?[1..].split(',').next()?.parse().ok()?;
     Some((old, new))
 }
+
+/// The header's diff-stat rollup — files touched plus summed insertions and
+/// deletions across every row. `None` on a clean tree so the line hides.
+pub(crate) struct DiffSummary {
+    pub files: usize,
+    pub added: u32,
+    pub deleted: u32,
+}
+
+impl DiffSummary {
+    /// `K files changed · +N −M` — the row's aria label and the string tests
+    /// assert on.
+    pub(crate) fn text(&self) -> String {
+        format!("{} files changed · +{} −{}", self.files, self.added, self.deleted)
+    }
+}
+
+/// Sum the per-file numstat counts into the header's summary. Untracked
+/// files already carry their line count in `added` (see `git::collect`), so
+/// they fold in like any other row.
+pub(crate) fn diff_summary(changes: &[FileChange]) -> Option<DiffSummary> {
+    if changes.is_empty() {
+        return None;
+    }
+    Some(DiffSummary {
+        files: changes.len(),
+        added: changes.iter().map(|c| c.added).sum(),
+        deleted: changes.iter().map(|c| c.deleted).sum(),
+    })
+}
