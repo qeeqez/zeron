@@ -7,6 +7,7 @@
 use std::time::Duration;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::base::ObservedElement;
 use gpui_kit::base::text::{CodeBlock, TextViewState};
 use gpui_kit::component::text::TextView;
 use gpui_kit::component::theme::ActiveTheme;
@@ -74,6 +75,8 @@ pub(super) fn assistant_markdown(
     let ws = ws.clone();
     TextView::new(&state.read(cx).view)
         .code_block_actions(move |block, window, cx| code_block_actions(ix, block, window, cx))
+        .markdown_block_parser(super::mermaid::parse_block)
+        .markdown_block_renderer("mermaid", move |node, window, cx| super::mermaid::render_block(ix, node, window, cx))
         .on_link_click(move |url, event, _, cx| open_link(url, event, &ws, cx))
         .into_any_element()
 }
@@ -121,11 +124,8 @@ fn raw_markdown(ix: usize, text: &SharedString, cx: &App) -> AnyElement {
 /// `ApplyCodeBlock` — writes the block to a project file), and a copy
 /// button that flips to a check for a moment after copying.
 fn code_block_actions(ix: usize, block: &CodeBlock, window: &mut Window, cx: &mut App) -> AnyElement {
-    // Span start is unique per block in a message; unspanned blocks share 0 —
-    // a cosmetic collision on the copied flag only.
+    // Span start is unique per block in a message; unspanned blocks share 0.
     let key = block.span.as_ref().map(|s| s.start).unwrap_or(0);
-    let copied = window.use_keyed_state(("code-copied", key), cx, |_, _| false);
-    let is_copied = *copied.read(cx);
     let code = block.code().to_string();
     let lang = block.lang();
     let shell = lang.as_deref().and_then(crate::run_cmd::shell_for);
@@ -172,28 +172,36 @@ fn code_block_actions(ix: usize, block: &CodeBlock, window: &mut Window, cx: &mu
                     }),
             )
         })
-        .child(
-            div()
-                .id(ElementId::Name(format!("copy-code-{ix}-{key}").into()))
-                .test_support()
-                .cursor_pointer()
-                .child(if is_copied { IconName::Check } else { IconName::Copy })
-                .on_click(move |_, _, cx| {
-                    cx.write_to_clipboard(ClipboardItem::new_string(code.clone()));
-                    copied.update(cx, |c, cx| {
-                        *c = true;
-                        cx.notify();
-                    });
-                    let weak = copied.downgrade();
-                    cx.spawn(async move |cx| {
-                        cx.background_executor().timer(Duration::from_secs(2)).await;
-                        let _ = weak.update(cx, |c, cx| {
-                            *c = false;
-                            cx.notify();
-                        });
-                    })
-                    .detach();
-                }),
-        )
+        .child(copy_code_button(ix, key as u64, code, window, cx))
         .into_any_element()
+}
+
+/// The copy button every fenced block carries — plain code blocks and
+/// mermaid diagrams alike. Flips to a check for two seconds after copying.
+/// `key` namespaces the copied flag per block (span start, or a content hash
+/// for mermaid).
+pub(super) fn copy_code_button(ix: usize, key: u64, code: String, window: &mut Window, cx: &mut App) -> ObservedElement<Stateful<Div>> {
+    let copied = window.use_keyed_state(("code-copied", key), cx, |_, _| false);
+    let is_copied = *copied.read(cx);
+    div()
+        .id(ElementId::Name(format!("copy-code-{ix}-{key}").into()))
+        .test_support()
+        .cursor_pointer()
+        .child(if is_copied { IconName::Check } else { IconName::Copy })
+        .on_click(move |_, _, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string(code.clone()));
+            copied.update(cx, |c, cx| {
+                *c = true;
+                cx.notify();
+            });
+            let weak = copied.downgrade();
+            cx.spawn(async move |cx| {
+                cx.background_executor().timer(Duration::from_secs(2)).await;
+                let _ = weak.update(cx, |c, cx| {
+                    *c = false;
+                    cx.notify();
+                });
+            })
+            .detach();
+        })
 }

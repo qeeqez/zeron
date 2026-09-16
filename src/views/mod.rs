@@ -45,6 +45,10 @@ pub(crate) mod logs;
 mod markdown;
 #[cfg(test)]
 mod markdown_tests;
+mod mermaid;
+mod mermaid_mmdc;
+#[cfg(test)]
+mod mermaid_tests;
 mod message;
 mod message_edit;
 mod message_footer;
