@@ -127,7 +127,7 @@ fn install_fake(ws: &Entity<Workspace>, cx: &mut VisualTestContext) -> (Sender<P
     let fake_writes = writes.clone();
     cx.update(|_, cx| {
         ws.update(cx, |ws, _| {
-            ws.terminal.spawner = Some(Box::new(move |_spec| {
+            ws.terminal.spawners.push_back(Box::new(move |_spec| {
                 (
                     Box::new(FakePty {
                         writes: fake_writes,
@@ -152,10 +152,10 @@ fn panel_opens_shows_output_and_sends_input() {
         window.draw(cx).clear(cx);
         assert!(window.find("terminal-panel").visible(), "panel should be mounted");
     });
-    assert!(ws.read_with(cx, |ws, _| ws.terminal.session.is_some()), "shell spawned on open");
+    assert!(!ws.read_with(cx, |ws, _| ws.terminal.sessions.is_empty()), "shell spawned on open");
 
     tx.send(PtyEvent::Output(b"fake-shell$ ".to_vec())).unwrap();
-    until(&ws, cx, |ws| ws.terminal.session.as_ref().is_some_and(|s| s.contents().contains("fake-shell$")));
+    until(&ws, cx, |ws| ws.terminal.active_session().is_some_and(|s| s.contents().contains("fake-shell$")));
     cx.update(|window, _cx| {
         assert!(window.find("terminal-scroll").visible(), "scrollback view mounted");
     });

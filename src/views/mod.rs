@@ -75,6 +75,7 @@ pub(crate) mod sidebar;
 mod sidebar_row;
 pub(crate) mod snapshots;
 pub(crate) mod terminal;
+mod terminal_tabs;
 #[cfg(test)]
 mod tool_group_tests;
 pub(crate) mod trust;
