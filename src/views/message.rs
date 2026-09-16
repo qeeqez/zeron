@@ -196,7 +196,7 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
                 ),
             )
         })
-        .context_menu(move |menu, _window, cx| {
+        .context_menu(move |menu, window, cx| {
             // Copy variants stay grouped at the top; Copy Code only appears
             // when the message actually has fenced blocks.
             let menu = menu
@@ -243,9 +243,7 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
                 menu
             };
             match (role, mc.is_last) {
-                (Role::Assistant, true) => {
-                    menu.item(msg_item("Retry", IconName::RotateCcw, &ws_menu, move |this, _w, cx| this.retry_last(cx)))
-                },
+                (Role::Assistant, true) => super::retry_menu::retry_items(menu, &ws_menu, window, cx),
                 (Role::Assistant, false) => menu.item(msg_item("Regenerate", IconName::RotateCcw, &ws_menu, move |this, w, cx| {
                     this.regenerate_from(ix, w, cx)
                 })),

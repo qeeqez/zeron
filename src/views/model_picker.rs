@@ -27,6 +27,10 @@ pub struct PickerProvider {
     pub models: Vec<ModelInfo>,
 }
 
+/// Post-pick hook — `None` for the composer; the failed-turn banner
+/// passes `Workspace::retry_last` so a pick retries on the new model.
+type OnPick = Option<fn(&mut Workspace, &mut Context<Workspace>)>;
+
 /// Owned inputs for `model_picker` — the composer builds this from
 /// `&Workspace` so the returned element holds no borrow.
 pub struct ModelPickerSpec {
@@ -36,6 +40,8 @@ pub struct ModelPickerSpec {
     /// Enabled instances in user order.
     pub providers: Vec<PickerProvider>,
     pub ws: Entity<Workspace>,
+    /// Runs after a model row is picked — see `OnPick`.
+    pub on_pick: OnPick,
 }
 
 /// The picker button: label is "provider · model", content is the two
@@ -113,6 +119,7 @@ fn model_pane(spec: &ModelPickerSpec, browsed: Option<&PickerProvider>, popover:
         provider: provider.id.clone(),
         current_provider: spec.current_provider.clone(),
         current_model: spec.current_model.clone(),
+        on_pick: spec.on_pick,
     };
     pane.children(provider.models.iter().map(|m| model_row(&ctx, m, cx)).collect::<Vec<_>>())
 }
@@ -150,6 +157,8 @@ struct ModelRowCtx {
     provider: String,
     current_provider: String,
     current_model: SharedString,
+    /// Post-pick hook — see `ModelPickerSpec::on_pick`.
+    on_pick: OnPick,
 }
 
 /// One model row in the right pane: label + dimmed description, a check on
@@ -160,6 +169,7 @@ fn model_row(ctx: &ModelRowCtx, m: &ModelInfo, cx: &App) -> impl IntoElement {
     let popover = ctx.popover.clone();
     let pid = ctx.provider.clone();
     let mid = m.id.clone();
+    let on_pick = ctx.on_pick;
     h_flex()
         .id(SharedString::from(format!("model-opt-{}-{}", ctx.provider, m.id)))
         .test_support()
@@ -188,6 +198,9 @@ fn model_row(ctx: &ModelRowCtx, m: &ModelInfo, cx: &App) -> impl IntoElement {
         .on_click(move |_, window, cx| {
             ws.update(cx, |this, cx| {
                 this.select_model(&pid, &mid, cx);
+                if let Some(f) = on_pick {
+                    f(this, cx);
+                }
             });
             popover.update(cx, |state, cx| state.dismiss(window, cx));
         })

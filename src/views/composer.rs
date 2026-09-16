@@ -85,6 +85,7 @@ impl Workspace {
                 })
                 .collect(),
             ws: ws.clone(),
+            on_pick: None,
         });
         let mode_picker = picker(PickerSpec {
             id: "mode",

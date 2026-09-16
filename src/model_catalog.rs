@@ -171,6 +171,16 @@ impl Workspace {
         self.providers.iter().filter(|p| p.enabled).collect()
     }
 
+    /// Every enabled instance's effective models, in picker order —
+    /// `(instance, model)` pairs. The retry menu's "Regenerate with model"
+    /// submenu and the failed-turn banner's picker both gate on this list.
+    pub(crate) fn available_models(&self) -> Vec<(&ProviderInstance, ModelInfo)> {
+        self.enabled_providers()
+            .iter()
+            .flat_map(|p| self.models_for(&p.id).into_iter().map(move |m| (*p, m)))
+            .collect()
+    }
+
     /// Refresh every enabled instance whose kind has a `fetch` — off the UI
     /// thread, one background task per instance. Test builds skip the
     /// spawn: tests inject catalogs via `land_catalog` instead of running

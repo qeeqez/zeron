@@ -253,7 +253,7 @@ impl Workspace {
             )
             .when(failed && !running && !limited, |d| {
                 let ws_retry = ws_empty.clone();
-                d.child(
+                let row = d.child(
                     div()
                         .flex()
                         .items_center()
@@ -267,7 +267,28 @@ impl Workspace {
                         .child(div().id("retry-failed").cursor_pointer().underline().child("Retry").on_click(move |_, _, cx| {
                             ws_retry.update(cx, |this, cx| this.retry_last(cx));
                         })),
-                )
+                );
+                // A second model to switch to earns the banner its own
+                // picker — a pick selects the model then retries.
+                if self.available_models().len() < 2 {
+                    return row;
+                }
+                row.child(crate::views::model_picker(crate::views::ModelPickerSpec {
+                    current_provider: self.selected_provider.clone(),
+                    current_model: self.model.clone(),
+                    providers: self
+                        .enabled_providers()
+                        .into_iter()
+                        .map(|p| crate::views::PickerProvider {
+                            id: p.id.clone(),
+                            name: p.name.clone(),
+                            icon: p.kind.info().icon,
+                            models: self.models_for(&p.id),
+                        })
+                        .collect(),
+                    ws: ws_empty.clone(),
+                    on_pick: Some(Workspace::retry_last),
+                }))
             })
             .child(self.render_composer(cx))
     }

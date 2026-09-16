@@ -287,3 +287,7 @@ impl Workspace {
 #[cfg(test)]
 #[path = "bookmark_tests.rs"]
 mod bookmark_tests;
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "retry_model_tests.rs"]
+mod retry_model_tests;
