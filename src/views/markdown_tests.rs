@@ -210,3 +210,63 @@ fn view_raw_toggle_shows_markdown_source() {
         assert!(has_id_containing(&observed_ids(window), "copy-code-0-"), "rendered view not restored");
     });
 }
+
+/// Clicking a rendered `[text](https://…)` link opens the URL in the browser
+/// — the test platform records `cx.open_url` as `opened_url`.
+#[test]
+fn markdown_link_click_opens_url() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    seed(&ws, "[the example link](https://example.com/some/page)", cx);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        // The whole body is the link — a click just inside the text lands on it.
+        window.click_at(("md-body", 0usize), point(px(30.), px(15.)), cx);
+    });
+    assert_eq!(cx.opened_url().as_deref(), Some("https://example.com/some/page"));
+}
+
+/// A bare `https://…` autolink (no `[text](…)` syntax) opens too.
+#[test]
+fn markdown_autolink_click_opens_url() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    seed(&ws, "<https://example.com/auto>", cx);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.click_at(("md-body", 0usize), point(px(30.), px(15.)), cx);
+    });
+    assert_eq!(cx.opened_url().as_deref(), Some("https://example.com/auto"));
+}
+
+/// Non-web links never reach `open_url`: `mailto:`/`javascript:` are inert,
+/// while a relative path reveals in Finder through the `open_in` fake.
+#[test]
+fn markdown_link_guard_schemes_and_files() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    seed(&ws, "[mail](mailto:a@b.c) and [script](javascript:void)", cx);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        // Click the first link ("mail") — near the text start.
+        window.click_at(("md-body", 0usize), point(px(30.), px(15.)), cx);
+    });
+    assert_eq!(cx.opened_url(), None, "mailto: must not open in the browser");
+    assert!(crate::open_in::ISSUED.lock().is_empty(), "mailto: must not reveal a file");
+
+    grow_last(&ws, "[the file](src/main.rs)", cx);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.click_at(("md-body", 0usize), point(px(30.), px(15.)), cx);
+    });
+    assert_eq!(cx.opened_url(), None, "file links don't go to the browser");
+    for _ in 0..200 {
+        cx.run_until_parked();
+        if !crate::open_in::ISSUED.lock().is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let abs = ws.read_with(cx, |w, _| w.project.root().join("src/main.rs"));
+    assert_eq!(crate::open_in::ISSUED.lock().as_slice(), &[crate::open_in::reveal_command(&abs)], "relative link should reveal in Finder");
+}

@@ -13,6 +13,8 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::workspace::Workspace;
+
 /// Per-message Markdown document state: the `TextViewState` plus the source
 /// already rendered into it, so `sync` can tell a streaming append from a
 /// replacement (edit, retry, chat switch). `raw` flips the body between the
@@ -60,15 +62,46 @@ pub(super) fn markdown_state(ix: usize, text: &str, window: &mut Window, cx: &mu
 
 /// Render assistant Markdown: rich blocks plus a code-block affordance row
 /// (language label + copy button) like Codex's. `raw` swaps the document for
-/// the Markdown source in mono type.
-pub(super) fn assistant_markdown(ix: usize, text: &SharedString, state: &Entity<MarkdownState>, cx: &mut App) -> AnyElement {
+/// the Markdown source in mono type. Links are clickable: http(s) opens in
+/// the browser, file links reveal in Finder.
+pub(super) fn assistant_markdown(
+    ix: usize, text: &SharedString, state: &Entity<MarkdownState>, ws: &Entity<Workspace>, cx: &mut App,
+) -> AnyElement {
     state.update(cx, |state, cx| state.sync(text, cx));
     if state.read(cx).raw {
         return raw_markdown(ix, text, cx);
     }
+    let ws = ws.clone();
     TextView::new(&state.read(cx).view)
         .code_block_actions(move |block, window, cx| code_block_actions(ix, block, window, cx))
+        .on_link_click(move |url, event, _, cx| open_link(url, event, &ws, cx))
         .into_any_element()
+}
+
+/// Where a clicked link goes: http(s) opens in the default browser; a
+/// `file://` or relative path reveals in Finder (project-relative paths
+/// resolve against the workspace root). Anything else — `mailto:`,
+/// `javascript:`, bare `#anchors` — is inert. Mirrors the default handler's
+/// click filter: left/middle mouse, keyboard, or a non-long-press touch.
+fn open_link(url: &SharedString, event: &ClickEvent, ws: &Entity<Workspace>, cx: &mut App) {
+    let activate = match event {
+        ClickEvent::Mouse(click) => matches!(click.up.button, MouseButton::Left | MouseButton::Middle),
+        ClickEvent::Keyboard(_) => true,
+        ClickEvent::Touch(click) => !click.long_press,
+    };
+    if !activate {
+        return;
+    }
+    if url.starts_with("http://") || url.starts_with("https://") {
+        cx.open_url(url);
+        return;
+    }
+    let path = url.strip_prefix("file://").unwrap_or(url);
+    // A `:` marks another scheme (mailto:, javascript:) — never a local path.
+    if path.is_empty() || path.starts_with('#') || path.contains(':') {
+        return;
+    }
+    ws.update(cx, |this, cx| this.reveal_in_finder(path, cx));
 }
 
 /// The unrendered Markdown source — same text the Copy action writes.

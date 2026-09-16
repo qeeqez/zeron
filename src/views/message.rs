@@ -132,7 +132,7 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
                 d.child(div().flex().flex_wrap().gap_2().pb_1().children(thumbs))
             })
             .child(if let Some(state) = &md_state {
-                super::markdown::assistant_markdown(ix, text, state, cx)
+                super::markdown::assistant_markdown(ix, text, state, ws, cx)
             } else {
                 div()
                     .whitespace_nowrap()
