@@ -71,6 +71,7 @@ impl Workspace {
             }
         })
         .detach();
+        let terminal_find_input = crate::views::terminal::find::new_term_find_input(window, cx);
         // Cmd+Q / QuitApp bypasses the window close gate — save drafts here.
         cx.on_app_quit(|this, cx| {
             this.chats[this.active].draft = this.composer.read(cx).value().to_string();
@@ -220,7 +221,7 @@ impl Workspace {
             onboarding_dismissed: settings.onboarding_dismissed,
             resume_open: false,
             auth: crate::auth::AuthBook::seeded(),
-            terminal: crate::views::terminal::TerminalPanel::new(settings.terminal_open, terminal_input),
+            terminal: crate::views::terminal::TerminalPanel::new(settings.terminal_open, terminal_input, terminal_find_input),
         };
         this.snapshots.retention_days = settings.snapshot_retention_days.unwrap_or(crate::snapshots::DEFAULT_RETENTION_DAYS);
         this.git.ignore_ws = settings.diff_ignore_ws;

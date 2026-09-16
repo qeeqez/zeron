@@ -7,10 +7,14 @@
 //! `Pty` is the seam tests use: `TermSession::from_parts` accepts any
 //! implementation plus a scripted event stream, so no test spawns a real
 //! process.
-
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
+
+/// Screen-text scans for the panel's find bar and clickable spans —
+/// `#[path]` keeps `main.rs` under the SLOC cap.
+#[path = "terminal_links.rs"]
+pub(crate) mod links;
 
 /// Bytes the shell produced, or its exit. `Exited` is sent exactly once,
 /// when the reader hits EOF or an error.
@@ -73,6 +77,12 @@ impl TermSession {
     /// resolved by the parser.
     pub(crate) fn contents(&self) -> String {
         self.screen.screen().contents()
+    }
+
+    /// The visible grid size — `(rows, cols)`. The link scan covers only
+    /// these lines of the rendered contents, never the scrollback.
+    pub(crate) fn size(&self) -> (u16, u16) {
+        self.screen.screen().size()
     }
 
     /// Forward one input line to the shell.

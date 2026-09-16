@@ -20,6 +20,11 @@ use gpui_kit::*;
 use crate::terminal::{Pty, PtyEvent, SpawnSpec, TermSession};
 use crate::workspace::Workspace;
 
+/// The panel's Cmd-F find bar and clickable-span rendering — `#[path]`
+/// keeps this file under the SLOC cap.
+#[path = "terminal_find.rs"]
+pub(crate) mod find;
+
 /// Fixed panel height — the chat column keeps the rest.
 const PANEL_H: f32 = 240.;
 /// Approximate monospace cell metrics — the PTY size only needs to be
@@ -44,6 +49,9 @@ pub(crate) struct TerminalPanel {
     pub sessions: Vec<TermSession>,
     pub active: usize,
     pub input: Entity<InputState>,
+    /// The Cmd-F find bar — one bar per panel, always searching the
+    /// active session's screen.
+    pub find: crate::chat_find::FindBar,
     pub scroll: ScrollHandle,
     /// A drain pump is in flight — `ensure_pump` won't spawn a second.
     pump_running: bool,
@@ -53,12 +61,13 @@ pub(crate) struct TerminalPanel {
 }
 
 impl TerminalPanel {
-    pub(crate) fn new(open: bool, input: Entity<InputState>) -> Self {
+    pub(crate) fn new(open: bool, input: Entity<InputState>, find_input: Entity<InputState>) -> Self {
         Self {
             open,
             sessions: Vec::new(),
             active: 0,
             input,
+            find: crate::chat_find::FindBar::new(find_input),
             scroll: ScrollHandle::new(),
             pump_running: false,
             spawners: VecDeque::new(),
@@ -162,7 +171,6 @@ impl Workspace {
 
     pub fn render_terminal_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.terminal_fit(window, cx);
-        let contents = self.terminal.active_session().map_or_else(String::new, TermSession::contents);
         div()
             .id("terminal-panel")
             .test_support()
@@ -172,7 +180,14 @@ impl Workspace {
             .border_t_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().sidebar)
+            // Scoped to the panel: Cmd-F reaches here only while focus is
+            // inside the terminal (the input line or the find bar), so the
+            // chat column's own FindInChat keeps its scope. Esc closes the
+            // find bar before the workspace's Esc cascade sees it.
+            .on_action(cx.listener(|this, _: &crate::FindInChat, window, cx| this.open_terminal_find(window, cx)))
+            .on_action(cx.listener(|this, _: &crate::EscapeKey, window, cx| this.term_find_escape(window, cx)))
             .child(self.render_terminal_tabs(cx))
+            .when(self.terminal.find.open, |d| d.child(self.terminal_find_bar(cx)))
             .child(
                 div()
                     .id("terminal-scroll")
@@ -186,7 +201,7 @@ impl Workspace {
                     .font_family(cx.theme().mono_font_family.clone())
                     .text_size(cx.theme().mono_font_size)
                     .whitespace_nowrap()
-                    .child(contents),
+                    .child(self.terminal_contents(cx)),
             )
             .child(
                 div()

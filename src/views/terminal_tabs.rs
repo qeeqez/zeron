@@ -41,12 +41,15 @@ impl Workspace {
         self.terminal.active = self.terminal.sessions.len() - 1;
     }
 
-    /// Click on a tab: bring its session to the front.
+    /// Click on a tab: bring its session to the front. An open find bar
+    /// re-runs against the new session — `match_ix` resets so a stale
+    /// index can't point past the new match list.
     pub(crate) fn select_terminal_tab(&mut self, ix: usize, cx: &mut Context<Self>) {
         if ix >= self.terminal.sessions.len() || ix == self.terminal.active {
             return;
         }
         self.terminal.active = ix;
+        self.terminal.find.match_ix = 0;
         self.terminal.scroll.scroll_to_bottom();
         cx.notify();
     }
