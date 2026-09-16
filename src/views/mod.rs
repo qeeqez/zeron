@@ -16,6 +16,7 @@ mod empty;
 pub(crate) mod explorer;
 #[cfg(test)]
 mod explorer_tests;
+pub(crate) mod logs;
 mod markdown;
 #[cfg(test)]
 mod markdown_tests;

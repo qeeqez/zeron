@@ -103,6 +103,12 @@ pub(crate) fn command_specs() -> Vec<CommandSpec> {
             effect: Effect::Run(Workspace::shortcuts_help),
         },
         CommandSpec {
+            label: "View Logs",
+            icon: IconName::ScrollText,
+            keywords: &["debug", "diagnostics", "errors"],
+            effect: Effect::Dispatch(Box::new(crate::ViewLogs)),
+        },
+        CommandSpec {
             label: "Switch to Light Theme",
             icon: IconName::Sun,
             keywords: &["appearance"],

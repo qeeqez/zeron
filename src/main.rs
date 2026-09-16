@@ -88,6 +88,9 @@ mod instructions;
 #[cfg(test)]
 mod instructions_tests;
 mod lifecycle;
+mod logs;
+#[cfg(test)]
+mod logs_tests;
 mod mcp;
 mod mcp_config;
 mod menus;
@@ -137,6 +140,7 @@ mod review;
 #[cfg(test)]
 mod review_tests;
 mod root;
+mod root_actions;
 mod run_cmd;
 #[cfg(test)]
 mod run_cmd_tests;
@@ -206,15 +210,18 @@ actions!([
     ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat,
     SearchAllChats, FindInChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext,
     NewWindow, OpenProject, AboutApp, CheckForUpdates, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront,
-    ToggleDictation, ToggleTerminal, MsgNavDown, MsgNavUp, MsgNavTop, MsgNavBottom, MsgNavEnter,
+    ToggleDictation, ToggleTerminal, MsgNavDown, MsgNavUp, MsgNavTop, MsgNavBottom, MsgNavEnter, ViewLogs,
 ]);
 
 // Re-exported at the crate root for tests — they bind the workspace keymap
 // and app actions via `crate::workspace_keys()` / `crate::install_app_actions`.
 #[cfg(test)]
-pub(crate) use app_setup::{install_app_actions, workspace_keys};
+pub(crate) use app_setup::{install_app_actions, panel_keys, workspace_keys};
 
 fn main() {
+    // Capture log output into the in-app ring buffer + log file before
+    // anything else can emit records the View Logs panel should show.
+    logs::install();
     let app = gpui_kit::application().with_assets(gpui_kit::assets::AllAssets::new(""));
     // Dock click with no visible windows re-opens a workspace — the standard
     // macOS behavior for an app that stays running after its windows close.

@@ -5,7 +5,7 @@ use gpui_kit::*;
 
 use crate::{
     AboutApp, BringAllToFront, CheckForUpdates, FindInChat, HideApp, HideOthers, MsgNavDown, MsgNavTop, MsgNavUp, NewWindow, OpenProject,
-    QuitApp, SearchAllChats, TogglePlan, ToggleTerminal, lifecycle, menus, shortcuts, update,
+    QuitApp, SearchAllChats, TogglePlan, ToggleTerminal, ViewLogs, lifecycle, menus, shortcuts, update,
 };
 
 /// Workspace-context key bindings. Menu items pick their key equivalents up
@@ -48,18 +48,28 @@ pub(crate) fn install_app_actions(cx: &mut App) {
 
 /// Extra workspace bindings that aren't in the cheat-sheet table: the
 /// terminal (Cmd-`, Ctrl-` fallback — macOS may claim Cmd-` for window
-/// cycling) and the plan panel (Cmd-Shift-P).
-pub(crate) fn panel_keys() -> [KeyBinding; 3] {
+/// cycling), the plan panel (Cmd-Shift-P), and the logs panel
+/// (Cmd-Shift-L).
+pub(crate) fn panel_keys() -> [KeyBinding; 4] {
     [
         KeyBinding::new("cmd-`", ToggleTerminal, Some("workspace")),
         KeyBinding::new("ctrl-`", ToggleTerminal, Some("workspace")),
         KeyBinding::new("cmd-shift-p", TogglePlan, Some("workspace")),
+        KeyBinding::new("cmd-shift-l", ViewLogs, Some("workspace")),
     ]
 }
 
 /// Menus + dock menu — kept beside the keymap so the chrome wiring is one
-/// place.
+/// place. "View Logs" is appended to the View menu here rather than in
+/// `menus::app_menus` so the menu table stays a flat list of items.
 pub(crate) fn install_chrome(cx: &mut App) {
-    cx.set_menus(menus::app_menus());
+    let mut menus = menus::app_menus();
+    if let Some(view) = menus.iter_mut().find(|m| m.name.as_ref() == "View") {
+        // Before the trailing separator + "Enter Full Screen" so the item
+        // lands with the other panel toggles.
+        let ix = view.items.len().saturating_sub(2);
+        view.items.insert(ix, MenuItem::action("View Logs", ViewLogs));
+    }
+    cx.set_menus(menus);
     cx.set_dock_menu(vec![MenuItem::action("New Window", NewWindow)]);
 }

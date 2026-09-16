@@ -143,6 +143,11 @@ pub struct Workspace {
     pub settings_panel: Entity<crate::views::settings::SettingsPanel>,
     /// Cmd-/ cheat sheet — a centered overlay rendered over the workspace.
     pub shortcuts_open: bool,
+    /// View Logs overlay (Cmd-Shift-L) — a centered panel over the
+    /// workspace listing the captured log buffer (see `crate::logs`).
+    pub logs_open: bool,
+    /// The logs panel's minimum-level filter (see `crate::logs::LogFilter`).
+    pub logs_filter: crate::logs::LogFilter,
     /// Image lightbox — the open image path while the full-size overlay is
     /// up; `None` is closed (see `crate::image_view`).
     pub image_view: Option<SharedString>,
