@@ -75,6 +75,14 @@ impl Workspace {
         &self.providers
     }
 
+    /// Whether any provider instance is usable — the same resolution that
+    /// picks the backend (`resolve_provider`): the selected instance when
+    /// enabled, else the first enabled one. `false` means the picker has
+    /// nothing to send on — the empty state shows the onboarding card.
+    pub fn has_configured_provider(&self) -> bool {
+        resolve_provider(&self.providers, &self.selected_provider).is_some()
+    }
+
     /// The selected instance id — `None` when no instance exists.
     pub fn selected_provider(&self) -> Option<&str> {
         self.providers

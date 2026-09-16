@@ -147,6 +147,11 @@ pub struct Settings {
     /// open in restricted mode (see `crate::trust`).
     #[serde(default = "Vec::new")]
     pub trusted_folders: Vec<String>,
+    /// First-run onboarding card dismissed — the empty state stops pushing
+    /// provider setup once the user skips it (a configured provider hides
+    /// it regardless).
+    #[serde(default)]
+    pub onboarding_dismissed: bool,
 }
 
 fn settings_path() -> PathBuf {

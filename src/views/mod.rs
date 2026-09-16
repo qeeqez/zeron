@@ -83,5 +83,8 @@ pub use saved_prompts::{SavedPromptsSpec, saved_prompts_popover};
 pub use usage_popover::usage_popover;
 
 #[cfg(test)]
+#[path = "../onboarding_tests.rs"]
+mod onboarding_tests;
+#[cfg(test)]
 #[path = "../settings_mcp_tests.rs"]
 mod settings_mcp_tests;

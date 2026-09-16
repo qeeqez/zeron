@@ -212,6 +212,10 @@ pub struct Workspace {
     pub setup_script_input: Entity<TextareaState>,
     /// Update-check state for the About row and toasts (see `crate::update`).
     pub update: crate::update::UpdateState,
+    /// First-run onboarding card dismissed via Skip — persisted as
+    /// `Settings.onboarding_dismissed`; a configured provider hides the
+    /// card regardless of this flag.
+    pub onboarding_dismissed: bool,
 
     /// Past threads the backend can reopen — the sidebar's Resume section.
     /// Filled by `refresh_sessions`; empty until the first fetch lands.

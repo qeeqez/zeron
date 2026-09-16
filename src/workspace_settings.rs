@@ -94,6 +94,7 @@ impl Workspace {
             // window — keep the file's list so an unrelated save can't
             // drop a folder the user trusted in another window.
             trusted_folders: prev.trusted_folders,
+            onboarding_dismissed: self.onboarding_dismissed,
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
             terminal_open: self.terminal.open,
@@ -170,6 +171,14 @@ impl Workspace {
             active_chat: self.active,
             setup_script: self.setup_script.clone(),
         });
+        cx.notify();
+    }
+
+    /// The onboarding card's Skip button: dismiss the card for good and
+    /// persist it — the empty state falls back to the regular prompt.
+    pub fn dismiss_onboarding(&mut self, cx: &mut Context<Self>) {
+        self.onboarding_dismissed = true;
+        self.save_settings();
         cx.notify();
     }
 }

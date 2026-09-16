@@ -205,7 +205,7 @@ impl Workspace {
                     .min_h_0()
                     .on_mouse_down(MouseButton::Left, cx.listener(Workspace::nav_click))
                     .child(if empty {
-                        render_empty_state(ws_empty.clone(), self.project.root(), cx).into_any_element()
+                        render_empty_state(ws_empty.clone(), self, cx).into_any_element()
                     } else {
                         list.into_any_element()
                     }),

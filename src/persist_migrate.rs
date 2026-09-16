@@ -55,6 +55,7 @@ impl Default for Settings {
             update_latest: String::new(),
             update_skip: String::new(),
             trusted_folders: Vec::new(),
+            onboarding_dismissed: false,
         }
     }
 }
