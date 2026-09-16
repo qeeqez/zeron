@@ -80,6 +80,7 @@ impl Workspace {
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
             terminal_open: self.terminal.open,
+            plan_panel_open: self.plan_panel.open,
             theme,
             ..Default::default()
         });

@@ -27,6 +27,9 @@ pub struct Workspace {
     pub send_queue: SendQueue,
     pub agents_panel_open: bool,
     pub changes_panel_open: bool,
+    /// Plan panel state — the active chat's checklist side panel (see
+    /// `crate::plan_panel`). `open` persists via `Settings`.
+    pub plan_panel: crate::plan_panel::PlanPanel,
     /// Snapshots panel + retention policy (see `crate::snapshots`).
     pub snapshots: crate::snapshots::SnapshotsState,
     /// The activity-center dropdown is open — see `crate::activity`.

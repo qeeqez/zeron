@@ -40,6 +40,7 @@ impl Default for Settings {
             sidebar_width: 255.0,
             sidebar_collapsed: false,
             terminal_open: false,
+            plan_panel_open: false,
             active_chat: 0,
             theme: "system".into(),
             mcp_servers: Vec::new(),

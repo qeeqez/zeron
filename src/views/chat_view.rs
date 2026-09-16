@@ -71,6 +71,8 @@ impl Workspace {
 
         let running_agents = self.running_agents();
         let panel_open = self.agents_panel_open;
+        let plan_open = self.plan_panel.open;
+        let plan_progress = self.active_plan().map(|p| format!("{}/{}", p.done_count(), p.steps.len()));
         let msg_count = messages.len();
         let query = if self.chat_search_open {
             self.chat_search.read(cx).value().to_string().to_lowercase()
@@ -148,6 +150,7 @@ impl Workspace {
                             ws_toggle.update(cx, |this, cx| this.toggle_agents_panel(cx));
                         }),
                 )
+                .child(crate::views::plan_panel::plan_toggle(plan_open, plan_progress, cx))
                 .child(
                     div()
                         .id("terminal-toggle")

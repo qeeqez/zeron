@@ -111,6 +111,9 @@ mod persist_migrate;
 mod persist_model_cache;
 #[cfg(test)]
 mod persist_tests;
+mod plan_panel;
+#[cfg(test)]
+mod plan_panel_tests;
 mod project;
 #[cfg(test)]
 mod project_tests;
@@ -188,8 +191,8 @@ mod worktree_tests;
 use gpui_kit::*;
 
 actions!([
-    NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleSnapshots, ToggleExplorer, OpenPalette, GoToFile, ThemeLight,
-    ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat,
+    NewChat, DeleteChat, ToggleSidebar, ToggleAgents, ToggleChanges, ToggleSnapshots, ToggleExplorer, TogglePlan, OpenPalette, GoToFile,
+    ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat,
     SearchAllChats, FindInChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext,
     NewWindow, OpenProject, AboutApp, CheckForUpdates, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront,
     ToggleDictation, ToggleTerminal, MsgNavDown, MsgNavUp, MsgNavTop, MsgNavBottom, MsgNavEnter,
@@ -252,11 +255,13 @@ fn main() {
         cx.set_dock_menu(vec![MenuItem::action("New Window", NewWindow)]);
         cx.bind_keys(workspace_keys());
         // Cmd-` (and Ctrl-` as a fallback — macOS may claim Cmd-` for
-        // window cycling) toggles the terminal panel. Bound here rather
-        // than in `workspace_keys`: that list is the cheat-sheet table.
+        // window cycling) toggles the terminal panel; Cmd-Shift-P toggles
+        // the plan panel. Bound here rather than in `workspace_keys`: that
+        // list is the cheat-sheet table.
         cx.bind_keys([
             KeyBinding::new("cmd-`", ToggleTerminal, Some("workspace")),
             KeyBinding::new("ctrl-`", ToggleTerminal, Some("workspace")),
+            KeyBinding::new("cmd-shift-p", TogglePlan, Some("workspace")),
         ]);
         install_app_actions(cx);
         cx.spawn(async move |cx| {

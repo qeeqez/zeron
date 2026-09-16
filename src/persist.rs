@@ -295,6 +295,8 @@ pub struct Settings {
     pub sidebar_collapsed: bool,
     /// Bottom terminal panel open/closed — restored on launch.
     pub terminal_open: bool,
+    /// Plan panel open/closed — restored on launch.
+    pub plan_panel_open: bool,
     /// Legacy field: per-project now (`projects/<id>/state.json`). Read for
     /// migration, never written back.
     #[serde(skip_serializing)]

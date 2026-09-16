@@ -6,9 +6,9 @@
 use gpui_kit::*;
 
 use crate::{
-    AboutApp, BringAllToFront, CheckForUpdates, CloseWindow, CopyTranscript, EmojiPalette, EnterFullscreen, FindInChat, HideApp, HideOthers,
-    MinimizeWindow, NewChat, NewWindow, OpenPalette, OpenProject, OpenSettings, QuitApp, RevealChats, SearchAllChats, ShortcutsHelp,
-    ToggleAgents, ToggleChanges, ToggleExplorer, ToggleSidebar, ToggleSnapshots, ToggleTerminal, ZoomWindow,
+    AboutApp, BringAllToFront, CheckForUpdates, CloseWindow, CopyTranscript, EmojiPalette, EnterFullscreen, FindInChat, HideApp,
+    HideOthers, MinimizeWindow, NewChat, NewWindow, OpenPalette, OpenProject, OpenSettings, QuitApp, RevealChats, SearchAllChats,
+    ShortcutsHelp, ToggleAgents, ToggleChanges, ToggleExplorer, TogglePlan, ToggleSidebar, ToggleSnapshots, ToggleTerminal, ZoomWindow,
 };
 
 pub(crate) fn app_menus() -> Vec<Menu> {
@@ -55,6 +55,7 @@ pub(crate) fn app_menus() -> Vec<Menu> {
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
             MenuItem::action("Toggle Agents", ToggleAgents),
             MenuItem::action("Toggle Changes", ToggleChanges),
+            MenuItem::action("Toggle Plan", TogglePlan),
             MenuItem::action("Toggle Snapshots", ToggleSnapshots),
             MenuItem::action("Toggle Explorer", ToggleExplorer),
             MenuItem::action("Toggle Terminal", ToggleTerminal),
