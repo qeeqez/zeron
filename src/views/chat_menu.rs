@@ -4,12 +4,14 @@
 mod badges;
 mod bookmarks;
 mod color;
+mod compare;
 mod continue_with;
 mod schedule;
 mod worktree;
 pub(crate) use badges::{color_dot, context_chip, temp_badge, worktree_badge};
 use bookmarks::bookmarks_submenu;
 use color::color_submenu;
+use compare::compare_item;
 use continue_with::continue_with_submenu;
 use schedule::schedule_item;
 use worktree::worktree_items;
@@ -131,9 +133,11 @@ pub fn chat_menu(
                     });
                 }),
         );
-    // "Continue with" — fork the transcript onto another provider. After
-    // the chat-shape items, before the conditional tail.
+    // "Continue with" — fork the transcript onto another provider — and
+    // "Compare providers…" — fork it onto several at once. After the
+    // chat-shape items, before the conditional tail.
     let menu = continue_with_submenu(menu, ws, window, cx);
+    let menu = compare_item(menu, ws, cx);
     // "Copy resume command" only exists when the chat is bound to a backend
     // thread AND the backend has a CLI resume (codex/claude).
     let menu = if ws.read(cx).resume_command().is_some() {
