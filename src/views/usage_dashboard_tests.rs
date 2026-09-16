@@ -8,6 +8,7 @@ use gpui_kit::test::TestWindowExt;
 use gpui_kit::{Entity, TestAppContext, VisualTestContext};
 
 use crate::composer_testutil::open_workspace;
+use crate::model::{ChatMessage, MessageKind, Role, Usage};
 use crate::palette_items::{Effect, Entry};
 use crate::usage::UsageReport;
 use crate::workspace::Workspace;
@@ -116,5 +117,52 @@ fn popover_view_all_opens_the_dashboard() {
         assert!(window.try_find("usage-breakdown").is_none(), "the popover should dismiss");
         assert!(ws.read(cx).usage_dashboard_open, "View all should open the dashboard");
         assert!(window.find("usage-dashboard-overlay").visible());
+    });
+}
+
+/// The chart reads the persisted per-message usage stamps: one bar per day
+/// for the last two weeks, today highlighted, empty days as gaps.
+#[test]
+fn dashboard_charts_daily_usage() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = open_workspace(&mut app);
+    let today = chrono::Local::now().date_naive();
+    let two_back = today - chrono::Duration::days(2);
+    let msg = |day: chrono::NaiveDate, input: u64, output: u64| ChatMessage {
+        role: Role::Assistant,
+        kind: MessageKind::Text("r".into()),
+        rating: None,
+        // Noon local — midday avoids any DST-gap ambiguity.
+        at: chrono::TimeZone::from_local_datetime(&chrono::Local, &day.and_hms_opt(12, 0, 0).unwrap())
+            .unwrap()
+            .into(),
+        usage: Some(Usage { input, output }),
+        attachments: vec![],
+        bookmarked: false,
+        alternatives: vec![],
+    };
+    ws.update(cx, |this, _| {
+        this.chats[0].model = "gpt-5".into();
+        std::rc::Rc::make_mut(&mut this.chats[0].messages).extend([msg(today, 100, 40), msg(two_back, 50, 10)]);
+    });
+    cx.update(|window, cx| {
+        ws.update(cx, |this, cx| this.toggle_usage_dashboard(window, cx));
+        window.draw(cx).clear(cx);
+        assert!(window.find("usage-dashboard-chart").visible(), "the chart section renders");
+        assert_eq!(window.find(format!("usage-day-{today}")).label().unwrap_or_default(), "Today: 140 tok · ~$0.000525");
+        let label = |day: chrono::NaiveDate| crate::views::date_separator::day_label(day, today);
+        assert_eq!(
+            window.find(format!("usage-day-{two_back}")).label().unwrap_or_default(),
+            format!("{}: 60 tok · ~$0.000162", label(two_back)),
+        );
+        // A day with no events still renders a bar slot — the gap.
+        let gap = today - chrono::Duration::days(1);
+        assert_eq!(window.find(format!("usage-day-{gap}")).label().unwrap_or_default(), format!("{}: 0 tok", label(gap)));
+        // Bar heights are proportional: today is the peak (full height),
+        // the half-usage day is shorter, the gap day has no fill.
+        let h = |day: chrono::NaiveDate| window.find(format!("usage-day-fill-{day}")).bounds().size.height;
+        let (peak, half, empty) = (h(today), h(two_back), h(gap));
+        assert!(peak > half && half > empty, "heights should scale with usage: {peak} {half} {empty}");
+        assert_eq!(empty, gpui_kit::px(0.), "an empty day renders as a gap");
     });
 }

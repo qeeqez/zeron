@@ -222,7 +222,7 @@ pub struct SessionUsage {
 /// `crate::usage::UsageTotals`.
 #[path = "usage_totals.rs"]
 pub(crate) mod totals;
-pub use totals::{ChatTotal, ChatUsageEntry, ModelTotal, UsageTotals};
+pub use totals::{ChatTotal, ChatUsageEntry, DayTotal, ModelTotal, UsageTotals};
 /// `1234` → `1.2k`, `12600` → `13k`, `1_500_000` → `1.5M`.
 pub(crate) fn fmt_tokens(n: u64) -> String {
     if n >= 1_000_000 {

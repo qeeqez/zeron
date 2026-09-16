@@ -94,6 +94,7 @@ mod terminal_tabs;
 #[cfg(test)]
 mod tool_group_tests;
 pub(crate) mod trust;
+pub(crate) mod usage_chart;
 pub(crate) mod usage_dashboard;
 mod usage_popover;
 

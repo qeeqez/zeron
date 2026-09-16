@@ -154,20 +154,18 @@ impl Workspace {
                 // acp's `usage_update` reports context occupancy (used of
                 // size), not turn tokens — it feeds the meter's fill, not
                 // the counters. Token backends carry input/output.
-                let report = if self.backend.name() == "acp" {
+                let occupancy = self.backend.name() == "acp";
+                let report = if occupancy {
                     crate::usage::UsageReport::occupancy(input, output)
                 } else {
                     crate::usage::UsageReport::tokens(input, output)
                 };
                 chat.usage.record(report);
-                // Prefer the text reply; fall back to any assistant message.
-                let ix = chat
-                    .messages
-                    .iter()
-                    .rposition(|m| m.role == Role::Assistant && matches!(m.kind, MessageKind::Text(_)))
-                    .or_else(|| chat.messages.iter().rposition(|m| m.role == Role::Assistant));
-                if let Some(ix) = ix {
-                    Rc::make_mut(&mut chat.messages)[ix].usage = Some(crate::model::Usage { input, output });
+                // Stamp the turn's token total on the reply — the usage
+                // dashboard's daily chart reads these persisted stamps.
+                // Occupancy reports aren't tokens and stamp nothing.
+                if !occupancy {
+                    stamp_reply_usage(chat, input, output);
                 }
             },
             AgentEvent::RateLimit(rl) => chat.usage.record_rate_limit(rl),
@@ -197,6 +195,20 @@ fn update_tool(chat: &mut crate::model::Chat, ix: usize, f: impl FnOnce(&mut Too
         f(t);
     }
     Some(pos)
+}
+
+/// Stamp a turn's token total on its reply — the latest assistant text
+/// bubble, falling back to any assistant message. Persisted on the
+/// message; the usage dashboard's daily chart buckets these stamps.
+fn stamp_reply_usage(chat: &mut crate::model::Chat, input: u64, output: u64) {
+    let ix = chat
+        .messages
+        .iter()
+        .rposition(|m| m.role == Role::Assistant && matches!(m.kind, MessageKind::Text(_)))
+        .or_else(|| chat.messages.iter().rposition(|m| m.role == Role::Assistant));
+    if let Some(ix) = ix {
+        Rc::make_mut(&mut chat.messages)[ix].usage = Some(crate::model::Usage { input, output });
+    }
 }
 
 /// Append an assistant message carrying `kind` to the chat.

@@ -1,10 +1,10 @@
 //! The usage dashboard: a centered modal over a dimmed backdrop aggregating
 //! token and cost totals across every chat in the window — headline totals,
-//! a per-model table with share bars, and the ten priciest chats. Read-only:
-//! the numbers come from `UsageTotals::gather` over the chats' folded
-//! `ChatUsage`. Mounted by `Workspace::render` while
-//! `Workspace::usage_dashboard_open` is set; Esc (via `escape_key` in
-//! `root`), the header ✕, or a backdrop click closes it.
+//! a two-week daily usage chart, a per-model table with share bars, and the
+//! ten priciest chats. Read-only: the numbers come from `UsageTotals::gather`
+//! over the chats' folded `ChatUsage` and persisted message stamps. Mounted
+//! by `Workspace::render` while `Workspace::usage_dashboard_open` is set; Esc
+//! (via `escape_key` in `root`), the header ✕, or a backdrop click closes it.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::theme::ActiveTheme;
@@ -30,18 +30,29 @@ impl Workspace {
     /// The dashboard's data: every chat folded into `UsageTotals`. A chat's
     /// cost is priced on its own model, falling back to the current
     /// selection for legacy chats (empty `model`) — same rule as
-    /// `session_usage`.
+    /// `session_usage`. The daily chart reads the persisted per-message
+    /// usage stamps; acp chats pass no messages — their stamps record
+    /// context occupancy, not tokens (files written before the stamp fix).
     pub fn usage_totals(&self) -> UsageTotals {
         let entries: Vec<ChatUsageEntry<'_>> = self
             .chats
             .iter()
-            .map(|chat| ChatUsageEntry {
-                title: chat.title.as_ref(),
-                model: if chat.model.is_empty() { self.model.as_ref() } else { chat.model.as_str() },
-                usage: &chat.usage,
+            .map(|chat| {
+                let provider = if chat.provider.is_empty() { self.selected_provider.as_str() } else { chat.provider.as_str() };
+                let counts_tokens = self
+                    .providers
+                    .iter()
+                    .find(|p| p.id == provider)
+                    .is_none_or(|p| p.kind != crate::providers::ProviderKind::Acp);
+                ChatUsageEntry {
+                    title: chat.title.as_ref(),
+                    model: if chat.model.is_empty() { self.model.as_ref() } else { chat.model.as_str() },
+                    usage: &chat.usage,
+                    messages: if counts_tokens { chat.messages.as_slice() } else { &[] },
+                }
             })
             .collect();
-        UsageTotals::gather(&entries)
+        UsageTotals::gather(&entries, chrono::Local::now().date_naive())
     }
 }
 
@@ -72,7 +83,7 @@ pub(crate) fn usage_dashboard_overlay(this: &Workspace, cx: &mut Context<Workspa
 }
 
 /// The centered card: header above a scrollable column with the headline
-/// stats, the per-model table, and the per-chat ranking.
+/// stats, the daily chart, the per-model table, and the per-chat ranking.
 fn panel(this: &Workspace, cx: &mut Context<Workspace>) -> Div {
     let totals = this.usage_totals();
     let theme = cx.theme();
@@ -97,6 +108,7 @@ fn panel(this: &Workspace, cx: &mut Context<Workspace>) -> Div {
                 .p_4()
                 .gap_4()
                 .child(summary(&totals, cx))
+                .child(crate::views::usage_chart::usage_chart(&totals.by_day, cx))
                 .child(model_table(&totals, cx))
                 .child(chat_table(&totals, cx)),
         )
@@ -260,7 +272,7 @@ fn chat_row(ix: usize, c: &ChatTotal, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn section_title(label: &'static str, cx: &App) -> Div {
+pub(crate) fn section_title(label: &'static str, cx: &App) -> Div {
     div()
         .text_xs()
         .font_weight(FontWeight::SEMIBOLD)

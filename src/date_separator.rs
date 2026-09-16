@@ -29,8 +29,8 @@ pub(crate) fn separator_label(prev_at: Option<SystemTime>, at: SystemTime) -> Op
 }
 
 /// "Today" / "Yesterday" / "Mon, Mar 3" — the year appended only when the
-/// day isn't in `today`'s year.
-fn day_label(day: chrono::NaiveDate, today: chrono::NaiveDate) -> String {
+/// day isn't in `today`'s year. `pub(crate)` for the usage chart's labels.
+pub(crate) fn day_label(day: chrono::NaiveDate, today: chrono::NaiveDate) -> String {
     if day == today {
         return "Today".into();
     }
