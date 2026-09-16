@@ -7,6 +7,9 @@ mod agents;
 mod agents_task;
 #[cfg(test)]
 mod agents_tests;
+mod app_icon;
+#[cfg(test)]
+mod app_icon_tests;
 mod app_setup;
 mod appearance;
 #[cfg(test)]
@@ -236,16 +239,20 @@ fn main() {
     // Capture log output into the in-app ring buffer + log file before
     // anything else can emit records the View Logs panel should show.
     logs::install();
-    let app = gpui_kit::application().with_assets(gpui_kit::assets::AllAssets::new(""));
+    let app = gpui_kit::application().with_assets(app_icon::AppAssets::new());
     // Dock click with no visible windows re-opens a workspace — the standard
     // macOS behavior for an app that stays running after its windows close.
     app.on_reopen(|cx| {
         if cx.windows().is_empty() {
-            lifecycle::open_new_window(cx);
+            lifecycle::open_new_window(cx)
         }
     });
     app.run(|cx| {
         gpui_kit::init(cx);
+        // Dock icon — the runtime stand-in for a bundle icon while the app
+        // ships unbundled; a real .app's CFBundleIconFile wins (it skips
+        // itself when an icon is already set).
+        app_icon::install_dock_icon();
         // Names the app in system notifications on platforms that need an
         // explicit identity (Linux/Windows); a no-op on macOS, where the
         // bundle provides it.
@@ -254,9 +261,6 @@ fn main() {
         cx.bind_keys(app_setup::workspace_keys());
         cx.bind_keys(app_setup::panel_keys());
         app_setup::install_app_actions(cx);
-        cx.spawn(async move |cx| {
-            lifecycle::open_workspace_window(cx).expect("failed to open window");
-        })
-        .detach();
+        lifecycle::spawn_launch_window(cx);
     });
 }

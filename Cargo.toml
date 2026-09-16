@@ -26,10 +26,10 @@ log = "0.4"
 # sidebar region. Versions match gpui-pre-macos so no duplicates build.
 block2 = "0.6"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSView", "NSVisualEffectView", "NSGraphics", "NSResponder"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSView", "NSVisualEffectView", "NSGraphics", "NSResponder", "NSApplication", "NSImage"] }
 objc2-av-foundation = { version = "0.3.2", default-features = false, features = ["std", "AVCaptureDevice", "AVMediaFormat", "block2"] }
 objc2-avf-audio = "0.3.2"
-objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSGeometry", "NSError", "NSLocale", "NSString"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSGeometry", "NSError", "NSLocale", "NSString", "NSData"] }
 objc2-speech = "0.3.2"
 raw-window-handle = "0.6"
 

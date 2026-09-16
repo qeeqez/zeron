@@ -163,6 +163,15 @@ pub fn open_workspace_window(cx: &mut gpui_kit::AsyncApp) -> gpui_kit::Result<gp
     open_workspace_window_for(crate::project::Project::launch(), cx)
 }
 
+/// Spawn the launch window — the first workspace window, opened async so
+/// `main`'s run callback returns before window setup runs.
+pub fn spawn_launch_window(cx: &mut App) {
+    cx.spawn(async move |cx| {
+        open_workspace_window(cx).expect("failed to open window");
+    })
+    .detach();
+}
+
 /// Open a workspace window bound to `project` — one window per project, so
 /// each keeps its own chats and cwd-scoped work.
 pub fn open_workspace_window_for(
@@ -260,7 +269,9 @@ fn show_about_dialog(window: &mut Window, cx: &mut App) {
             .test_support()
             .flex()
             .flex_col()
+            .items_center()
             .gap_2()
+            .child(crate::app_icon::app_icon("about-app-icon", 64.))
             .child(format!("Version {}", env!("CARGO_PKG_VERSION")))
             .child("A Codex-style agent workspace.");
         if let Some(update) = &update {

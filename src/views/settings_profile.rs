@@ -66,6 +66,14 @@ pub(crate) fn profile_section(s: &SettingsView, cx: &App) -> impl IntoElement {
         })
         .when(any_signoutable, |d| d.child(sign_out_all_button(s)))
         .child(group_label("About", cx))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(crate::app_icon::app_icon("profile-app-icon", 28.))
+                .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child("Rixl Code")),
+        )
         .child(info_row("profile-version", "Version", env!("CARGO_PKG_VERSION"), cx))
         .child(update_row(s, cx))
         .child(data_dir_row(cx))
