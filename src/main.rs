@@ -219,8 +219,6 @@ mod workspace_settings;
 #[cfg(test)]
 mod workspace_tests;
 mod worktree;
-#[cfg(test)]
-mod worktree_tests;
 
 use gpui_kit::*;
 

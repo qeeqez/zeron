@@ -318,57 +318,7 @@ impl Workspace {
         self.git.branches = branches;
         cx.notify();
     }
-
-    /// Run `op` on the background executor, then land its note and refresh
-    /// the panel. Refused while another op is in flight — staging then
-    /// committing mid-stage would race the index.
-    pub(crate) fn run_git_op(&mut self, op: GitOp, cx: &mut Context<Self>) {
-        if self.git.busy {
-            return;
-        }
-        self.git.busy = true;
-        self.git.note = None;
-        let dir = self.project.root().to_path_buf();
-        cx.spawn(async move |this, cx| {
-            let (op, result) = cx.background_executor().spawn(async move { op.run(&dir) }).await;
-            let _ = this.update_in(cx, |this, window, cx| {
-                this.land_git_op(op, result, window, cx);
-                this.refresh_changes(cx);
-            });
-        })
-        .detach();
-        cx.notify();
-    }
-
-    /// Publish an op's outcome: the note under the buttons, a cleared commit
-    /// box when a commit succeeded (a failed commit keeps the typed message
-    /// so it isn't lost), a cleared stash box when a stash succeeded, and a
-    /// cleared new-branch box when a branch was created. Branch ops also
-    /// re-list branches so an open picker shows the switch.
-    fn land_git_op(&mut self, op: GitOp, result: Result<String, String>, window: &mut Window, cx: &mut Context<Self>) {
-        self.git.busy = false;
-        match result {
-            Ok(text) => {
-                if matches!(op, GitOp::Commit(_)) {
-                    self.git.commit_input.update(cx, |s, cx| s.set_value("", window, cx));
-                }
-                if matches!(op, GitOp::CreateBranch(_)) {
-                    self.git.new_branch_input.update(cx, |s, cx| s.set_value("", window, cx));
-                }
-                if matches!(op, GitOp::Stash(_)) {
-                    self.git.stash_input.update(cx, |s, cx| s.set_value("", window, cx));
-                }
-                if matches!(op, GitOp::Checkout(_) | GitOp::CreateBranch(_)) {
-                    self.refresh_branches(cx);
-                }
-                self.git.note = Some((text, false));
-            },
-            Err(e) => self.git.note = Some((e, true)),
-        }
-        cx.notify();
-    }
 }
-
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
 #[path = "changes_stale_tests.rs"]

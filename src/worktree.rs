@@ -119,3 +119,8 @@ fn git_err(dir: &Path, args: &[&str]) -> Result<String, String> {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "worktree_tests.rs"]
+mod worktree_tests;
