@@ -19,11 +19,13 @@ fn keymap_and_overlay_share_one_table() {
     // global search while an input is focused (inputs bind cmd-f to their
     // own Search and cmd-shift-f to Replace, swallowing both); up/down/g
     // alias the message-navigation keys (the "gg" row is display-only — the
-    // double-tap is handled in `msg_nav` so a typed g never pends).
+    // double-tap is handled in `msg_nav` so a typed g never pends); cmd-+
+    // aliases cmd-= for Zoom In (Cmd-Shift-= produces "+" — a distinct
+    // keystroke).
     assert_eq!(
         crate::workspace_keys().len(),
-        bound + 5,
-        "workspace_keys registers every bound spec plus the Input-context cmd-f/cmd-shift-f and the up/down/g nav aliases"
+        bound + 6,
+        "workspace_keys registers every bound spec plus the Input-context cmd-f/cmd-shift-f, the up/down/g nav aliases and the cmd-+ zoom alias"
     );
     assert!(bound > 0);
 

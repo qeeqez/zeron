@@ -149,12 +149,20 @@ fn shortcut_row(ix: usize, spec: &ShortcutSpec, cx: &App) -> ObservedElement<Sta
                 .flex()
                 .items_center()
                 .gap_1()
-                .children(spec.keys.split('-').map(|key| chip(key, cx))),
+                .children(key_segments(spec.keys).map(|key| chip(key, cx))),
         )
 }
 
-/// One key of a combo, rendered as a bordered kbd-style chip. Modifier names
-/// become their platform glyphs (⌘⇧⌥⌃ on macOS, Ctrl/Shift/Alt/Win elsewhere).
+/// Split a `keys` spec into one chip per key. A trailing "-" is the key
+/// itself (e.g. "cmd--" = Cmd + minus), not an empty segment.
+fn key_segments(keys: &'static str) -> impl Iterator<Item = &'static str> {
+    let mut parts: Vec<&str> = keys.split('-').filter(|s| !s.is_empty()).collect();
+    if keys.ends_with('-') {
+        parts.push("-");
+    }
+    parts.into_iter()
+}
+
 fn chip(key: &str, cx: &App) -> Div {
     let theme = cx.theme();
     div()

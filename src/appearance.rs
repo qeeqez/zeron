@@ -11,6 +11,8 @@ use crate::workspace::Workspace;
 /// Font-size bounds shared by the interface and code steppers.
 pub(crate) const FONT_SIZE_MIN: u8 = 10;
 pub(crate) const FONT_SIZE_MAX: u8 = 24;
+/// Interface font size Cmd-0 restores — the `Settings::default` value.
+pub(crate) const FONT_SIZE_DEFAULT: u8 = 14;
 /// Contrast bounds: percent of the theme's stock chrome intensity.
 pub(crate) const CONTRAST_MIN: u16 = 50;
 pub(crate) const CONTRAST_MAX: u16 = 200;

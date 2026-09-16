@@ -5,7 +5,7 @@ use gpui_kit::*;
 
 use crate::{
     AboutApp, BringAllToFront, CheckForUpdates, FindInChat, HideApp, HideOthers, MsgNavDown, MsgNavTop, MsgNavUp, NewWindow, OpenProject,
-    QuitApp, SearchAllChats, TogglePlan, ToggleTerminal, ViewLogs, lifecycle, menus, shortcuts, update,
+    QuitApp, SearchAllChats, TogglePlan, ToggleTerminal, ViewLogs, ZoomIn, lifecycle, menus, shortcuts, update,
 };
 
 /// Workspace-context key bindings. Menu items pick their key equivalents up
@@ -29,6 +29,10 @@ pub(crate) fn workspace_keys() -> Vec<KeyBinding> {
     keys.push(KeyBinding::new("up", MsgNavUp, Some("workspace")));
     keys.push(KeyBinding::new("down", MsgNavDown, Some("workspace")));
     keys.push(KeyBinding::new("g", MsgNavTop, Some("workspace")));
+    // Cmd-+ is Cmd-Shift-= on US layouts — a distinct keystroke from Cmd-=,
+    // so Zoom In needs both bindings (the cheat sheet shows the unshifted
+    // "cmd-=" row).
+    keys.push(KeyBinding::new("cmd-+", ZoomIn, Some("workspace")));
     keys
 }
 

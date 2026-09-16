@@ -30,7 +30,7 @@ impl Default for Settings {
             legacy_acp_command: String::new(),
             legacy_disabled_providers: Vec::new(),
             use_codex_cli: None,
-            font_size: 14,
+            font_size: crate::appearance::FONT_SIZE_DEFAULT,
             font_family: String::new(),
             code_font_family: String::new(),
             code_font_size: 13,

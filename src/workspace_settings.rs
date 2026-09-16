@@ -93,6 +93,33 @@ impl Workspace {
         });
     }
 
+    /// Set a font size (interface or code, `code` selects the field) in px,
+    /// clamped to the shared bounds — the single write path for the
+    /// Appearance steppers and the Cmd-=/Cmd--/Cmd-0 zoom shortcuts.
+    /// Persists, re-applies the theme and remeasures the transcript.
+    pub(crate) fn set_font_size(&mut self, next: i16, code: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let next = next.clamp(i16::from(crate::appearance::FONT_SIZE_MIN), i16::from(crate::appearance::FONT_SIZE_MAX)) as u8;
+        if code {
+            self.code_font_size = next;
+        } else {
+            self.font_size = next;
+        }
+        self.save_settings();
+        self.apply_appearance(window, cx);
+        self.scroller.update(cx, |s, cx| s.remeasure(cx));
+    }
+
+    /// Cmd-=/Cmd-+ and Cmd--: step the interface font size (the rem base),
+    /// clamped to the shared bounds.
+    pub(crate) fn zoom_font(&mut self, delta: i16, window: &mut Window, cx: &mut Context<Self>) {
+        self.set_font_size(i16::from(self.font_size) + delta, false, window, cx);
+    }
+
+    /// Cmd-0: restore the default interface font size.
+    pub(crate) fn reset_font_zoom(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.set_font_size(i16::from(crate::appearance::FONT_SIZE_DEFAULT), false, window, cx);
+    }
+
     /// Set the Changes panel's diff layout (unified | split) and persist it.
     /// A no-op pick still notifies so the toggle's pressed state re-renders.
     pub fn set_diff_mode(&mut self, mode: crate::changes_diff::DiffMode, cx: &mut Context<Self>) {

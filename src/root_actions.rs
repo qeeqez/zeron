@@ -10,7 +10,7 @@ use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EnterFullscreen,
     EscapeKey, FindInChat, GoToFile, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats,
     SearchAllChats, SearchChat, ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleDictation, ToggleExplorer,
-    TogglePlan, ToggleSidebar, ToggleSnapshots, ToggleTerminal, ViewLogs, ZoomWindow,
+    TogglePlan, ToggleSidebar, ToggleSnapshots, ToggleTerminal, ViewLogs, ZoomIn, ZoomOut, ZoomReset, ZoomWindow,
 };
 
 /// Every `on_action` listener on the workspace root — chat switching, panel
@@ -173,6 +173,27 @@ pub(crate) fn workspace_actions(root: Div, window: &Window, cx: &mut Context<Wor
         let ws = cx.entity();
         move |_: &ToggleDictation, window, cx| {
             ws.update(cx, |this, cx| this.toggle_dictation(window, cx));
+        }
+    })
+    // Text zoom: Cmd-=/Cmd-+ grow, Cmd-- shrinks, Cmd-0 resets the
+    // interface font size (the rem base) — persisted like the
+    // Appearance settings stepper.
+    .on_action({
+        let ws = cx.entity();
+        move |_: &ZoomIn, window, cx| {
+            ws.update(cx, |this, cx| this.zoom_font(1, window, cx));
+        }
+    })
+    .on_action({
+        let ws = cx.entity();
+        move |_: &ZoomOut, window, cx| {
+            ws.update(cx, |this, cx| this.zoom_font(-1, window, cx));
+        }
+    })
+    .on_action({
+        let ws = cx.entity();
+        move |_: &ZoomReset, window, cx| {
+            ws.update(cx, |this, cx| this.reset_font_zoom(window, cx));
         }
     })
 }
