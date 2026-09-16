@@ -69,6 +69,14 @@ pub struct ChangesGit {
     pub stash_input: Entity<InputState>,
     /// New-branch name input in the picker — Enter creates and switches.
     pub new_branch_input: Entity<InputState>,
+    /// Rename input in the branch header — shown while `rename_target` is
+    /// set; Enter runs the rename. Kept off the picker because choosing
+    /// "Rename…" from a row's menu dismisses the popover.
+    pub rename_input: Entity<InputState>,
+    /// Branch being renamed — `Some` while the header's rename input is up.
+    /// Stays armed when a rename fails so the typed name can be fixed and
+    /// retried; cleared on success and by the input's cancel button.
+    pub rename_target: Option<String>,
     /// A git op is running on the background executor — buttons stay up but
     /// re-entry is refused so ops can't interleave.
     pub busy: bool,
@@ -88,8 +96,9 @@ pub struct ChangesGit {
 }
 
 impl ChangesGit {
-    /// Build the state and wire Enter in the commit input to `commit_staged`
-    /// and Enter in the new-branch input to `create_branch`.
+    /// Build the state and wire Enter in the commit input to `commit_staged`,
+    /// Enter in the new-branch input to `create_branch`, and Enter in the
+    /// rename input to `rename_branch`.
     pub fn new(window: &mut Window, cx: &mut Context<Workspace>) -> Self {
         let commit_input = cx.new(|cx| InputState::new(window, cx).placeholder("Commit message…"));
         cx.subscribe(&commit_input, |this: &mut Workspace, _input, event: &InputEvent, cx| {
@@ -102,6 +111,13 @@ impl ChangesGit {
         cx.subscribe(&new_branch_input, |this: &mut Workspace, _input, event: &InputEvent, cx| {
             if matches!(event, InputEvent::PressEnter { .. }) {
                 this.create_branch(cx);
+            }
+        })
+        .detach();
+        let rename_input = cx.new(|cx| InputState::new(window, cx).placeholder("Rename branch to…"));
+        cx.subscribe(&rename_input, |this: &mut Workspace, _input, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::PressEnter { .. }) {
+                this.rename_branch(cx);
             }
         })
         .detach();
@@ -123,6 +139,8 @@ impl ChangesGit {
             commit_input,
             stash_input,
             new_branch_input,
+            rename_input,
+            rename_target: None,
             busy: false,
             generating: false,
             amend: false,
@@ -337,35 +355,14 @@ impl Workspace {
         }
         self.run_git_op(GitOp::CreateBranch(name), cx);
     }
-
-    /// Re-list local branches for the picker — runs when the picker opens so
-    /// branches created outside the app show up. Off the UI thread like the
-    /// rest of the panel's git calls.
-    pub fn refresh_branches(&mut self, cx: &mut Context<Self>) {
-        self.git.branches_generation += 1;
-        let generation = self.git.branches_generation;
-        let dir = self.project.root().to_path_buf();
-        cx.spawn(async move |this, cx| {
-            let branches = cx.background_executor().spawn(async move { crate::git::list_branches(&dir) }).await;
-            let _ = this.update(cx, |this, cx| this.land_branches(generation, branches, cx));
-        })
-        .detach();
-    }
-
-    /// Publish a fetched branch list — skipped when a newer fetch was
-    /// requested while this one ran, same guard as `land_changes`.
-    fn land_branches(&mut self, generation: u64, branches: Vec<Branch>, cx: &mut Context<Self>) {
-        if generation != self.git.branches_generation {
-            return;
-        }
-        self.git.branches = branches;
-        cx.notify();
-    }
 }
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
 #[path = "changes_amend_tests.rs"]
 mod changes_amend_tests;
+#[cfg(test)]
+#[path = "changes_branch_tests.rs"]
+mod changes_branch_tests;
 #[cfg(test)]
 #[path = "changes_stale_tests.rs"]
 mod changes_stale_tests;

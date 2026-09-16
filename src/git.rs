@@ -180,6 +180,37 @@ pub(crate) fn create_branch(dir: &std::path::Path, name: &str) -> Result<String,
     git_env(dir, &["checkout", "-b", name], &[]).map(|_| format!("Created {name}"))
 }
 
+/// `git branch -m <old> <new>` — rename a branch, including the checked-out
+/// one. Git refuses when `new` already exists; that stderr is the note.
+pub(crate) fn rename_branch(dir: &std::path::Path, old: &str, new: &str) -> Result<String, String> {
+    git_env(dir, &["branch", "-m", old, new], &[]).map(|_| format!("Renamed {old} to {new}"))
+}
+
+/// `git branch -d <name>` — safe delete: git refuses an unmerged branch or
+/// the checked-out one, and that stderr is the note. No force flag — the
+/// picker never offers delete on the current branch anyway.
+pub(crate) fn delete_branch(dir: &std::path::Path, name: &str) -> Result<String, String> {
+    git_env(dir, &["branch", "-d", name], &[]).map(|_| format!("Deleted {name}"))
+}
+
+/// `git fetch --prune` — refresh remote refs and drop stale ones. Fetch
+/// prints its progress to stderr, so the note is fixed text.
+pub(crate) fn fetch(dir: &std::path::Path) -> Result<String, String> {
+    git_env(dir, &["fetch", "--prune"], &[]).map(|_| "Fetched".to_string())
+}
+
+/// `git pull --ff-only` — fast-forward the current branch; a diverged pull
+/// fails and its stderr is the note. The first output line ("Already up to
+/// date.", "Updating abc..def") is the note; empty output means pulled.
+pub(crate) fn pull_ff(dir: &std::path::Path) -> Result<String, String> {
+    git_env(dir, &["pull", "--ff-only"], &[]).map(|out| {
+        out.lines()
+            .find(|l| !l.trim().is_empty())
+            .map(|l| l.trim().to_string())
+            .unwrap_or_else(|| "Pulled".to_string())
+    })
+}
+
 /// `git add -- <path>` — stage the file's worktree changes. For a conflicted
 /// path this marks the conflict resolved, matching the panel's toggle.
 pub(crate) fn stage(dir: &std::path::Path, path: &str) -> Result<String, String> {

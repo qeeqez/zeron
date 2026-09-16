@@ -13,6 +13,13 @@ pub(crate) enum GitOp {
     CreatePr,
     Checkout(String),
     CreateBranch(String),
+    RenameBranch {
+        old: String,
+        new: String,
+    },
+    DeleteBranch(String),
+    Fetch,
+    Pull,
     Revert(String),
     Stash(String),
     StashPop(String),
@@ -35,6 +42,10 @@ impl GitOp {
             Self::CreatePr => crate::git::create_pr(dir, &[]),
             Self::Checkout(name) => crate::git::checkout(dir, name),
             Self::CreateBranch(name) => crate::git::create_branch(dir, name),
+            Self::RenameBranch { old, new } => crate::git::rename_branch(dir, old, new),
+            Self::DeleteBranch(name) => crate::git::delete_branch(dir, name),
+            Self::Fetch => crate::git::fetch(dir),
+            Self::Pull => crate::git::pull_ff(dir),
             Self::Revert(sha) => crate::git::revert(dir, sha),
             Self::Stash(message) => crate::git::stash_push(dir, message),
             Self::StashPop(name) => crate::git::stash_pop(dir, name),
@@ -75,9 +86,10 @@ impl Workspace {
     /// Publish an op's outcome: the note under the buttons, a cleared commit
     /// box and a reset amend toggle when a commit succeeded (a failed commit
     /// keeps the typed message so it isn't lost), a cleared stash box when a
-    /// stash succeeded, and a cleared new-branch box when a branch was
-    /// created. Branch ops also re-list branches so an open picker shows the
-    /// switch.
+    /// stash succeeded, a cleared new-branch box when a branch was created,
+    /// and a disarmed rename input when a rename landed (a failed rename
+    /// stays armed so the typed name can be fixed and retried). Branch ops
+    /// also re-list branches so an open picker shows the change.
     fn land_git_op(&mut self, op: GitOp, result: Result<String, String>, window: &mut Window, cx: &mut Context<Self>) {
         self.git.busy = false;
         match result {
@@ -89,16 +101,113 @@ impl Workspace {
                 if matches!(op, GitOp::CreateBranch(_)) {
                     self.git.new_branch_input.update(cx, |s, cx| s.set_value("", window, cx));
                 }
+                if matches!(op, GitOp::RenameBranch { .. }) {
+                    self.git.rename_target = None;
+                    self.git.rename_input.update(cx, |s, cx| s.set_value("", window, cx));
+                }
                 if matches!(op, GitOp::Stash(_)) {
                     self.git.stash_input.update(cx, |s, cx| s.set_value("", window, cx));
                 }
-                if matches!(op, GitOp::Checkout(_) | GitOp::CreateBranch(_)) {
+                if matches!(op, GitOp::Checkout(_) | GitOp::CreateBranch(_) | GitOp::RenameBranch { .. } | GitOp::DeleteBranch(_)) {
                     self.refresh_branches(cx);
                 }
                 self.git.note = Some((text, false));
             },
             Err(e) => self.git.note = Some((e, true)),
         }
+        cx.notify();
+    }
+
+    /// `git fetch --prune` — the header's refresh button. The post-op
+    /// `refresh_changes` picks up the new ahead/behind counts.
+    pub fn fetch_remote(&mut self, cx: &mut Context<Self>) {
+        self.run_git_op(GitOp::Fetch, cx);
+    }
+
+    /// `git pull --ff-only` — the header's pull button. A diverged pull
+    /// fails and its stderr lands as the note.
+    pub fn pull_remote(&mut self, cx: &mut Context<Self>) {
+        self.run_git_op(GitOp::Pull, cx);
+    }
+
+    /// Arm the header's rename input for `name` — prefilled with the current
+    /// name and focused so typing replaces it. Choosing "Rename…" from a
+    /// picker's row menu dismisses the popover, so the input lives on the
+    /// always-visible branch header.
+    pub fn begin_rename_branch(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.git.rename_target = Some(name.to_string());
+        self.git.rename_input.update(cx, |s, cx| {
+            s.set_value(name.to_string(), window, cx);
+            s.focus(window, cx);
+        });
+        cx.notify();
+    }
+
+    /// Disarm the rename input without running the op — the header's ✕.
+    pub fn cancel_rename_branch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.git.rename_target = None;
+        self.git.rename_input.update(cx, |s, cx| s.set_value("", window, cx));
+        cx.notify();
+    }
+
+    /// `git branch -m` the armed `rename_target` to the rename input's value
+    /// — Enter in the input and the header's ✓ share this path. An empty or
+    /// unchanged name is refused before spawning, same as the commit box.
+    pub fn rename_branch(&mut self, cx: &mut Context<Self>) {
+        let Some(old) = self.git.rename_target.clone() else { return };
+        let new = self.git.rename_input.read(cx).value().trim().to_string();
+        if new.is_empty() || new == old {
+            return;
+        }
+        self.run_git_op(GitOp::RenameBranch { old, new }, cx);
+    }
+
+    /// `git branch -d <name>` behind a native confirm — the picker's row
+    /// menu. The current branch is never offered this item; the guard stays
+    /// so a stale menu can't delete the checked-out branch. Git's own
+    /// not-merged refusal lands as the note — no force delete.
+    pub fn delete_branch(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.git.branch.as_ref().is_some_and(|b| b.name == name) {
+            return;
+        }
+        let rx = window.prompt(
+            PromptLevel::Warning,
+            &format!("Delete branch “{name}”?"),
+            Some("Only merged branches can be deleted."),
+            &[PromptButton::ok("Delete"), PromptButton::cancel("Cancel")],
+            cx,
+        );
+        let name = name.to_string();
+        cx.spawn(async move |this, cx| {
+            if rx.await != Ok(0) {
+                return;
+            }
+            let _ = this.update(cx, |this, cx| this.run_git_op(GitOp::DeleteBranch(name), cx));
+        })
+        .detach();
+    }
+
+    /// Re-list local branches for the picker — runs when the picker opens so
+    /// branches created outside the app show up. Off the UI thread like the
+    /// rest of the panel's git calls.
+    pub fn refresh_branches(&mut self, cx: &mut Context<Self>) {
+        self.git.branches_generation += 1;
+        let generation = self.git.branches_generation;
+        let dir = self.project.root().to_path_buf();
+        cx.spawn(async move |this, cx| {
+            let branches = cx.background_executor().spawn(async move { crate::git::list_branches(&dir) }).await;
+            let _ = this.update(cx, |this, cx| this.land_branches(generation, branches, cx));
+        })
+        .detach();
+    }
+
+    /// Publish a fetched branch list — skipped when a newer fetch was
+    /// requested while this one ran, same guard as `land_changes`.
+    fn land_branches(&mut self, generation: u64, branches: Vec<crate::git::Branch>, cx: &mut Context<Self>) {
+        if generation != self.git.branches_generation {
+            return;
+        }
+        self.git.branches = branches;
         cx.notify();
     }
 }
