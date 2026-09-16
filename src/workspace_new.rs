@@ -1,86 +1,25 @@
 //! The `Workspace` constructor — split from `workspace.rs` for the SLOC cap.
 //! `for_project` binds a window to any project folder; the test-only
-//! launch-project `new` lives in `workspace_tests.rs`.
+//! launch-project `new` lives in `workspace_tests.rs`. Input entities and
+//! their subscriptions live in `workspace_inputs.rs`.
 
 use crate::send_queue::SendQueue;
 use crate::workspace::{RenameMode, Workspace};
 use gpui_kit::component::command::CommandState;
-use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
-use gpui_kit::component::message_scroller::MessageScrollerState;
+use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::*;
+
+#[path = "workspace_inputs.rs"]
+mod workspace_inputs;
+use workspace_inputs::WorkspaceInputs;
 
 impl Workspace {
     /// A workspace bound to `project` — its chats, @-mentions, git and
     /// backend turns all scope to that root. The process cwd stays at the
     /// launch project; turns carry the root via `TurnContext`.
     pub fn for_project(project: crate::project::Project, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let composer = cx.new(|cx| {
-            TextareaState::new(window, cx)
-                .auto_grow(1, 8)
-                .submit_on_enter(true)
-                .placeholder("Ask anything — @ to mention files, / for commands")
-        });
-        let scroller = cx.new(|cx| MessageScrollerState::new(0, cx));
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search chats"));
-
-        cx.subscribe_in(&search, window, |_this, _s, event: &InputEvent, _window, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify()
-            }
-        })
-        .detach();
-        cx.subscribe_in(&composer, window, |this, _composer, event: &InputEvent, window, cx| match event {
-            InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
-            // `set_value` suppresses Change, so this only fires on real edits.
-            InputEvent::Change => {
-                this.clear_recall();
-                cx.notify();
-            },
-            _ => {},
-        })
-        .detach();
-
-        let palette = cx.new(|cx| CommandState::new(window, cx));
-        let chat_search = cx.new(|cx| InputState::new(window, cx).placeholder("Search in chat"));
-        cx.subscribe_in(&chat_search, window, |this, _s, event: &InputEvent, _window, cx| match event {
-            InputEvent::Change => {
-                this.search_match_ix = 0;
-                let count = this.filtered_count(cx);
-                this.scroller.update(cx, |s, cx| s.reset(count, cx));
-                cx.notify();
-            },
-            InputEvent::PressEnter { shift, .. } => this.jump_to_match(*shift, cx),
-            _ => {},
-        })
-        .detach();
-        let global_search = cx.new(|cx| CommandState::new(window, cx));
-        let file_palette = cx.new(|cx| CommandState::new(window, cx));
-        let task_input = cx.new(|cx| InputState::new(window, cx).placeholder("New task…"));
-        cx.subscribe_in(&task_input, window, |this, s, event: &InputEvent, window, cx| {
-            if matches!(event, InputEvent::PressEnter { .. }) {
-                let prompt = s.read(cx).value().to_string();
-                s.update(cx, |s, cx| s.set_value("", window, cx));
-                this.spawn_task_agent(prompt, cx);
-            }
-        })
-        .detach();
-        let terminal_input = cx.new(|cx| InputState::new(window, cx).placeholder("Run a command…"));
-        cx.subscribe_in(&terminal_input, window, |this, _s, event: &InputEvent, window, cx| {
-            if matches!(event, InputEvent::PressEnter { .. }) {
-                this.terminal_send(window, cx);
-            }
-        })
-        .detach();
-        let terminal_find_input = crate::views::terminal::find::new_term_find_input(window, cx);
-        // Cmd+Q / QuitApp bypasses the window close gate — save drafts here.
-        cx.on_app_quit(|this, cx| {
-            this.chats[this.active].draft = this.composer.read(cx).value().to_string();
-            this.save();
-            async {}
-        })
-        .detach();
-
         let settings = crate::persist::load_settings();
+        let inputs = WorkspaceInputs::build(&settings.global_hotkey, window, cx);
         let project_state = project.load_state();
         project.migrate_legacy_chats(settings.active_chat);
         let providers = settings.providers.clone();
@@ -96,19 +35,6 @@ impl Workspace {
         // workspace borrow (the click listener already holds it).
         let ws = cx.entity();
         let settings_panel = cx.new(|cx| crate::views::settings::SettingsPanel::new(ws.clone(), &settings, window, cx));
-        // The General section's global-hotkey field — Enter or blur commits
-        // the chord (validation lives in `commit_global_hotkey`).
-        let hotkey_input = cx.new(|cx| {
-            let mut input = InputState::new(window, cx).placeholder(crate::app_setup::global_hotkey::DEFAULT_CHORD);
-            input.set_value(settings.global_hotkey.clone(), window, cx);
-            input
-        });
-        cx.subscribe_in(&hotkey_input, window, |this, _s, event: &InputEvent, window, cx| {
-            if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
-                this.commit_global_hotkey(window, cx);
-            }
-        })
-        .detach();
         let mut this = Self {
             chats: Vec::new(),
             active: 0,
@@ -129,12 +55,12 @@ impl Workspace {
             snapshots: crate::snapshots::SnapshotsState::default(),
             changes: Vec::new(),
             changes_generation: 0,
-            composer,
+            composer: inputs.composer,
             review: crate::review::Review::new(window, cx),
             git: crate::changes::ChangesGit::new(window, cx),
             diff_mode: crate::changes_diff::DiffMode::from_name(&settings.diff_mode),
-            search,
-            scroller,
+            search: inputs.search,
+            scroller: inputs.scroller,
             model: providers.iter().find(|p| p.id == selected_provider).map_or_else(SharedString::default, |p| {
                 crate::model_catalog::resolve_model(
                     model_catalog.get(&p.id).map_or(&[], Vec::as_slice),
@@ -146,7 +72,7 @@ impl Workspace {
             selected_provider,
             providers,
             model_catalog,
-            task_input,
+            task_input: inputs.task_input,
             mode: if ["Agent", "Plan", "Ask"].contains(&settings.mode.as_str()) {
                 settings.mode.clone().into()
             } else {
@@ -175,12 +101,12 @@ impl Workspace {
             }),
             collapsed_folders: std::collections::HashSet::new(),
             recall_ix: None,
-            palette,
-            global_search,
-            file_palette,
+            palette: inputs.palette,
+            global_search: inputs.global_search,
+            file_palette: inputs.file_palette,
             apply_palette: cx.new(|cx| CommandState::new(window, cx)),
             recent_files: Vec::new(),
-            chat_search,
+            chat_search: inputs.chat_search,
             find: crate::chat_find::FindBar::new(crate::chat_find::new_find_input(window, cx)),
             nav: None,
             nav_focus: cx.focus_handle(),
@@ -240,10 +166,10 @@ impl Workspace {
             onboarding_dismissed: settings.onboarding_dismissed,
             resume_open: false,
             auth: crate::auth::AuthBook::seeded(),
-            terminal: crate::views::terminal::TerminalPanel::new(settings.terminal_open, terminal_input, terminal_find_input),
+            terminal: crate::views::terminal::TerminalPanel::new(settings.terminal_open, inputs.terminal_input, inputs.terminal_find_input),
             global_hotkey_enabled: settings.global_hotkey_enabled,
             global_hotkey: settings.global_hotkey.clone(),
-            hotkey_input,
+            hotkey_input: inputs.hotkey_input,
             hotkey_error: None,
         };
         this.snapshots.retention_days = settings.snapshot_retention_days.unwrap_or(crate::snapshots::DEFAULT_RETENTION_DAYS);
