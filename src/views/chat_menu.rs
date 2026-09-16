@@ -17,6 +17,7 @@ pub fn chat_menu(
     let ws_copy = ws.clone();
     let ws_wrap = ws.clone();
     let ws_snap = ws.clone();
+    let ws_fork = ws.clone();
     menu.item(
         PopupMenuItem::new(if pinned { "Unpin" } else { "Pin" })
             .icon(IconName::Star)
@@ -32,6 +33,12 @@ pub fn chat_menu(
     }))
     .item(PopupMenuItem::new("Copy transcript").icon(IconName::Copy).on_click(move |_, _, cx| {
         ws_copy.update(cx, |this, cx| this.copy_transcript(cx));
+    }))
+    .item(PopupMenuItem::new("Fork chat").icon(IconName::GitFork).on_click(move |_, window, cx| {
+        ws_fork.update(cx, |this, cx| {
+            let ix = this.active;
+            this.fork_chat(ix, None, window, cx);
+        });
     }))
     .item(PopupMenuItem::new("Snapshots").icon(IconName::Camera).on_click(move |_, _, cx| {
         ws_snap.update(cx, |this, cx| this.toggle_snapshots_panel(cx));

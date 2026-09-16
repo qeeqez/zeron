@@ -238,7 +238,11 @@ fn context_menu_lists_copy_variants() {
         labels.sort();
         // The copy variants group at the top of the menu; no fenced blocks
         // in this message, so Copy Code stays hidden.
-        assert_eq!(labels, ["Copy", "Copy as Markdown", "Quote", "Retry", "View raw"], "menu should list the copy variants: {labels:?}");
+        assert_eq!(
+            labels,
+            ["Copy", "Copy as Markdown", "Fork here", "Quote", "Retry", "View raw"],
+            "menu should list the copy variants: {labels:?}"
+        );
         window.within("popup-menu").click(1usize, cx); // Copy as Markdown
     });
     let clip = cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()).unwrap_or_default());
@@ -265,7 +269,7 @@ fn context_menu_copy_code_writes_block_contents() {
         labels.sort();
         assert_eq!(
             labels,
-            ["Copy", "Copy Code", "Copy as Markdown", "Quote", "Retry", "View raw"],
+            ["Copy", "Copy Code", "Copy as Markdown", "Fork here", "Quote", "Retry", "View raw"],
             "Copy Code should join the copy group: {labels:?}"
         );
         window.within("popup-menu").click(2usize, cx); // Copy Code

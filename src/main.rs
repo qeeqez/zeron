@@ -53,6 +53,7 @@ mod chat_delete;
 mod chat_edit;
 #[cfg(test)]
 mod chat_edit_tests;
+mod chat_fork;
 mod chat_find;
 #[cfg(test)]
 mod chat_find_tests;

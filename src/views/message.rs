@@ -209,7 +209,10 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
                     }))
                 })
                 .item(msg_item("Quote", IconName::Quote, &ws_menu, move |this, w, cx| this.quote_message(ix, w, cx)))
-                .separator();
+                .separator()
+                .item(msg_item("Fork here", IconName::GitFork, &ws_menu, move |this, w, cx| {
+                    this.fork_chat(this.active, Some(ix), w, cx)
+                }));
             let menu = if let Some(md) = md_state.clone() {
                 let label = if md.read(cx).raw { "View rendered" } else { "View raw" };
                 menu.item(PopupMenuItem::new(label).icon(IconName::Code).on_click(
