@@ -199,6 +199,19 @@ fn editor_pick_item(ws: &Entity<Workspace>, rel: &str, editor: PreferredEditor) 
     })
 }
 
+/// The "Copy Diff" item Changes rows append after `file_menu` — kept beside
+/// it since both build the same row menu. Not part of `file_menu` itself:
+/// explorer rows and the repo-root row have no diff to copy. `staged` is
+/// the row's staged marker — a partially-staged file copies its `--cached`
+/// half.
+pub fn copy_diff_item(ws: &Entity<Workspace>, rel: &str, staged: bool) -> PopupMenuItem {
+    let ws = ws.clone();
+    let rel = rel.to_string();
+    PopupMenuItem::new("Copy Diff").icon(IconName::FileDiff).on_click(move |_, _w, cx| {
+        ws.update(cx, |this, cx| this.copy_file_diff(&rel, staged, cx));
+    })
+}
+
 /// The right-click menu shared by every file row: Changes entries, explorer
 /// files, and — with `rel` empty — the repo root on the git branch row.
 /// "Open in Editor" reads the preferred editor; `Ask` turns the item into a

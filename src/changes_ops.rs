@@ -118,6 +118,36 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Put `path`'s unified diff on the clipboard — the row menu's "Copy
+    /// Diff". A direct spawn rather than a `GitOp`: the payload is the diff
+    /// itself (not a note), nothing mutates the index so `git.busy` doesn't
+    /// gate it, and no refresh follows. `staged` picks the `--cached` half
+    /// for a partially-staged file; untracked files get a synthesized
+    /// new-file patch. Failures land as the panel's error note.
+    pub fn copy_file_diff(&mut self, path: &str, staged: bool, cx: &mut Context<Self>) {
+        let dir = self.project.root().to_path_buf();
+        let path = path.to_string();
+        cx.spawn(async move |this, cx| {
+            let job = path.clone();
+            let result = cx.background_executor().spawn(async move { crate::git::file_diff(&dir, &job, staged) }).await;
+            let _ = this.update(cx, |this, cx| this.land_copied_diff(&path, result, cx));
+        })
+        .detach();
+    }
+
+    /// Publish a fetched diff: the clipboard on success, the panel's note
+    /// either way — a silent copy leaves the user guessing whether it worked.
+    fn land_copied_diff(&mut self, path: &str, result: Result<String, String>, cx: &mut Context<Self>) {
+        match result {
+            Ok(diff) => {
+                cx.write_to_clipboard(ClipboardItem::new_string(diff));
+                self.git.note = Some((format!("Copied diff for {path}"), false));
+            },
+            Err(e) => self.git.note = Some((e, true)),
+        }
+        cx.notify();
+    }
+
     /// `git fetch --prune` — the header's refresh button. The post-op
     /// `refresh_changes` picks up the new ahead/behind counts.
     pub fn fetch_remote(&mut self, cx: &mut Context<Self>) {

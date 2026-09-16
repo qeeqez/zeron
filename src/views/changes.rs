@@ -188,7 +188,10 @@ fn change_row(ix: usize, change: &FileChange, ws: &Workspace, cx: &mut Context<W
         .context_menu({
             let ws = cx.entity();
             let path = change.path.clone();
-            move |menu, window, cx| crate::open_in::file_menu(&ws, &path, menu, window, cx)
+            let staged = change.staged;
+            move |menu, window, cx| {
+                crate::open_in::file_menu(&ws, &path, menu, window, cx).item(crate::open_in::copy_diff_item(&ws, &path, staged))
+            }
         })
         .into_any_element()
 }

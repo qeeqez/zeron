@@ -370,6 +370,13 @@ pub(crate) fn push(dir: &std::path::Path) -> Result<String, String> {
 pub(crate) mod pr;
 pub(crate) use pr::{PrChecks, PrState, PrStatus, create_pr, pr_status};
 
+/// `file_diff` — one path's unified diff for the row menu's "Copy Diff" —
+/// split into `git_file_diff.rs` for the SLOC cap; re-exported so callers
+/// keep using `crate::git::file_diff` / `crate::git::tracked`.
+#[path = "git_file_diff.rs"]
+pub(crate) mod file_diff;
+pub(crate) use file_diff::{file_diff, tracked};
+
 /// `git diff` variant with bounded output: reads at most `max_bytes` of
 /// stdout, then kills the child rather than buffering an unbounded diff.
 /// Returns `(output, hit_cap)`. `None` on spawn failure or an exit code

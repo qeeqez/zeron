@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use crate::git::{ChangeStatus, FileChange, git, git_diff};
+use crate::git::{ChangeStatus, FileChange, git_diff, tracked};
 
 /// Intra-line (word-level) highlighting for paired removed/added lines —
 /// kept beside the diff model it consumes; `#[path]` because `main.rs` is
@@ -205,11 +205,6 @@ pub(crate) fn diff_for_file(dir: &Path, change: &FileChange, ignore_ws: bool) ->
     let mut diff = parse_diff(&raw);
     diff.truncated |= capped;
     Some(diff)
-}
-
-/// Whether `path` has an index entry — untracked files need `--no-index`.
-fn tracked(dir: &Path, path: &str) -> bool {
-    git(dir, &["ls-files", "--error-unmatch", "--", path]).is_some()
 }
 
 /// `git diff [--ignore-all-space] <base> -- <path> [source]` — a rename
