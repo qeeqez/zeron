@@ -102,6 +102,12 @@ fn parse_num(s: &str) -> u32 {
     s.parse().unwrap_or(0)
 }
 
+/// Parse NUL-separated path output (`git diff --name-only -z`, `git ls-files
+/// -z`): one path per field, empties dropped.
+pub(crate) fn parse_names(raw: &str) -> Vec<String> {
+    raw.split('\0').filter(|s| !s.is_empty()).map(str::to_string).collect()
+}
+
 /// Parse `git branch --format=%(HEAD)%00%(refname:short)` output: one
 /// `*`-or-space flag, a NUL, then the short name per line. A detached HEAD
 /// emits a `(HEAD detached …)` pseudo-entry — not a local branch, so it's

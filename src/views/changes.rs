@@ -1,6 +1,7 @@
 //! Changes-panel rendering: the header, file rows with per-file stage
-//! toggles, expanded inline diffs, the review banner, and the git action
-//! block (branch, commit box, push/PR). State and git ops live in
+//! toggles, expanded inline diffs, the review banner, the merge-conflicts
+//! section (`crate::views::changes_conflicts`), and the git action block
+//! (branch, commit box, push/PR). State and git ops live in
 //! `crate::changes`; diff bodies in `crate::views::diff`.
 
 use gpui_kit::assets::IconName;
@@ -93,6 +94,7 @@ impl Workspace {
                     }),
             )
             .when(!self.review.comments.is_empty(), |d| d.child(crate::views::diff::review_banner(self, cx)))
+            .when(!self.git.conflicts.is_empty(), |d| d.child(crate::views::changes_conflicts::conflicts_section(self, cx)))
             .child(
                 div()
                     .id("changes-list")

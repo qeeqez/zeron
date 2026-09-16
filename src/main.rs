@@ -38,23 +38,23 @@ mod changes;
 mod changes_commits;
 #[cfg(test)]
 mod changes_commits_ui_tests;
+mod changes_conflicts;
 mod changes_diff;
 #[cfg(test)]
 mod changes_diff_tests;
 mod changes_generate;
 mod changes_stash;
 #[cfg(test)]
-mod changes_tests;
-#[cfg(test)]
 mod changes_ui_tests;
+
 mod chat_delete;
 mod chat_edit;
 #[cfg(test)]
 mod chat_edit_tests;
-mod chat_fork;
 mod chat_find;
 #[cfg(test)]
 mod chat_find_tests;
+mod chat_fork;
 mod chat_msg;
 mod chat_ops;
 #[cfg(test)]

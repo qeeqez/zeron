@@ -5,6 +5,7 @@ mod approval;
 mod cards;
 mod changes;
 mod changes_commits;
+mod changes_conflicts;
 mod changes_git;
 mod changes_git_branch;
 mod changes_stash;

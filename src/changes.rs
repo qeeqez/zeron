@@ -28,6 +28,9 @@ pub(crate) struct ChangesSnapshot {
     pub branch: Option<BranchStatus>,
     pub commits: Vec<Commit>,
     pub stashes: Vec<StashEntry>,
+    /// Unmerged paths from `git diff --diff-filter=U` — the conflicts
+    /// section's rows; empty when no merge/rebase is mid-conflict.
+    pub conflicts: Vec<String>,
 }
 
 /// Git-action state for the Changes panel: the branch header, the commit
@@ -46,6 +49,9 @@ pub struct ChangesGit {
     /// Stash entries for the "Stashes" section — refreshed alongside
     /// `commits` by `refresh_changes`, empty when nothing is stashed.
     pub stashes: Vec<StashEntry>,
+    /// Conflicted (unmerged) paths — refreshed alongside `branch` by
+    /// `refresh_changes`; drives the conflicts section's banner and rows.
+    pub conflicts: Vec<String>,
     /// Bumped per `refresh_branches` request; a stale list can't overwrite a
     /// newer one when two fetches land out of order.
     branches_generation: u64,
@@ -96,6 +102,7 @@ impl ChangesGit {
             branches: Vec::new(),
             commits: Vec::new(),
             stashes: Vec::new(),
+            conflicts: Vec::new(),
             branches_generation: 0,
             commit_input,
             stash_input,
@@ -107,43 +114,11 @@ impl ChangesGit {
     }
 }
 
-/// One git action run off the UI thread.
-pub(crate) enum GitOp {
-    Stage(String),
-    Unstage(String),
-    Commit(String),
-    Push,
-    CreatePr,
-    Checkout(String),
-    CreateBranch(String),
-    Revert(String),
-    Stash(String),
-    StashPop(String),
-    StashApply(String),
-    StashDrop(String),
-}
-
-impl GitOp {
-    /// Run the op against `dir`; returns the op back with its outcome so the
-    /// landing path can tell a commit (clears the message box) from the rest.
-    fn run(self, dir: &std::path::Path) -> (Self, Result<String, String>) {
-        let result = match &self {
-            Self::Stage(path) => crate::git::stage(dir, path),
-            Self::Unstage(path) => crate::git::unstage(dir, path),
-            Self::Commit(message) => crate::git::commit(dir, message),
-            Self::Push => crate::git::push(dir),
-            Self::CreatePr => crate::git::create_pr(dir, &[]),
-            Self::Checkout(name) => crate::git::checkout(dir, name),
-            Self::CreateBranch(name) => crate::git::create_branch(dir, name),
-            Self::Revert(sha) => crate::git::revert(dir, sha),
-            Self::Stash(message) => crate::git::stash_push(dir, message),
-            Self::StashPop(name) => crate::git::stash_pop(dir, name),
-            Self::StashApply(name) => crate::git::stash_apply(dir, name),
-            Self::StashDrop(name) => crate::git::stash_drop(dir, name),
-        };
-        (self, result)
-    }
-}
+/// Git ops dispatched off the UI thread — split into `changes_ops.rs` for
+/// the SLOC cap; re-exported so callers keep using `crate::changes::GitOp`.
+#[path = "changes_ops.rs"]
+pub(crate) mod ops;
+pub(crate) use ops::GitOp;
 
 impl Workspace {
     /// Expand/collapse a row's inline diff. Expanding stamps the row with a
@@ -204,6 +179,7 @@ impl Workspace {
                         branch: crate::git::branch_status(&root),
                         commits: crate::git::log(&root, 20),
                         stashes: crate::git::stash_list(&root),
+                        conflicts: crate::changes_conflicts::conflicted_files(&root),
                     }
                 })
                 .await;
@@ -223,6 +199,7 @@ impl Workspace {
         self.git.branch = snapshot.branch;
         self.git.commits = snapshot.commits;
         self.git.stashes = snapshot.stashes;
+        self.git.conflicts = snapshot.conflicts;
         cx.notify();
     }
 
@@ -352,6 +329,10 @@ impl Workspace {
     }
 }
 
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
 #[path = "changes_stale_tests.rs"]
 mod changes_stale_tests;
+#[cfg(test)]
+#[path = "changes_tests.rs"]
+mod changes_tests;
