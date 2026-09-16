@@ -68,11 +68,19 @@ impl Workspace {
             // The "Worked for Ns" label belongs to the final real message —
             // under a search filter the last match is not the turn's end.
             let duration = if !running && real_ix == msg_count - 1 { last_turn } else { None };
+            // Day separator above the first visible message of each new day —
+            // under a filter the previous *match* supplies the boundary.
+            let prev_at = match &filtered {
+                None => real_ix.checked_sub(1).and_then(|p| messages.get(p)).map(|m| m.at),
+                Some(f) => ix.checked_sub(1).and_then(|p| f.get(p)).and_then(|&p| messages.get(p)).map(|m| m.at),
+            };
+            let at = messages.get(real_ix).map(|m| m.at);
             let el = messages
                 .get(real_ix)
                 .map(|msg| render_message(MsgCtx { ix: real_ix, is_last, duration, msg }, nav_ix == Some(real_ix), &ws, window, cx))
                 .unwrap_or_else(|| div().into_any_element());
-            crate::chat_find::wrap_find_hit(el, real_ix, find.as_ref(), cx)
+            let el = crate::chat_find::wrap_find_hit(el, real_ix, find.as_ref(), cx);
+            crate::views::date_separator::separator_row(real_ix, at, prev_at, el, cx)
         })
         .jump_button(true)
         .with_jump_button_label("Jump to latest");

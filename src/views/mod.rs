@@ -15,6 +15,10 @@ mod chat_view;
 mod composer;
 mod composer_helpers;
 mod composer_voice;
+/// Day separators in the transcript — lives at `src/date_separator.rs`
+/// because `main.rs` is at the SLOC cap (same pattern as `explorer_git`).
+#[path = "../date_separator.rs"]
+pub(crate) mod date_separator;
 mod diff;
 mod diff_split;
 mod empty;
