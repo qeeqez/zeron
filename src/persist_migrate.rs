@@ -56,6 +56,8 @@ impl Default for Settings {
             update_skip: String::new(),
             trusted_folders: Vec::new(),
             onboarding_dismissed: false,
+            global_hotkey_enabled: false,
+            global_hotkey: String::new(),
         }
     }
 }

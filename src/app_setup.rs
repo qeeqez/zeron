@@ -8,6 +8,11 @@ use crate::{
     QuitApp, SearchAllChats, TogglePlan, ToggleTerminal, ViewLogs, ZoomIn, lifecycle, menus, shortcuts, update,
 };
 
+/// The system-wide summon hotkey — declared here (not `main.rs`, which is
+/// at the SLOC cap) beside the other app-level wiring that drives it.
+#[path = "global_hotkey.rs"]
+pub(crate) mod global_hotkey;
+
 /// Workspace-context key bindings. Menu items pick their key equivalents up
 /// from these, so a shortcut added here shows in the menu bar for free. The
 /// list comes from `shortcuts::SHORTCUT_SPECS` — the same table the Cmd-/
@@ -48,6 +53,9 @@ pub(crate) fn install_app_actions(cx: &mut App) {
     cx.on_action(|_: &HideApp, cx| cx.hide());
     cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
     cx.on_action(|_: &BringAllToFront, cx| cx.activate(false));
+    // The system-wide summon hotkey — reads the persisted toggle + chord.
+    let settings = crate::persist::load_settings();
+    global_hotkey::apply(settings.global_hotkey_enabled, &settings.global_hotkey, cx);
 }
 
 /// Extra workspace bindings that aren't in the cheat-sheet table: the

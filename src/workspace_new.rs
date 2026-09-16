@@ -96,6 +96,19 @@ impl Workspace {
         // workspace borrow (the click listener already holds it).
         let ws = cx.entity();
         let settings_panel = cx.new(|cx| crate::views::settings::SettingsPanel::new(ws.clone(), &settings, window, cx));
+        // The General section's global-hotkey field — Enter or blur commits
+        // the chord (validation lives in `commit_global_hotkey`).
+        let hotkey_input = cx.new(|cx| {
+            let mut input = InputState::new(window, cx).placeholder(crate::app_setup::global_hotkey::DEFAULT_CHORD);
+            input.set_value(settings.global_hotkey.clone(), window, cx);
+            input
+        });
+        cx.subscribe_in(&hotkey_input, window, |this, _s, event: &InputEvent, window, cx| {
+            if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                this.commit_global_hotkey(window, cx);
+            }
+        })
+        .detach();
         let mut this = Self {
             chats: Vec::new(),
             active: 0,
@@ -227,6 +240,10 @@ impl Workspace {
             resume_open: false,
             auth: crate::auth::AuthBook::seeded(),
             terminal: crate::views::terminal::TerminalPanel::new(settings.terminal_open, terminal_input, terminal_find_input),
+            global_hotkey_enabled: settings.global_hotkey_enabled,
+            global_hotkey: settings.global_hotkey.clone(),
+            hotkey_input,
+            hotkey_error: None,
         };
         this.snapshots.retention_days = settings.snapshot_retention_days.unwrap_or(crate::snapshots::DEFAULT_RETENTION_DAYS);
         this.git.ignore_ws = settings.diff_ignore_ws;

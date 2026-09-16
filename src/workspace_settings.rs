@@ -97,6 +97,8 @@ impl Workspace {
             // drop a folder the user trusted in another window.
             trusted_folders: prev.trusted_folders,
             onboarding_dismissed: self.onboarding_dismissed,
+            global_hotkey_enabled: self.global_hotkey_enabled,
+            global_hotkey: self.global_hotkey.clone(),
             sidebar_width: self.sidebar_width,
             sidebar_collapsed: self.sidebar_collapsed,
             terminal_open: self.terminal.open,
@@ -181,6 +183,37 @@ impl Workspace {
     pub fn dismiss_onboarding(&mut self, cx: &mut Context<Self>) {
         self.onboarding_dismissed = true;
         self.save_settings();
+        cx.notify();
+    }
+
+    /// The General section's hotkey toggle: flip the flag, persist, and
+    /// re-register the monitor — `apply` replaces whatever is installed.
+    pub(crate) fn set_global_hotkey_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.global_hotkey_enabled = enabled;
+        crate::app_setup::global_hotkey::apply(enabled, &self.global_hotkey, cx);
+    }
+
+    /// Commit the hotkey field's text (Enter or blur): validate the chord,
+    /// persist it canonicalized, and re-register. An invalid chord keeps the
+    /// previous binding and shows the error under the field.
+    pub(crate) fn commit_global_hotkey(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let draft = self.hotkey_input.read(cx).value().trim().to_string();
+        if draft == self.global_hotkey {
+            self.hotkey_error = None;
+            cx.notify();
+            return;
+        }
+        match crate::app_setup::global_hotkey::Chord::parse(&draft) {
+            Ok(chord) => {
+                self.global_hotkey = chord.canonical();
+                self.hotkey_error = None;
+                let canonical = self.global_hotkey.clone();
+                self.hotkey_input.update(cx, |input, cx| input.set_value(canonical, window, cx));
+                self.save_settings();
+                crate::app_setup::global_hotkey::apply(self.global_hotkey_enabled, &self.global_hotkey, cx);
+            },
+            Err(e) => self.hotkey_error = Some(e),
+        }
         cx.notify();
     }
 }

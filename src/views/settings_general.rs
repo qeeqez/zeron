@@ -7,6 +7,7 @@
 
 use gpui_kit::component::Sizable;
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::input::Input;
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -92,6 +93,25 @@ pub(crate) fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
         .child(toggle_row(("toggle-wrap", "Word wrap"), s.word_wrap, ws.clone(), |this, next, _w, cx| {
             this.word_wrap = next;
             this.scroller.update(cx, |s, cx| s.remeasure(cx));
+        }))
+        .child(group_label("System", cx))
+        .child(toggle_row(("toggle-global-hotkey", "Global hotkey"), s.ws.read(cx).global_hotkey_enabled, ws.clone(), |this, next, _w, cx| {
+            this.set_global_hotkey_enabled(next, cx);
+        }))
+        .child(default_row(
+            "Summon shortcut",
+            "System-wide chord that focuses the app — e.g. cmd-shift-space. Enter applies it.",
+            div().w(px(220.)).child(Input::new(&s.ws.read(cx).hotkey_input).id("global-hotkey-input").small().appearance(true)),
+            cx,
+        ))
+        .children(s.ws.read(cx).hotkey_error.iter().map(|e| {
+            div()
+                .id("global-hotkey-error")
+                .test_support()
+                .aria_label(e.clone())
+                .text_xs()
+                .text_color(cx.theme().danger)
+                .child(e.clone())
         }))
 }
 

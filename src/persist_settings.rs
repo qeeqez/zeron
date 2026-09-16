@@ -152,6 +152,14 @@ pub struct Settings {
     /// it regardless).
     #[serde(default)]
     pub onboarding_dismissed: bool,
+    /// System-wide summon hotkey: `global_hotkey_enabled` installs the
+    /// `NSEvent` global monitor, `global_hotkey` is the chord in gpui
+    /// keystroke syntax ("cmd-shift-space"; empty = the default). See
+    /// `crate::app_setup::global_hotkey`.
+    #[serde(default)]
+    pub global_hotkey_enabled: bool,
+    #[serde(default)]
+    pub global_hotkey: String,
 }
 
 fn settings_path() -> PathBuf {

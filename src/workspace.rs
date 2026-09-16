@@ -228,6 +228,16 @@ pub struct Workspace {
     /// `Settings.onboarding_dismissed`; a configured provider hides the
     /// card regardless of this flag.
     pub onboarding_dismissed: bool,
+    /// System-wide summon hotkey toggle — `Settings.global_hotkey_enabled`;
+    /// the monitor itself lives in `crate::app_setup::global_hotkey`.
+    pub global_hotkey_enabled: bool,
+    /// The summon chord in gpui keystroke syntax — `Settings.global_hotkey`.
+    pub global_hotkey: String,
+    /// The General section's hotkey field — workspace-owned so typed text
+    /// survives settings open/close like the other inputs.
+    pub hotkey_input: Entity<InputState>,
+    /// Validation error from the last hotkey commit; shown under the field.
+    pub hotkey_error: Option<String>,
 
     /// Past threads the backend can reopen — the sidebar's Resume section.
     /// Filled by `refresh_sessions`; empty until the first fetch lands.
