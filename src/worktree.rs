@@ -5,6 +5,10 @@
 
 use std::path::{Path, PathBuf};
 
+use gpui_kit::{Context, PromptButton, PromptLevel, Window};
+
+use crate::workspace::Workspace;
+
 /// Where new threads run: the project checkout itself, or a per-thread
 /// git worktree.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -86,6 +90,37 @@ pub(crate) fn remove(root: &Path, path: &Path) {
     }
 }
 
+/// One live worktree dir under `.worktrees/` plus the title of the chat
+/// that owns it — `None` marks an orphan (no chat's `workdir` points at
+/// the dir), the only entries the settings list may delete.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WorktreeInfo {
+    pub path: PathBuf,
+    pub chat_title: Option<String>,
+}
+
+/// Scan `<root>/.worktrees/` for live per-thread checkouts, matching each
+/// dir to the chat whose `workdir` is that path. Orphan dirs — leftovers
+/// from a deleted chat or a crashed cleanup — report no title. Sorted by
+/// path so the settings list is stable; a missing dir yields an empty vec.
+pub(crate) fn list_live(root: &Path, chats: &[crate::model::Chat]) -> Vec<WorktreeInfo> {
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(root.join(".worktrees"))
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                .map(|e| e.path())
+                .collect()
+        })
+        .unwrap_or_default();
+    dirs.sort();
+    dirs.into_iter()
+        .map(|path| {
+            let chat_title = chats.iter().find(|c| Path::new(&c.workdir) == path).map(|c| c.title.to_string());
+            WorktreeInfo { path, chat_title }
+        })
+        .collect()
+}
+
 /// Keep `.worktrees/` out of the parent repo's status — the dir lives
 /// inside the project so threads stay on the same filesystem, but it must
 /// not show up as an untracked entry. `.git/info/exclude` is the local,
@@ -108,9 +143,17 @@ fn exclude_worktrees_dir(root: &Path) {
     let _ = std::fs::write(&exclude, contents);
 }
 
+/// `git` argv issued by this module, in order — the test seam: the real
+/// spawn still runs (worktree tests use real repos), but UI tests assert
+/// the recorded argv instead of depending on git's behavior.
+#[cfg(test)]
+pub(crate) static GIT_ARGV: parking_lot::Mutex<Vec<Vec<String>>> = parking_lot::Mutex::new(Vec::new());
+
 /// Run `git` in `dir`; stdout on success, stderr text on failure — unlike
 /// `crate::git::git`, callers need the error detail for user-facing notes.
 fn git_err(dir: &Path, args: &[&str]) -> Result<String, String> {
+    #[cfg(test)]
+    GIT_ARGV.lock().push(args.iter().map(|a| (*a).to_string()).collect());
     let out = std::process::Command::new("git")
         .args(args)
         .current_dir(dir)
@@ -123,6 +166,48 @@ fn git_err(dir: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
+impl Workspace {
+    /// Remove an orphan worktree dir — one no chat's `workdir` points at —
+    /// behind a native confirm. Ownership is re-checked after the prompt:
+    /// a chat created meanwhile keeps its checkout.
+    pub(crate) fn remove_orphan_worktree(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        let root = self.project.root().to_path_buf();
+        let owned = || self.chats.iter().any(|c| Path::new(&c.workdir) == path);
+        if !path.starts_with(self.project.worktrees_dir()) || owned() {
+            return;
+        }
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.display().to_string());
+        let rx = window.prompt(
+            PromptLevel::Warning,
+            &format!("Delete worktree “{name}”?"),
+            Some("No thread uses this checkout. This cannot be undone."),
+            &[PromptButton::ok("Delete"), PromptButton::cancel("Cancel")],
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            if rx.await != Ok(0) {
+                return;
+            }
+            let _ = this.update(cx, |this, cx| this.remove_orphan_worktree_now(root, path, cx));
+        })
+        .detach();
+    }
+
+    /// The confirmed half of `remove_orphan_worktree`: re-check ownership
+    /// (the prompt is async — a chat may have claimed the dir meanwhile),
+    /// then remove the checkout and re-render the settings list.
+    fn remove_orphan_worktree_now(&mut self, root: PathBuf, path: PathBuf, cx: &mut Context<Self>) {
+        if self.chats.iter().any(|c| Path::new(&c.workdir) == path) {
+            return;
+        }
+        remove(&root, &path);
+        cx.notify();
+    }
+}
+
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
 #[path = "worktree_tests.rs"]
@@ -132,3 +217,8 @@ mod worktree_tests;
 #[cfg(test)]
 #[path = "worktree_ui_tests.rs"]
 mod worktree_ui_tests;
+
+// The settings-list tests live beside the subsystem too.
+#[cfg(test)]
+#[path = "worktree_list_tests.rs"]
+mod worktree_list_tests;
