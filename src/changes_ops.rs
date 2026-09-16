@@ -6,6 +6,16 @@
 pub(crate) enum GitOp {
     Stage(String),
     Unstage(String),
+    /// `git apply --cached` with a single-hunk patch — stage one diff hunk.
+    StageHunk {
+        path: String,
+        patch: String,
+    },
+    /// `git apply --cached --reverse` — unstage one diff hunk.
+    UnstageHunk {
+        path: String,
+        patch: String,
+    },
     /// Destructive per-file discard — the row's context menu confirms first.
     Discard(crate::git::FileChange),
     Commit(String),
@@ -38,6 +48,8 @@ impl GitOp {
         let result = match &self {
             Self::Stage(path) => crate::git::stage(dir, path),
             Self::Unstage(path) => crate::git::unstage(dir, path),
+            Self::StageHunk { path, patch } => crate::git::stage_hunk(dir, path, patch),
+            Self::UnstageHunk { path, patch } => crate::git::unstage_hunk(dir, path, patch),
             Self::Discard(change) => crate::git::discard_file(dir, change),
             Self::Commit(message) => crate::git::commit(dir, message),
             Self::CommitAmend(message) => crate::git::commit_amend(dir, message.as_deref()),
@@ -273,3 +285,8 @@ impl Workspace {
         cx.notify();
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "hunk_stage_tests.rs"]
+mod hunk_stage_tests;

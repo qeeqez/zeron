@@ -13,8 +13,7 @@ use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::changes_diff::diff_highlight::MarkedDiff;
-use crate::changes_diff::{DiffLineKind, DiffMode};
+use crate::changes_diff::DiffMode;
 use crate::git::FileChange;
 use crate::model::{ReviewComment, ReviewTarget};
 use crate::workspace::Workspace;
@@ -47,7 +46,7 @@ pub fn render_diff(file_ix: usize, change: &FileChange, next_line: &mut usize, w
         body = body.child(div().px_2().py_1().text_color(muted_fg).child("No textual diff — binary or unchanged file"));
     } else {
         let rows = match ws.diff_mode {
-            DiffMode::Unified => unified_rows(file_ix, diff, next_line, ws, cx),
+            DiffMode::Unified => unified_rows(file_ix, change, next_line, ws, cx),
             DiffMode::Split => crate::views::diff_split::render_rows(file_ix, diff, ws, cx),
         };
         body = body.children(rows);
@@ -65,78 +64,13 @@ pub fn render_diff(file_ix: usize, change: &FileChange, next_line: &mut usize, w
     })
     .into_any_element()
 }
-
-/// The unified layout's rows: one numbered row per diff line, with the
-/// comment editor mounted under its anchor's row.
-fn unified_rows(
-    file_ix: usize, diff: &crate::changes_diff::FileDiff, next_line: &mut usize, ws: &Workspace, cx: &mut Context<Workspace>,
-) -> Vec<AnyElement> {
-    let marked = MarkedDiff::new(diff, !ws.git.ignore_ws);
-    let mut rows = Vec::with_capacity(diff.lines.len());
-    for line_ix in 0..diff.lines.len() {
-        let id = *next_line;
-        *next_line += 1;
-        let target = ReviewTarget { file_ix, line_ix };
-        rows.push(diff_line(id, target, &marked, ws, cx));
-        if ws.review.target == Some(target) {
-            rows.push(comment_editor(target, ws, cx));
-        }
-    }
-    rows
-}
-
-/// One numbered diff row: `old new │ sign text`, tinted by line kind. Rows
-/// with a line number are clickable — a click anchors the comment editor, a
-/// ⌘-click opens the file at that line — and a row whose line already has a
-/// comment shows it after the code.
-/// Paired removed/added lines carry their changed range as a stronger wash.
-pub(crate) fn diff_line(id: usize, target: ReviewTarget, marked: &MarkedDiff, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
-    let line = &marked.diff.lines[target.line_ix];
-    let theme = cx.theme();
-    let (tint, fg, sign) = match line.kind {
-        DiffLineKind::Added => (Some(theme.success.opacity(0.12)), theme.success, "+"),
-        DiffLineKind::Removed => (Some(theme.danger.opacity(0.12)), theme.danger, "-"),
-        DiffLineKind::Hunk => (Some(theme.info.opacity(0.08)), theme.info, " "),
-        DiffLineKind::Context => (None, theme.foreground, " "),
-    };
-    let gutter = |n: Option<u32>| {
-        div()
-            .w(px(30.))
-            .flex_shrink_0()
-            .text_right()
-            .text_color(theme.muted_foreground)
-            .child(n.map(|n| n.to_string()).unwrap_or_default())
-    };
-    let commentable = line.new.or(line.old).is_some();
-    let mut row = div()
-        .id(("diff-line", id))
-        .test_support()
-        .flex()
-        .items_center()
-        .w_auto()
-        .min_w_full()
-        .whitespace_nowrap()
-        .child(gutter(line.old))
-        .child(gutter(line.new))
-        .child(div().w(px(14.)).flex_shrink_0().text_center().text_color(fg).child(sign))
-        .child(div().text_color(fg).child(marked.code_text(target.line_ix, fg)));
-    if let Some(tint) = tint {
-        row = row.bg(tint);
-    }
-    if commentable {
-        row = row
-            .cursor_pointer()
-            .hover(|d| d.bg(theme.muted.opacity(0.4)))
-            .tooltip(|window, cx| gpui_kit::component::tooltip::Tooltip::new("⌘-click opens in editor").build(window, cx))
-            .on_click(cx.listener(move |this, event, window, cx| {
-                this.click_diff_line(target, event, window, cx);
-            }));
-        if let Some(ix) = ws.review_comment_at(target) {
-            row = row.child(comment_chip(&ws.review.comments[ix], cx));
-        }
-    }
-    row.into_any_element()
-}
+/// The unified layout's rows — `unified_rows`, `diff_line`, and the hunk
+/// Stage/Unstage button — split into `diff_rows.rs` for the SLOC cap;
+/// re-exported so `diff_split` keeps using `crate::views::diff::diff_line`.
+#[path = "diff_rows.rs"]
+pub(crate) mod rows;
+use rows::unified_rows;
+pub(crate) use rows::{DiffRow, diff_line};
 
 /// The inline marker a commented diff line carries: a speech-bubble icon
 /// plus the comment text, appended after the code in a unified row or

@@ -329,10 +329,12 @@ pub(crate) use pr::{PrChecks, PrState, PrStatus, create_pr, pr_status};
 
 /// `file_diff` — one path's unified diff for the row menu's "Copy Diff" —
 /// split into `git_file_diff.rs` for the SLOC cap; re-exported so callers
-/// keep using `crate::git::file_diff` / `crate::git::tracked`.
+/// keep using `crate::git::file_diff` / `crate::git::tracked`. Hunk-level
+/// staging lives in `git_hunks.rs` under it for the same reason.
 #[path = "git_file_diff.rs"]
 pub(crate) mod file_diff;
-pub(crate) use file_diff::{file_diff, tracked};
+pub(crate) use file_diff::hunks::{stage_hunk, unstage_hunk};
+pub(crate) use file_diff::{file_diff, git_diff, tracked};
 
 /// Per-file "Discard changes" — split into `git_discard.rs` for the SLOC
 /// cap; re-exported so callers keep using `crate::git::discard_file`.
@@ -352,38 +354,3 @@ pub(crate) use stash::{StashEntry, stash_apply, stash_drop, stash_list, stash_po
 #[path = "git_blame.rs"]
 pub(crate) mod blame;
 pub(crate) use blame::{BlameLine, blame, commit_file_diff, file_log};
-
-/// `git diff` variant with bounded output: reads at most `max_bytes` of
-/// stdout, then kills the child rather than buffering an unbounded diff.
-/// Returns `(output, hit_cap)`. `None` on spawn failure or an exit code
-/// other than 0/1 (1 = differences found, always for `--no-index`) — unless
-/// the cap was hit, where the partial output is still the payload.
-pub(crate) fn git_diff(dir: &std::path::Path, args: &[&str], max_bytes: u64) -> Option<(String, bool)> {
-    use std::io::Read;
-    let mut child = std::process::Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .ok()?;
-    let Some(stdout) = child.stdout.take() else {
-        let _ = child.kill();
-        return None;
-    };
-    let mut buf = Vec::new();
-    if stdout.take(max_bytes + 1).read_to_end(&mut buf).is_err() {
-        let _ = child.kill();
-        let _ = child.wait();
-        return None;
-    }
-    let capped = buf.len() as u64 > max_bytes;
-    buf.truncate(max_bytes as usize);
-    if capped {
-        // The child is likely still writing — kill it instead of waiting on
-        // a full pipe.
-        let _ = child.kill();
-    }
-    let code = child.wait().ok()?.code().unwrap_or(-1);
-    (capped || code == 0 || code == 1).then(|| (String::from_utf8_lossy(&buf).into_owned(), capped))
-}

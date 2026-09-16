@@ -54,3 +54,43 @@ fn new_file_diff(dir: &Path, path: &str) -> Result<String, String> {
     }
     Ok(out)
 }
+
+/// Hunk-level staging — `stage_hunk`/`unstage_hunk` apply one hunk of a
+/// file's diff to the index — split into `git_hunks.rs` for the SLOC cap;
+/// `git.rs` re-exports it as `crate::git::stage_hunk`.
+#[path = "git_hunks.rs"]
+pub(crate) mod hunks;
+/// `git diff` variant with bounded output: reads at most `max_bytes` of
+/// stdout, then kills the child rather than buffering an unbounded diff.
+/// Returns `(output, hit_cap)`. `None` on spawn failure or an exit code
+/// other than 0/1 (1 = differences found, always for `--no-index`) — unless
+/// the cap was hit, where the partial output is still the payload.
+pub(crate) fn git_diff(dir: &std::path::Path, args: &[&str], max_bytes: u64) -> Option<(String, bool)> {
+    use std::io::Read;
+    let mut child = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        return None;
+    };
+    let mut buf = Vec::new();
+    if stdout.take(max_bytes + 1).read_to_end(&mut buf).is_err() {
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+    }
+    let capped = buf.len() as u64 > max_bytes;
+    buf.truncate(max_bytes as usize);
+    if capped {
+        // The child is likely still writing — kill it instead of waiting on
+        // a full pipe.
+        let _ = child.kill();
+    }
+    let code = child.wait().ok()?.code().unwrap_or(-1);
+    (capped || code == 0 || code == 1).then(|| (String::from_utf8_lossy(&buf).into_owned(), capped))
+}

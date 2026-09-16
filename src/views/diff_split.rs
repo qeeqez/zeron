@@ -37,7 +37,9 @@ pub(crate) fn render_rows(file_ix: usize, diff: &FileDiff, ws: &Workspace, cx: &
 fn render_row(file_ix: usize, row: SplitRow, marked: &MarkedDiff, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     let target = |ix: usize| ReviewTarget { file_ix, line_ix: ix };
     match row {
-        SplitRow::Wide(ix) => crate::views::diff::diff_line(ix, target(ix), marked, ws, cx),
+        SplitRow::Wide(ix) => {
+            crate::views::diff::diff_line(crate::views::diff::DiffRow { id: ix, target: target(ix), hunk: None }, marked, ws, cx)
+        },
         SplitRow::Pair { old, new } => div()
             .flex()
             .items_stretch()

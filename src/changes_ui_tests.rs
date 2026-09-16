@@ -61,7 +61,7 @@ pub(crate) fn sample_diff() -> FileDiff {
                 text: "new();".into(),
             },
         ],
-        truncated: false,
+        ..FileDiff::default()
     }
 }
 

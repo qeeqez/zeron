@@ -13,7 +13,7 @@ use crate::git::{ChangeStatus, FileChange, git_diff, tracked};
 pub(crate) mod diff_highlight;
 
 /// Most lines kept per file — a huge generated diff can't flood the panel.
-const MAX_DIFF_LINES: usize = 400;
+pub(crate) const MAX_DIFF_LINES: usize = 400;
 
 /// Most stdout bytes read from `git diff` — bounds the subprocess buffer
 /// before `parse_diff` applies its own row cap.
@@ -46,6 +46,33 @@ pub struct FileDiff {
     pub lines: Vec<DiffLine>,
     /// True when the raw diff exceeded `MAX_DIFF_LINES` and was cut off.
     pub truncated: bool,
+    /// The raw unified-diff text `lines` was parsed from — hunk patches are
+    /// sliced out of it verbatim so `git apply` sees byte-exact context.
+    /// Empty for diffs built by hand (tests) instead of `parse_diff`.
+    pub raw: String,
+    /// Byte ranges into `raw`, one per complete hunk of the first file
+    /// block — the `@@` line through the line before the next `@@` (or end
+    /// of the block). A hunk cut by `MAX_DIFF_LINES` or belonging to a
+    /// second file block gets no range, so it can't be staged.
+    pub hunks: Vec<std::ops::Range<usize>>,
+}
+
+impl FileDiff {
+    /// The single-hunk patch for hunk `ix`: the file's diff header
+    /// (`diff --git`/`index`/`---`/`+++`, everything before the first `@@`)
+    /// plus that hunk's raw lines. `git apply --cached` needs the header to
+    /// know which file the hunk edits. `None` when the hunk has no recorded
+    /// range — truncated or from a second file block.
+    pub(crate) fn hunk_patch(&self, ix: usize) -> Option<String> {
+        let hunk = self.hunks.get(ix)?;
+        let header_end = self.hunks.first()?.start;
+        let mut patch = self.raw[..header_end].to_string();
+        patch.push_str(&self.raw[hunk.clone()]);
+        if !patch.ends_with('\n') {
+            patch.push('\n');
+        }
+        Some(patch)
+    }
 }
 
 /// How the expanded diff lays out its lines — the Changes panel's view-mode
@@ -186,117 +213,52 @@ pub(crate) fn review_anchor(changes: &[FileChange], target: crate::model::Review
 /// can't run; a file with no textual diff (binary, mode-only, vanished)
 /// yields an empty `FileDiff`. `ignore_ws` passes `--ignore-all-space` so
 /// whitespace-only edits (reindents, tab↔space) collapse to no diff.
+///
+/// The row's `staged` flag picks which half of a partially-staged file to
+/// show — `git diff --cached` (HEAD→index) when staged, `git diff`
+/// (index→worktree) when not — so a hunk's patch always applies against the
+/// side the button acts on: `apply --cached` for unstaged hunks,
+/// `apply --cached --reverse` for staged ones.
 pub(crate) fn diff_for_file(dir: &Path, change: &FileChange, ignore_ws: bool) -> Option<FileDiff> {
     let (raw, capped) = if change.status == ChangeStatus::Added && !tracked(dir, &change.path) {
         // Untracked files have no index entry — diff against /dev/null.
         let abs = dir.join(&change.path);
         git_diff(dir, &["diff", "--no-index", "--", "/dev/null", &abs.to_string_lossy()], MAX_DIFF_BYTES)?
     } else {
-        // `diff HEAD` covers staged + unstaged in one output. A rename needs
-        // both names in the pathspec — the source alone is gone from the
-        // worktree, the destination alone diffs as a new file. On an unborn
-        // HEAD (no commits yet) `diff HEAD` fails, so diff the worktree once
-        // against the empty tree for the same net result — concatenating the
-        // staged and unstaged halves would feed the second patch's headers
-        // to `parse_diff` as content.
-        git_diff(dir, &diff_args("HEAD", change, ignore_ws), MAX_DIFF_BYTES)
-            .or_else(|| git_diff(dir, &diff_args(&crate::git::empty_tree_id(dir)?, change, ignore_ws), MAX_DIFF_BYTES))?
+        git_diff(dir, &diff_args(change, ignore_ws), MAX_DIFF_BYTES)?
     };
     let mut diff = parse_diff(&raw);
     diff.truncated |= capped;
     Some(diff)
 }
 
-/// `git diff [--ignore-all-space] <base> -- <path> [source]` — a rename
-/// needs both names in the pathspec (the source alone is gone from the
-/// worktree, the destination alone diffs as a new file).
-fn diff_args<'a>(base: &'a str, change: &'a FileChange, ignore_ws: bool) -> Vec<&'a str> {
+/// `git diff [--ignore-all-space] [--cached] -- <path> [source]` — the
+/// staged flag picks `--cached` (HEAD→index) over the default
+/// index→worktree diff. A rename needs both names in the pathspec (the
+/// source alone is gone from the worktree, the destination alone diffs as
+/// a new file). Both forms work on an unborn HEAD: `--cached` diffs
+/// against the implicit empty tree, and the index always exists.
+fn diff_args(change: &FileChange, ignore_ws: bool) -> Vec<&str> {
     let mut args = vec!["diff"];
     if ignore_ws {
         args.push("--ignore-all-space");
     }
-    args.extend([base, "--", change.path.as_str()]);
+    if change.staged {
+        args.push("--cached");
+    }
+    args.extend(["--", change.path.as_str()]);
     if let Some(source) = &change.source {
         args.push(source.as_str());
     }
     args
 }
 
-/// Parse unified-diff output into numbered lines. File headers (`diff --git`,
-/// `index`, `---`/`+++`, mode lines) are skipped; hunk headers seed the old/new
-/// line counters that ` `/`+`/`-` lines then advance. A malformed `@@` line
-/// still renders as a hunk row — content is never dropped.
-pub(crate) fn parse_diff(raw: &str) -> FileDiff {
-    let mut diff = FileDiff::default();
-    let mut in_hunk = false;
-    let (mut old, mut new) = (0u32, 0u32);
-    for line in raw.lines() {
-        if line.starts_with("@@") {
-            in_hunk = true;
-            if let Some((o, n)) = hunk_starts(line) {
-                old = o;
-                new = n;
-            }
-            diff.lines.push(DiffLine {
-                kind: DiffLineKind::Hunk,
-                old: None,
-                new: None,
-                text: line.to_string(),
-            });
-        } else if !in_hunk {
-            continue; // file header lines
-        } else if let Some(text) = line.strip_prefix('+') {
-            diff.lines.push(DiffLine {
-                kind: DiffLineKind::Added,
-                old: None,
-                new: Some(new),
-                text: text.to_string(),
-            });
-            new += 1;
-        } else if let Some(text) = line.strip_prefix('-') {
-            diff.lines.push(DiffLine {
-                kind: DiffLineKind::Removed,
-                old: Some(old),
-                new: None,
-                text: text.to_string(),
-            });
-            old += 1;
-        } else if line.starts_with('\\') {
-            // "\ No newline at end of file" — describes the previous line.
-            diff.lines.push(DiffLine {
-                kind: DiffLineKind::Context,
-                old: None,
-                new: None,
-                text: line.to_string(),
-            });
-        } else {
-            // Context line (' ' prefix) or a bare empty line git emits for an
-            // empty context line.
-            let text = line.strip_prefix(' ').unwrap_or(line);
-            diff.lines.push(DiffLine {
-                kind: DiffLineKind::Context,
-                old: Some(old),
-                new: Some(new),
-                text: text.to_string(),
-            });
-            old += 1;
-            new += 1;
-        }
-        if diff.lines.len() >= MAX_DIFF_LINES {
-            diff.truncated = true;
-            break;
-        }
-    }
-    diff
-}
-
-/// `@@ -<old>[,n] +<new>[,n] @@` → the two starting line numbers.
-fn hunk_starts(header: &str) -> Option<(u32, u32)> {
-    let mut spans = header.split_whitespace().filter(|s| s.starts_with('-') || s.starts_with('+'));
-    let old = spans.next()?[1..].split(',').next()?.parse().ok()?;
-    let new = spans.next()?[1..].split(',').next()?.parse().ok()?;
-    Some((old, new))
-}
+/// `parse_diff` — unified-diff text → `FileDiff` — split into
+/// `changes_diff_parse.rs` for the SLOC cap; re-exported so callers keep
+/// using `crate::changes_diff::parse_diff`.
+#[path = "changes_diff_parse.rs"]
+pub(crate) mod parse;
+pub(crate) use parse::parse_diff;
 
 /// The header's diff-stat rollup — files touched plus summed insertions and
 /// deletions across every row. `None` on a clean tree so the line hides.

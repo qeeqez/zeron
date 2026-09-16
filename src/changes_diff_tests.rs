@@ -189,9 +189,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A staged rename must diff HEAD→worktree across both names — with only
-    /// the destination path, `git diff HEAD` reports it as an all-added new
-    /// file and the removed lines never show. Skips when `git` is unavailable.
+    /// A staged rename edited afterwards must diff index→worktree across
+    /// both names — with only the destination path, `git diff` reports it
+    /// as an all-added new file and the removed lines never show. Skips
+    /// when `git` is unavailable.
     #[test]
     fn diff_for_rename_shows_delta_not_all_added() {
         let dir = std::env::temp_dir().join(format!("rixlcode-diff-rename-test-{}", std::process::id()));
@@ -214,12 +215,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// On an unborn HEAD, a staged-then-edited file diffs once against the
-    /// empty tree — the net worktree content — instead of concatenating the
-    /// empty→index and index→worktree patches (whose second set of headers
-    /// `parse_diff` would read as content). Skips when `git` is unavailable.
+    /// On an unborn HEAD, `git diff` still splits index→worktree from
+    /// empty→index: an unstaged row shows only the post-`add` edits, a
+    /// staged row shows the index content as all-added. Skips when `git` is
+    /// unavailable.
     #[test]
-    fn diff_for_unborn_head_shows_net_worktree() {
+    fn diff_for_unborn_head_splits_staged_halves() {
         let dir = std::env::temp_dir().join(format!("rixlcode-diff-unborn-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -229,17 +230,23 @@ mod tests {
             run(&["add", "f.txt"]);
             std::fs::write(dir.join("f.txt"), "a\nB\nc\n").unwrap();
 
-            let diff = diff_for_file(&dir, &change("f.txt", ChangeStatus::Added, 3, 0), false).unwrap();
+            let diff = diff_for_file(&dir, &change("f.txt", ChangeStatus::Modified, 2, 1), false).unwrap();
             let added: Vec<&str> = diff.lines.iter().filter(|l| l.kind == DiffLineKind::Added).map(|l| l.text.as_str()).collect();
-            assert_eq!(added, ["a", "B", "c"], "net worktree content, no header junk");
-            assert!(diff.lines.iter().all(|l| l.kind != DiffLineKind::Removed));
+            assert_eq!(added, ["B", "c"], "unstaged half shows only the post-add edits");
+
+            let mut staged = change("f.txt", ChangeStatus::Added, 2, 0);
+            staged.staged = true;
+            let diff = diff_for_file(&dir, &staged, false).unwrap();
+            let added: Vec<&str> = diff.lines.iter().filter(|l| l.kind == DiffLineKind::Added).map(|l| l.text.as_str()).collect();
+            assert_eq!(added, ["a", "b"], "staged half shows the index content");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// In a SHA-256 repo the empty tree is `6ef19b…`, not the SHA-1
-    /// `4b825dc…` — the unborn-HEAD fallback must derive it from the repo's
-    /// object format or `git diff` exits 128. Skips when `git` is unavailable
+    /// `4b825dc…` — `empty_tree_id` must derive it from the repo's object
+    /// format or the numstat fallback exits 128. The staged diff itself
+    /// works on an unborn HEAD either way. Skips when `git` is unavailable
     /// or too old for `--object-format=sha256`.
     #[test]
     fn diff_for_unborn_head_works_in_sha256_repo() {
@@ -257,9 +264,11 @@ mod tests {
             run(&["add", "f.txt"]);
             std::fs::write(dir.join("f.txt"), "a\nB\nc\n").unwrap();
 
-            let diff = diff_for_file(&dir, &change("f.txt", ChangeStatus::Added, 3, 0), false).unwrap();
+            let mut staged = change("f.txt", ChangeStatus::Added, 2, 0);
+            staged.staged = true;
+            let diff = diff_for_file(&dir, &staged, false).unwrap();
             let added: Vec<&str> = diff.lines.iter().filter(|l| l.kind == DiffLineKind::Added).map(|l| l.text.as_str()).collect();
-            assert_eq!(added, ["a", "B", "c"], "net worktree content via the sha256 empty tree");
+            assert_eq!(added, ["a", "b"], "staged half shows the index content in a sha256 repo");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
