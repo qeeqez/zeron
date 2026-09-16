@@ -22,6 +22,16 @@ pub enum RenameMode {
 
 impl Workspace {
     pub fn new_chat(&mut self, cx: &mut Context<Self>) {
+        self.new_chat_inner(false, cx);
+    }
+
+    /// "New Temporary Chat" — same fresh thread, but `ephemeral` keeps it
+    /// off disk and out of search/snapshot/activity enumeration.
+    pub fn new_temp_chat(&mut self, cx: &mut Context<Self>) {
+        self.new_chat_inner(true, cx);
+    }
+
+    fn new_chat_inner(&mut self, ephemeral: bool, cx: &mut Context<Self>) {
         // Stash the current draft before switching — the composer text
         // belongs to the outgoing chat. `get_mut`: first launch has no chats.
         if let Some(chat) = self.chats.get_mut(self.active) {
@@ -33,7 +43,9 @@ impl Workspace {
         self.stamp_thread();
         let id = self.next_chat_id;
         self.next_chat_id += 1;
-        self.chats.push(Chat::new(id, "New chat"));
+        let mut chat = Chat::new(id, if ephemeral { "Temporary chat" } else { "New chat" });
+        chat.ephemeral = ephemeral;
+        self.chats.push(chat);
         self.active = self.chats.len() - 1;
         self.clear_recall();
         self.search_match_ix = 0;
@@ -186,6 +198,9 @@ impl Workspace {
         copy.messages = src.messages.clone();
         copy.draft = src.draft.clone();
         copy.folder = src.folder.clone();
+        // A temporary chat's copy stays temporary — duplicating must not
+        // silently persist content the user marked ephemeral.
+        copy.ephemeral = src.ephemeral;
         self.chats.push(copy);
         let new_ix = self.chats.len() - 1;
         self.select_chat(new_ix, window, cx);

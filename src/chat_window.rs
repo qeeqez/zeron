@@ -28,6 +28,10 @@ impl Workspace {
     /// was never persisted (or whose position shifted) is on disk, then
     /// capture the key after the save since eviction can reorder.
     pub fn open_chat_in_new_window(&mut self, id: u64, cx: &mut Context<Self>) {
+        // Ephemeral chats never reach disk — a new window couldn't load it.
+        if self.chats.iter().any(|c| c.id == id && c.ephemeral) {
+            return;
+        }
         self.save();
         let Some(index) = self.chat_index(id) else { return };
         let key = LoadedChatKey { created_at: self.chats[index].created_at, index };

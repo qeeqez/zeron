@@ -234,6 +234,10 @@ pub struct Chat {
     /// `workdir` is a git worktree owned by this thread — removed when the
     /// chat is deleted.
     pub worktree: bool,
+    /// Temporary chat — never written to disk (`persist::save_chats` skips
+    /// it) and gone when the chat closes or the app exits. Runtime-only:
+    /// nothing ephemeral ever reaches `StoredChat`.
+    pub ephemeral: bool,
     /// Backend thread this chat continues — set when the chat was created
     /// by resuming a past codex session. Empty = each send starts a fresh
     /// thread.
@@ -281,6 +285,7 @@ impl Chat {
             effort: None,
             workdir: String::new(),
             worktree: false,
+            ephemeral: false,
             thread_id: String::new(),
             usage: crate::usage::ChatUsage::default(),
             checkpoints: Vec::new(),

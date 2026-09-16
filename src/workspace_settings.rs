@@ -21,10 +21,12 @@ impl Workspace {
             self.note_setup_outcome(outcome);
         }
         crate::persist::save_chats(&self.project.chats_dir(), &self.chats);
-        self.project.save_state(&crate::project::ProjectState {
-            active_chat: self.active,
-            setup_script: self.setup_script.clone(),
-        });
+        // `active_chat` indexes the loaded (non-ephemeral) set — count the
+        // persisted chats before `active`; an ephemeral active chat leaves
+        // the index pointing at the next real one.
+        let active_chat = self.chats[..self.active.min(self.chats.len())].iter().filter(|c| !c.ephemeral).count();
+        self.project
+            .save_state(&crate::project::ProjectState { active_chat, setup_script: self.setup_script.clone() });
     }
 
     pub(crate) fn save_settings(&mut self) {

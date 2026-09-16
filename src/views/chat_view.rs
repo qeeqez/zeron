@@ -32,6 +32,9 @@ impl Workspace {
         // items; the chip's tooltip carries the checkout path.
         let worktree = chat.worktree;
         let workdir = chat.workdir.clone();
+        // Temporary chats get a muted "Temporary" chip next to the title —
+        // a chat can be both worktree and ephemeral, so both chips render.
+        let ephemeral = chat.ephemeral;
         let ws = cx.entity();
         let ws_empty = cx.entity();
         let ws_menu = cx.entity();
@@ -107,6 +110,7 @@ impl Workspace {
                 .text_sm()
                 .child(title)
                 .when(worktree, |d| d.child(crate::views::chat_menu::worktree_badge("worktree-badge", &workdir, cx)))
+                .when(ephemeral, |d| d.child(crate::views::chat_menu::temp_badge("temp-badge", cx)))
                 .child(div().flex_1())
                 .child(
                     div()
@@ -149,7 +153,7 @@ impl Workspace {
                 )
                 .child(Button::new("chat-menu").ghost().icon(IconName::Ellipsis).dropdown_menu({
                     let word_wrap = self.word_wrap;
-                    let state = crate::views::chat_menu::ChatMenuState { pinned, word_wrap, worktree };
+                    let state = crate::views::chat_menu::ChatMenuState { pinned, word_wrap, worktree, ephemeral };
                     move |menu, window, cx| chat_menu(menu, &ws_menu, state, window, cx)
                 })),
         );

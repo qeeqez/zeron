@@ -6,7 +6,9 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     pub fn delete_chat(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if self.chats.len() <= 1 || index >= self.chats.len() {
+        // The last chat can't be deleted — unless it's temporary: closing
+        // an ephemeral-only list swaps in a fresh normal chat.
+        if index >= self.chats.len() || (self.chats.len() <= 1 && !self.chats[index].ephemeral) {
             return;
         }
         let title = self.chats[index].title.clone();
@@ -28,7 +30,7 @@ impl Workspace {
 
     pub(crate) fn delete_chat_now(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         // Re-check: the prompt is async — chats may have shrunk meanwhile.
-        if self.chats.len() <= 1 || index >= self.chats.len() {
+        if index >= self.chats.len() || (self.chats.len() <= 1 && !self.chats[index].ephemeral) {
             return;
         }
         let was_active = index == self.active;
@@ -41,6 +43,14 @@ impl Workspace {
         crate::worktree::remove_for(self.project.root(), &self.chats[index]);
         // Chat drop kills the turn: the stream's Drop kills the child.
         self.chats.remove(index);
+        // Deleting the last (temporary) chat leaves the workspace empty —
+        // open a fresh normal chat so there's always something selected.
+        if self.chats.is_empty() {
+            self.composer.update(cx, |s, cx| s.set_value("", window, cx));
+            self.new_chat(cx);
+            crate::dock_badge::update(cx);
+            return;
+        }
         if self.active >= self.chats.len() {
             self.active = self.chats.len() - 1;
         } else if index < self.active {
@@ -90,3 +100,8 @@ impl Workspace {
         .detach();
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "temp_chat_tests.rs"]
+mod temp_chat_tests;

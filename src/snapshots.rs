@@ -76,7 +76,7 @@ pub(crate) struct ChatSeed {
 pub(crate) fn seeds(chats: &[crate::model::Chat], root: &Path) -> Vec<ChatSeed> {
     chats
         .iter()
-        .filter(|c| !c.checkpoints.is_empty())
+        .filter(|c| !c.ephemeral && !c.checkpoints.is_empty())
         .map(|c| ChatSeed {
             id: c.id,
             title: c.title.to_string(),

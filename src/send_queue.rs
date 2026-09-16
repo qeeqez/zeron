@@ -238,6 +238,7 @@ impl SendQueue {
             v: 1,
             queues: chats
                 .iter()
+                .filter(|chat| !chat.ephemeral)
                 .filter_map(|chat| {
                     let items = queues.get(&chat.id)?;
                     (!items.is_empty()).then(|| StoredQueue { key: chat_key(chat), items: items.clone() })

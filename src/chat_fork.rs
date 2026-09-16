@@ -52,6 +52,9 @@ impl Workspace {
         fork.effort = src.effort.clone();
         fork.workdir = workdir;
         fork.worktree = worktree;
+        // A temporary chat's fork stays temporary — forking must not
+        // silently persist content the user marked ephemeral.
+        fork.ephemeral = src.ephemeral;
         // Checkpoints pinned to retained messages still resolve — a git
         // checkpoint's commit-tree sha is reachable from any worktree of
         // the repo, and copy snapshots live in the shared project store.

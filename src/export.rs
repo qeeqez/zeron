@@ -7,8 +7,13 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     /// Export chat `ix` as markdown via the native save dialog.
+    /// Temporary chats can't be exported — nothing about them persists.
     pub fn export_chat(&mut self, ix: usize, cx: &mut Context<Self>) {
         let Some(chat) = self.chats.get(ix) else { return };
+        if chat.ephemeral {
+            self.push_note("Temporary chats can't be exported.".into(), cx);
+            return;
+        }
         let mut out = format!("# {}\n\n", chat.title);
         for msg in chat.messages.iter() {
             let role = match msg.role {

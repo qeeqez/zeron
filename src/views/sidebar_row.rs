@@ -65,8 +65,11 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
     let flags = RowFlags {
         pinned: chat.pinned,
         archived: chat.archived,
-        only_chat: ws.chats.len() <= 1,
+        // The last chat can't be deleted — but a temporary last chat can
+        // (it's replaced by a fresh normal chat), so keep Delete live.
+        only_chat: ws.chats.len() <= 1 && !chat.ephemeral,
         worktree: chat.worktree,
+        ephemeral: chat.ephemeral,
     };
     // Only an inline rename mounts the editor — a dialog rename shares
     // `ws.rename`, and its outside-click would commit behind the dialog.
@@ -170,6 +173,17 @@ fn row_suffix(ws: Entity<Workspace>, chat_id: u64, flags: RowFlags, status: (boo
                         .test_support()
                         .text_color(cx.theme().muted_foreground)
                         .child(IconName::FolderGit),
+                )
+            })
+            // Temporary chats carry a ghost glyph — the titlebar's
+            // "Temporary" chip is the primary indicator.
+            .when(flags.ephemeral, |d| {
+                d.child(
+                    div()
+                        .id(("temp-glyph", chat_id))
+                        .test_support()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(IconName::Ghost),
                 )
             })
             .child(if running {

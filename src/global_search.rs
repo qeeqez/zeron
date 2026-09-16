@@ -258,7 +258,9 @@ impl Workspace {
     /// The searchable set: every loaded chat plus on-disk chat files beyond
     /// the loaded set (written by another window or a previous run).
     pub(crate) fn search_docs(&self) -> Vec<SearchDoc> {
-        let mut docs: Vec<SearchDoc> = self.chats.iter().enumerate().map(|(ix, chat)| SearchDoc::live(ix, chat)).collect();
+        // Temporary chats are unsearchable — they never reach disk.
+        let live = self.chats.iter().enumerate().filter(|x| !x.1.ephemeral);
+        let mut docs: Vec<SearchDoc> = live.map(|(ix, chat)| SearchDoc::live(ix, chat)).collect();
         for (file_ix, path) in chat_files(&self.project.chats_dir()) {
             if file_ix < self.chats.len() {
                 continue;

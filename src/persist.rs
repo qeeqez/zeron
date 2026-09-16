@@ -75,6 +75,11 @@ pub(crate) fn dirs_home() -> PathBuf {
 pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
     let _ = fs::create_dir_all(dir);
     for (ix, chat) in chats.iter().enumerate() {
+        // Temporary chats never reach disk — the slot stays empty and the
+        // stale sweep below removes any file that ever lands there.
+        if chat.ephemeral {
+            continue;
+        }
         let mut stored = StoredChat {
             v: 1,
             title: chat.title.to_string(),
@@ -130,14 +135,15 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             let _ = fs::rename(&tmp, &dst);
         }
     }
-    // Remove files beyond the live set — deleted chats must not resurrect.
+    // Slots past the live set — or held by an ephemeral chat — are stale:
+    // deleted chats and temporary chats must not resurrect.
     if let Ok(entries) = fs::read_dir(dir) {
         for path in entries.flatten().map(|e| e.path()) {
             let stale = path
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .and_then(|s| s.parse::<usize>().ok())
-                .is_some_and(|ix| ix >= chats.len())
+                .is_some_and(|ix| chats.get(ix).is_none_or(|c| c.ephemeral))
                 && path.extension().is_some_and(|e| e == "json");
             if stale {
                 let _ = fs::remove_file(&path);

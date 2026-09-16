@@ -149,6 +149,9 @@ impl Workspace {
     /// fires regardless of the toast/sound toggles.
     pub(crate) fn record_turn_finished(&mut self, chat_id: u64) {
         let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
+        if chat.ephemeral {
+            return;
+        }
         let (kind, body) = if chat.failed_flag {
             (
                 ActivityKind::Error,
@@ -164,6 +167,9 @@ impl Workspace {
     /// user what needs a decision without opening the chat.
     pub(crate) fn record_approval(&mut self, chat_id: u64, kind: crate::backend::ApprovalKind, detail: &str) {
         let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
+        if chat.ephemeral {
+            return;
+        }
         let body = format!("{}: {detail}", kind.label());
         self.push_activity(ActivityEntry::new(ActivityKind::Approval, chat, body));
     }

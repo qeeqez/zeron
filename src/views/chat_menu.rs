@@ -17,6 +17,9 @@ pub struct ChatMenuState {
     pub word_wrap: bool,
     /// The chat runs in a per-thread git worktree (`Chat.worktree`).
     pub worktree: bool,
+    /// Temporary chat (`Chat.ephemeral`) — disables the items that need a
+    /// persisted chat (export, open-in-new-window).
+    pub ephemeral: bool,
 }
 /// The worktree chip on the chat titlebar — a muted icon + "worktree" label
 /// whose tooltip carries the checkout path. `id` keeps it findable in
@@ -40,12 +43,33 @@ pub fn worktree_badge(id: &'static str, workdir: &str, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
+/// The "Temporary" chip on the chat titlebar — same muted styling as the
+/// worktree badge; a chat can carry both. `id` keeps it findable in
+/// headless tests.
+pub fn temp_badge(id: &'static str, cx: &App) -> AnyElement {
+    div()
+        .id(id)
+        .test_support()
+        .flex()
+        .items_center()
+        .gap_1()
+        .px_2()
+        .py_0p5()
+        .rounded_md()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child(IconName::Ghost)
+        .child("Temporary")
+        .tooltip(|window, cx| Tooltip::new("Not saved — closes with the chat").build(window, cx))
+        .into_any_element()
+}
+
 /// Pin/rename/export/copy/snapshots/word-wrap — the ⋯ menu on the chat
 /// titlebar. Worktree chats also get reveal/open items for their checkout.
 pub fn chat_menu(
     menu: PopupMenu, ws: &Entity<Workspace>, state: ChatMenuState, window: &mut Window, cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let ChatMenuState { pinned, word_wrap, worktree } = state;
+    let ChatMenuState { pinned, word_wrap, worktree, ephemeral } = state;
     let ws_pin = ws.clone();
     let ws_rename = ws.clone();
     let ws_export = ws.clone();
@@ -54,7 +78,11 @@ pub fn chat_menu(
     let ws_snap = ws.clone();
     let ws_fork = ws.clone();
     let ws_window = ws.clone();
+    let ws_temp = ws.clone();
     let menu = menu
+        .item(PopupMenuItem::new("New Temporary Chat").icon(IconName::Ghost).on_click(move |_, _, cx| {
+            ws_temp.update(cx, |this, cx| this.new_temp_chat(cx));
+        }))
         .item(
             PopupMenuItem::new(if pinned { "Unpin" } else { "Pin" })
                 .icon(IconName::Star)
@@ -65,7 +93,7 @@ pub fn chat_menu(
         .item(PopupMenuItem::new("Rename").icon(IconName::Pencil).on_click(move |_, window, cx| {
             ws_rename.update(cx, |this, cx| this.rename_active(window, cx));
         }))
-        .item(PopupMenuItem::new("Export").icon(IconName::Share).on_click(move |_, _, cx| {
+        .item(PopupMenuItem::new("Export").icon(IconName::Share).disabled(ephemeral).on_click(move |_, _, cx| {
             ws_export.update(cx, |this, cx| this.export_active(cx));
         }))
         .item(PopupMenuItem::new("Copy transcript").icon(IconName::Copy).on_click(move |_, _, cx| {
@@ -77,12 +105,17 @@ pub fn chat_menu(
                 this.fork_chat(ix, None, window, cx);
             });
         }))
-        .item(PopupMenuItem::new("Open in New Window").icon(IconName::WindowRestore).on_click(move |_, _, cx| {
-            ws_window.update(cx, |this, cx| {
-                let id = this.chats[this.active].id;
-                this.open_chat_in_new_window(id, cx);
-            });
-        }));
+        .item(
+            PopupMenuItem::new("Open in New Window")
+                .icon(IconName::WindowRestore)
+                .disabled(ephemeral)
+                .on_click(move |_, _, cx| {
+                    ws_window.update(cx, |this, cx| {
+                        let id = this.chats[this.active].id;
+                        this.open_chat_in_new_window(id, cx);
+                    });
+                }),
+        );
     let menu = if worktree { worktree_items(menu, ws, window, cx) } else { menu };
     menu.item(PopupMenuItem::new("Snapshots").icon(IconName::Camera).on_click(move |_, _, cx| {
         ws_snap.update(cx, |this, cx| this.toggle_snapshots_panel(cx));
