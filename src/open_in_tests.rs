@@ -146,7 +146,7 @@ fn open_in_editor_issues_open_dash_a() {
     until_issued(cx, 1);
     let abs = ws.read_with(cx, |w, _| w.project.root().join("src/edited.rs").display().to_string());
     let expected = OpenCommand {
-        program: "open",
+        program: "open".into(),
         args: vec!["-a".into(), "Cursor".into(), abs],
         action: "Open in Cursor".into(),
     };

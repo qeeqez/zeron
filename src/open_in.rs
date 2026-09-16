@@ -1,8 +1,10 @@
 //! Open-in-editor / reveal-in-Finder for project files: the shared file
 //! context menu (Changes rows, explorer rows, the repo-root branch row), the
-//! `open`/`open -R`/`open -a` command builders, and the preferred-editor
-//! setting they read. Commands run on the background executor so the UI
-//! never blocks; a spawn or non-zero exit surfaces as an in-app toast.
+//! `open`/`open -R`/`open -a` command builders plus the bundled-CLI builders
+//! that carry a `file:line` target (diff-row ⌘-click), and the
+//! preferred-editor setting they read. Commands run on the background
+//! executor so the UI never blocks; a spawn or non-zero exit surfaces as an
+//! in-app toast.
 //!
 //! The process runner is swapped for a recorder under `cfg(test)` — tests
 //! assert the exact argv instead of launching real apps.
@@ -72,7 +74,7 @@ impl PreferredEditor {
 /// of spawning, so tests assert argv without launching real apps.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OpenCommand {
-    pub program: &'static str,
+    pub program: String,
     pub args: Vec<String>,
     /// Verb for the failure toast ("Reveal in Finder", "Open in VS Code").
     pub action: String,
@@ -81,7 +83,7 @@ pub struct OpenCommand {
 /// `open -R <abs>` — select the file in a Finder window.
 pub fn reveal_command(abs: &std::path::Path) -> OpenCommand {
     OpenCommand {
-        program: "open",
+        program: "open".into(),
         args: vec!["-R".into(), abs.display().to_string()],
         action: "Reveal in Finder".into(),
     }
@@ -100,10 +102,62 @@ pub fn open_command(editor: PreferredEditor, abs: &std::path::Path) -> Option<Op
         PreferredEditor::Finder | PreferredEditor::Ask => return None,
     };
     Some(OpenCommand {
-        program: "open",
+        program: "open".into(),
         args: vec!["-a".into(), app.into(), abs.display().to_string()],
         action: format!("Open in {}", editor.label()),
     })
+}
+
+/// `<cli> <abs>:<line>` — the editor's bundled command-line tool, which
+/// forwards to a running instance over IPC. VS Code/Cursor take `-g` (goto);
+/// Zed's `cli` parses `file:line` positionally. `open -a <App> --args` can't
+/// do this job: LaunchServices only passes argv to a *launched* process, so
+/// an already-running editor never sees the line.
+pub(crate) fn cli_command(editor: PreferredEditor, cli: &std::path::Path, abs: &std::path::Path, line: u32) -> Option<OpenCommand> {
+    let target = format!("{}:{line}", abs.display());
+    let args = match editor {
+        PreferredEditor::VsCode | PreferredEditor::Cursor => vec!["-g".into(), target],
+        PreferredEditor::Zed => vec![target],
+        PreferredEditor::Finder | PreferredEditor::Ask => return None,
+    };
+    Some(OpenCommand {
+        program: cli.display().to_string(),
+        args,
+        action: format!("Open in {}", editor.label()),
+    })
+}
+
+/// The editor's bundled CLI under the standard app locations — `/Applications`
+/// and `~/Applications`, the two places `open -a` finds apps by name.
+fn bundled_cli(editor: PreferredEditor) -> Option<std::path::PathBuf> {
+    let (app, rel) = match editor {
+        PreferredEditor::VsCode => ("Visual Studio Code.app", "Contents/Resources/app/bin/code"),
+        PreferredEditor::Cursor => ("Cursor.app", "Contents/Resources/app/bin/cursor"),
+        PreferredEditor::Zed => ("Zed.app", "Contents/MacOS/cli"),
+        PreferredEditor::Finder | PreferredEditor::Ask => return None,
+    };
+    let mut roots = vec![std::path::PathBuf::from("/Applications")];
+    if let Some(home) = std::env::var_os("HOME") {
+        roots.push(std::path::PathBuf::from(home).join("Applications"));
+    }
+    roots.into_iter().map(|root| root.join(app).join(rel)).find(|cli| cli.is_file())
+}
+
+/// `open_command` plus a target line: the bundled CLI carries `file:line`
+/// (with `-g` for VS Code/Cursor) to a running instance. Without a CLI —
+/// the app isn't under a standard location — VS Code/Cursor fall back to
+/// `open -a <App> --args -g <abs>:<line>` (the line survives a cold launch),
+/// while Zed's main binary ignores argv and gets the plain open. `Finder`
+/// reveals; `Ask` returns `None` like `open_command`.
+pub fn open_command_at(editor: PreferredEditor, abs: &std::path::Path, line: u32) -> Option<OpenCommand> {
+    if let Some(cli) = bundled_cli(editor) {
+        return cli_command(editor, &cli, abs, line);
+    }
+    let mut cmd = open_command(editor, abs)?;
+    if matches!(editor, PreferredEditor::VsCode | PreferredEditor::Cursor) {
+        cmd.args = vec!["-a".into(), cmd.args[1].clone(), "--args".into(), "-g".into(), format!("{}:{line}", abs.display())];
+    }
+    Some(cmd)
 }
 
 /// Commands issued during tests, in order — the command fake.
@@ -117,7 +171,7 @@ pub(crate) static FAIL_WITH: parking_lot::Mutex<Option<String>> = parking_lot::M
 /// nothing spawns: the command is recorded and `FAIL_WITH` decides the result.
 #[cfg(not(test))]
 fn run(cmd: &OpenCommand) -> Result<(), String> {
-    match std::process::Command::new(cmd.program).args(&cmd.args).output() {
+    match std::process::Command::new(&cmd.program).args(&cmd.args).output() {
         Err(e) => Err(format!("{e}")),
         Ok(out) if out.status.success() => Ok(()),
         Ok(out) => {
@@ -164,6 +218,45 @@ impl Workspace {
         let editor = editor.unwrap_or(self.preferred_editor);
         let Some(cmd) = open_command(editor, abs) else { return };
         self.run_open_command(cmd, cx);
+    }
+
+    /// `open_in_editor` plus a target line — the diff rows' ⌘-click entry
+    /// point. `Ask` can't pick an editor without a menu, so it reveals the
+    /// file in Finder instead (same fallback as the conflict rows).
+    pub fn open_in_editor_at(&mut self, rel: &str, line: u32, editor: Option<PreferredEditor>, cx: &mut Context<Self>) {
+        let abs = self.project.root().join(rel);
+        let editor = editor.unwrap_or(self.preferred_editor);
+        let cmd = if editor == PreferredEditor::Ask {
+            reveal_command(&abs)
+        } else {
+            let Some(cmd) = open_command_at(editor, &abs, line) else { return };
+            cmd
+        };
+        self.run_open_command(cmd, cx);
+    }
+
+    /// ⌘-click on a diff row: open the file at the clicked line. Added and
+    /// context lines use the new-side number; a removed line falls back to
+    /// its old-side number (the file on disk may differ — still the closest
+    /// anchor). Rows with no number (hunk headers, "\ No newline") do
+    /// nothing.
+    pub fn open_diff_at_line(&mut self, file_ix: usize, line_ix: usize, cx: &mut Context<Self>) {
+        let Some(change) = self.changes.get(file_ix) else { return };
+        let Some(line) = change.diff.as_ref().and_then(|d| d.lines.get(line_ix)) else { return };
+        let Some(n) = line.new.or(line.old) else { return };
+        let path = change.path.clone();
+        self.open_in_editor_at(&path, n, None, cx);
+    }
+
+    /// Route a click on a numbered diff row: ⌘-click opens the file at that
+    /// line in the editor; a plain click anchors the review-comment editor.
+    /// Shared by the unified rows and both split cells.
+    pub fn click_diff_line(&mut self, target: crate::model::ReviewTarget, event: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if event.modifiers().secondary() {
+            self.open_diff_at_line(target.file_ix, target.line_ix, cx);
+        } else {
+            self.open_review_comment(target.file_ix, target.line_ix, window, cx);
+        }
     }
 
     /// Copy the file's absolute path to the clipboard.
@@ -261,3 +354,7 @@ pub fn file_menu(ws: &Entity<Workspace>, rel: &str, menu: PopupMenu, window: &mu
         ws_copy.update(cx, |this, cx| this.copy_file_path(&rel_copy, cx));
     }))
 }
+
+#[cfg(test)]
+#[path = "diff_open_tests.rs"]
+mod diff_open_tests;

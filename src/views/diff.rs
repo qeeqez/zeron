@@ -86,8 +86,9 @@ fn unified_rows(
 }
 
 /// One numbered diff row: `old new │ sign text`, tinted by line kind. Rows
-/// with a line number are clickable — a click anchors the comment editor —
-/// and a row whose line already has a comment shows it after the code.
+/// with a line number are clickable — a click anchors the comment editor, a
+/// ⌘-click opens the file at that line — and a row whose line already has a
+/// comment shows it after the code.
 /// Paired removed/added lines carry their changed range as a stronger wash.
 pub(crate) fn diff_line(id: usize, target: ReviewTarget, marked: &MarkedDiff, ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     let line = &marked.diff.lines[target.line_ix];
@@ -126,8 +127,9 @@ pub(crate) fn diff_line(id: usize, target: ReviewTarget, marked: &MarkedDiff, ws
         row = row
             .cursor_pointer()
             .hover(|d| d.bg(theme.muted.opacity(0.4)))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.open_review_comment(target.file_ix, target.line_ix, window, cx);
+            .tooltip(|window, cx| gpui_kit::component::tooltip::Tooltip::new("⌘-click opens in editor").build(window, cx))
+            .on_click(cx.listener(move |this, event, window, cx| {
+                this.click_diff_line(target, event, window, cx);
             }));
         if let Some(ix) = ws.review_comment_at(target) {
             row = row.child(comment_chip(&ws.review.comments[ix], cx));

@@ -2,8 +2,9 @@
 //! lines on the left, new on the right, aligned by `crate::changes_diff::
 //! split_rows`. Row pairing lives in `changes_diff`; this file only draws.
 //! Cells keep the unified view's review affordance — a numbered cell is
-//! clickable and anchors the comment editor to its `DiffLine` index, so
-//! `ReviewTarget`s resolve identically in both modes.
+//! clickable and anchors the comment editor to its `DiffLine` index (⌘-click
+//! opens the file at that line instead), so `ReviewTarget`s resolve
+//! identically in both modes.
 
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -121,8 +122,9 @@ fn cell(target: Option<ReviewTarget>, side: Side, marked: &MarkedDiff, ws: &Work
         cell = cell
             .cursor_pointer()
             .hover(|d| d.bg(muted.opacity(0.4)))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.open_review_comment(target.file_ix, target.line_ix, window, cx);
+            .tooltip(|window, cx| gpui_kit::component::tooltip::Tooltip::new("⌘-click opens in editor").build(window, cx))
+            .on_click(cx.listener(move |this, event, window, cx| {
+                this.click_diff_line(target, event, window, cx);
             }));
         if let Some(cix) = ws.review_comment_at(target) {
             cell = cell.child(crate::views::diff::comment_chip(&ws.review.comments[cix], cx));
