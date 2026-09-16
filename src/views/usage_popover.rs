@@ -45,6 +45,8 @@ pub fn usage_popover(usage: &ChatUsage, ws: &Entity<Workspace>, cx: &App) -> Opt
 /// The popover's styled surface: stat rows, then one row per turn, then
 /// the session total when the window holds more than one chat.
 fn usage_breakdown(ws: &Entity<Workspace>, cx: &mut Context<gpui_kit::base::PopoverState>) -> AnyElement {
+    let popover = cx.entity();
+    let ws_entity = ws.clone();
     let ws = ws.read(cx);
     let chat = &ws.chats[ws.active];
     let usage = &chat.usage;
@@ -89,7 +91,33 @@ fn usage_breakdown(ws: &Entity<Workspace>, cx: &mut Context<gpui_kit::base::Popo
     if let Some(s) = session {
         body = body.child(session_row(s, cx));
     }
+    body = body.child(view_all_row(&ws_entity, &popover, cx));
     body.popover_style(cx).p_3().bottom_1().into_any_element()
+}
+
+/// The footer row: dismisses the popover and opens the usage dashboard.
+fn view_all_row(ws: &Entity<Workspace>, popover: &Entity<gpui_kit::base::PopoverState>, cx: &App) -> impl IntoElement {
+    let ws = ws.clone();
+    let popover = popover.clone();
+    h_flex()
+        .id("usage-view-all")
+        .test_support()
+        .mt_1()
+        .pt_2()
+        .border_t_1()
+        .border_color(cx.theme().border)
+        .cursor_pointer()
+        .gap_2()
+        .text_color(cx.theme().muted_foreground)
+        .hover(|d| d.text_color(cx.theme().foreground))
+        .child(IconName::ChartPie)
+        .child("View all usage")
+        .child(div().flex_1())
+        .child(IconName::ArrowRight)
+        .on_click(move |_, window, cx| {
+            popover.update(cx, |state, cx| state.dismiss(window, cx));
+            ws.update(cx, |this, cx| this.toggle_usage_dashboard(window, cx));
+        })
 }
 
 /// One label/value row — `id` is the test/click target.

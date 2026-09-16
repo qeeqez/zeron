@@ -178,6 +178,7 @@ impl Workspace {
             shortcuts_open: false,
             logs_open: false,
             logs_filter: crate::logs::LogFilter::All,
+            usage_dashboard_open: false,
             image_view: None,
             notify_on_done: settings.notify_on_done,
             notify_sound: settings.notify_sound,

@@ -210,6 +210,12 @@ pub struct SessionUsage {
     pub cost_partial: bool,
 }
 
+/// Workspace-wide aggregation for the usage dashboard — a submodule so
+/// this file stays under the SLOC cap. Re-exported: callers keep using
+/// `crate::usage::UsageTotals`.
+#[path = "usage_totals.rs"]
+pub(crate) mod totals;
+pub use totals::{ChatTotal, ChatUsageEntry, ModelTotal, UsageTotals};
 /// `1234` → `1.2k`, `12600` → `13k`, `1_500_000` → `1.5M`.
 pub(crate) fn fmt_tokens(n: u64) -> String {
     if n >= 1_000_000 {

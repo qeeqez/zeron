@@ -109,6 +109,14 @@ pub(crate) fn command_specs() -> Vec<CommandSpec> {
             effect: Effect::Dispatch(Box::new(crate::ViewLogs)),
         },
         CommandSpec {
+            label: "Usage Dashboard",
+            icon: IconName::ChartPie,
+            keywords: &["tokens", "cost", "spend"],
+            // Run (not Dispatch): the overlay needs no action — the flag
+            // flips directly, and no keybinding hints at it.
+            effect: Effect::Run(Workspace::toggle_usage_dashboard),
+        },
+        CommandSpec {
             label: "Switch to Light Theme",
             icon: IconName::Sun,
             keywords: &["appearance"],

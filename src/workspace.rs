@@ -159,6 +159,9 @@ pub struct Workspace {
     pub logs_open: bool,
     /// The logs panel's minimum-level filter (see `crate::logs::LogFilter`).
     pub logs_filter: crate::logs::LogFilter,
+    /// Usage dashboard overlay — a centered panel aggregating tokens and
+    /// cost across every chat (see `crate::views::usage_dashboard`).
+    pub usage_dashboard_open: bool,
     /// Image lightbox — the open image path while the full-size overlay is
     /// up; `None` is closed (see `crate::image_view`).
     pub image_view: Option<SharedString>,

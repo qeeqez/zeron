@@ -73,6 +73,7 @@ pub(crate) mod terminal;
 #[cfg(test)]
 mod tool_group_tests;
 pub(crate) mod trust;
+pub(crate) mod usage_dashboard;
 mod usage_popover;
 
 pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_item, slash_item};

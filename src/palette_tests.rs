@@ -73,8 +73,8 @@ fn palette_opens_with_commands_and_chats() {
         // Commands group renders rows; the chats group is in the model even
         // where the virtual list clips it below the fold.
         assert!(window.find(IndexPath::new(0).section(0)).visible(), "commands should render");
-        // 18 commands + 3 chats.
-        assert_eq!(ws.read(cx).palette.read(cx).matched_count(), 21);
+        // 19 commands + 3 chats.
+        assert_eq!(ws.read(cx).palette.read(cx).matched_count(), 22);
     });
 }
 
