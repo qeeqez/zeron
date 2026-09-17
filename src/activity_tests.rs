@@ -203,6 +203,54 @@ fn feed_persists_across_load() {
 }
 
 #[test]
+fn mark_all_read_clears_every_dot() {
+    let chat = crate::model::Chat::new(1, "chat");
+    let mut feed = ActivityFeed::default();
+    feed.push(ActivityEntry::new(ActivityKind::TurnFinished, &chat, "one".to_string()));
+    feed.push(ActivityEntry::new(ActivityKind::Error, &chat, "two".to_string()));
+    feed.entries[0].unread = false;
+    assert!(feed.mark_all_read(), "the sweep reports a real change");
+    assert_eq!(feed.unread_count(), 0, "every dot clears");
+    assert_eq!(feed.entries.len(), 2, "marking read keeps the rows");
+    assert!(!feed.mark_all_read(), "a second pass is a no-op");
+}
+
+#[test]
+fn remove_read_drops_only_read_entries() {
+    let chat = crate::model::Chat::new(1, "chat");
+    let mut feed = ActivityFeed::default();
+    feed.push(ActivityEntry::new(ActivityKind::TurnFinished, &chat, "read one".to_string()));
+    feed.push(ActivityEntry::new(ActivityKind::TurnFinished, &chat, "unread".to_string()));
+    feed.push(ActivityEntry::new(ActivityKind::Error, &chat, "read two".to_string()));
+    feed.entries[0].unread = false;
+    feed.entries[2].unread = false;
+    assert!(feed.remove_read(), "the sweep reports a real removal");
+    assert_eq!(feed.entries.len(), 1);
+    assert_eq!(feed.entries[0].body, "unread", "only the unread row survives");
+    assert!(!feed.remove_read(), "a second sweep is a no-op");
+}
+
+#[test]
+fn removals_persist_across_load() {
+    sandbox_home();
+    let dir = std::env::temp_dir().join(format!("rixlcode-test-{}", std::process::id()));
+    let chat = crate::model::Chat::new(1, "hello");
+    let mut feed = ActivityFeed::default();
+    feed.push(ActivityEntry::new(ActivityKind::TurnFinished, &chat, "dismissed".to_string()));
+    feed.push(ActivityEntry::new(ActivityKind::TurnFinished, &chat, "read".to_string()));
+    feed.push(ActivityEntry::new(ActivityKind::Error, &chat, "kept".to_string()));
+    feed.entries.remove(0); // the row's dismiss × removes by feed index
+    feed.entries[0].unread = false;
+    feed.remove_read(); // the footer's Clear-read sweep
+    feed.persist(&dir);
+
+    let loaded = ActivityFeed::load(&dir);
+    assert_eq!(loaded.entries.len(), 1, "removals survive the round-trip");
+    assert_eq!(loaded.entries[0].body, "kept");
+    assert!(loaded.entries[0].unread, "the surviving row keeps its dot");
+}
+
+#[test]
 fn feed_is_bounded() {
     let chat = crate::model::Chat::new(1, "chat");
     let mut feed = ActivityFeed::default();

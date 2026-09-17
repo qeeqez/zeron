@@ -109,6 +109,25 @@ impl ActivityFeed {
         changed
     }
 
+    /// Clear every entry's unread flag; returns whether anything changed
+    /// so callers only persist on a real transition.
+    pub fn mark_all_read(&mut self) -> bool {
+        let mut changed = false;
+        for e in &mut self.entries {
+            changed |= e.unread;
+            e.unread = false;
+        }
+        changed
+    }
+
+    /// Drop every read entry — the unread ones survive the sweep. Returns
+    /// whether anything changed so callers only persist on a real removal.
+    pub fn remove_read(&mut self) -> bool {
+        let len = self.entries.len();
+        self.entries.retain(|e| e.unread);
+        self.entries.len() != len
+    }
+
     /// Write the feed to `dir/activity.json` (atomic tmp+rename). An empty
     /// feed removes the file so a cleared feed stays cleared.
     pub fn persist(&self, dir: &std::path::Path) {
@@ -233,6 +252,24 @@ impl Workspace {
     pub fn clear_activity(&mut self, cx: &mut Context<Self>) {
         self.activity.entries.clear();
         self.persist_activity();
+        cx.notify();
+    }
+
+    /// Clear every row's unread flag without opening any chat — the
+    /// panel's "Mark all read".
+    pub fn mark_all_activity_read(&mut self, cx: &mut Context<Self>) {
+        if self.activity.mark_all_read() {
+            self.persist_activity();
+        }
+        cx.notify();
+    }
+
+    /// Sweep the read rows while the unread ones survive — the panel's
+    /// "Clear read".
+    pub fn clear_read_activity(&mut self, cx: &mut Context<Self>) {
+        if self.activity.remove_read() {
+            self.persist_activity();
+        }
         cx.notify();
     }
 

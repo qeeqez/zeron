@@ -133,6 +133,65 @@ fn approval_entry_scrolls_to_pending_card() {
 }
 
 #[test]
+fn mark_all_read_clears_dots_without_opening() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    send_reply(&ws, std::sync::Arc::new(OkBackend), true, cx);
+    cx.update(|_window, cx| ws.update(cx, |ws, cx| ws.new_chat(cx)));
+    send_reply(&ws, std::sync::Arc::new(OkBackend), true, cx);
+
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.click("activity-bell", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.find(("activity-unread", 0usize)).visible(), "an unread row carries the dot");
+        window.click("activity-mark-read", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.try_find("activity-badge").is_none(), "the badge is gone");
+        assert!(window.try_find(("activity-unread", 0usize)).is_none(), "no dots remain");
+        assert!(window.find("activity-panel").visible(), "the panel stays open");
+        assert!(window.try_find("activity-mark-read").is_none(), "with nothing unread the action hides");
+    });
+    ws.read_with(cx, |ws, _| {
+        assert_eq!(ws.activity.entries.len(), 2, "marking read keeps the rows");
+        assert_eq!(ws.activity.unread_count(), 0);
+        assert_eq!(ws.active, 1, "no chat was opened");
+    });
+}
+
+#[test]
+fn clear_read_drops_only_read_rows() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    send_reply(&ws, std::sync::Arc::new(OkBackend), true, cx);
+    cx.update(|_window, cx| ws.update(cx, |ws, cx| ws.new_chat(cx)));
+    send_reply(&ws, std::sync::Arc::new(OkBackend), true, cx);
+    let (dir, chat1_created) = ws.read_with(cx, |ws, _| (ws.project.dir().to_path_buf(), ws.chats[1].created_at));
+
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.click("activity-bell", cx);
+        window.draw(cx).clear(cx);
+        // Opening chat 0's row marks it read — the feed is now mixed.
+        window.click(("activity-entry", 0usize), cx);
+        window.draw(cx).clear(cx);
+        window.click("activity-bell", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.find("activity-clear-read").visible(), "a mixed feed offers Clear read");
+        window.click("activity-clear-read", cx);
+        window.draw(cx).clear(cx);
+        assert!(window.find("activity-panel").visible(), "the panel stays open");
+        assert!(window.find("activity-badge").visible(), "the unread row still badges the bell");
+    });
+    ws.read_with(cx, |ws, _| {
+        assert_eq!(ws.activity.entries.len(), 1, "the read row is swept");
+        assert_eq!(ws.activity.entries[0].chat_created, chat1_created);
+        assert!(ws.activity.entries[0].unread, "the unread row survives");
+    });
+    assert_eq!(crate::activity::ActivityFeed::load(&dir).entries.len(), 1, "the sweep persists to disk");
+}
+
+#[test]
 fn clear_empties_feed_and_file() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
