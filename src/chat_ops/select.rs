@@ -1,6 +1,8 @@
-//! Sidebar multi-selection: Cmd-click toggles chats into `selected_chats`,
-//! and the bar at the sidebar's foot applies Archive/Delete to the set.
-//! Selection is by chat id — positions shift as rows are deleted.
+//! Sidebar multi-selection and list-wide sweeps: Cmd-click toggles chats
+//! into `selected_chats`, the bar at the sidebar's foot applies
+//! Archive/Delete to the set, and "Archive read chats" files away every
+//! chat that is read, idle, unpinned and off screen. Selection is by
+//! chat id — positions shift as rows are deleted.
 
 use gpui_kit::component::WindowExt;
 use gpui_kit::component::notification::Notification;
@@ -100,6 +102,68 @@ impl Workspace {
         self.save();
     }
 
+    /// Chat `ix` qualifies for the read-chats sweep: live (not already
+    /// archived), read, idle, unpinned, and not on screen as the active
+    /// chat. The split-pane chat still qualifies — archiving it clears
+    /// the pane like `archive_selected` does.
+    fn archivable(&self, ix: usize) -> bool {
+        let chat = &self.chats[ix];
+        ix != self.active && !chat.archived && !chat.unread && !chat.running && !chat.pinned
+    }
+
+    /// How many chats the sweep would archive — gates the palette
+    /// command, which hides at zero.
+    pub(crate) fn archivable_chats(&self) -> usize {
+        (0..self.chats.len()).filter(|&ix| self.archivable(ix)).count()
+    }
+
+    /// "Archive read chats" (palette): file away every qualifying chat
+    /// behind one confirm naming the count; a toast reports how many
+    /// landed. Archiving is reversible, so the prompt is informational —
+    /// not the delete flow's warning about permanence.
+    pub fn archive_read_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let n = self.archivable_chats();
+        if n == 0 {
+            return;
+        }
+        let rx = window.prompt(
+            gpui_kit::PromptLevel::Warning,
+            &format!("Archive {n} chat(s)?"),
+            Some("Unread, pinned and running chats stay in the sidebar."),
+            &[gpui_kit::PromptButton::ok("Archive"), gpui_kit::PromptButton::cancel("Cancel")],
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            if rx.await != Ok(0) {
+                return;
+            }
+            let _ = this.update_in(cx, |this, window, cx| this.archive_read_now(window, cx));
+        })
+        .detach();
+    }
+
+    /// The confirmed sweep: re-check the predicate per chat — the prompt
+    /// was async, so a chat that turned unread, running or active
+    /// meanwhile survives. Toasts the count that actually archived.
+    fn archive_read_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut n = 0usize;
+        for ix in 0..self.chats.len() {
+            if self.archivable(ix) {
+                self.chats[ix].archived = true;
+                n += 1;
+            }
+        }
+        if n == 0 {
+            return;
+        }
+        // Archived rows leave the selection set and the split pane.
+        self.selected_chats.retain(|id| self.chats.iter().any(|c| c.id == *id && !c.archived));
+        self.clear_secondary_if(|c| !c.archived);
+        window.push_notification(Notification::success(sweep_toast(n)), cx);
+        cx.notify();
+        self.save();
+    }
+
     /// Delete every selected chat behind one confirm. Chats with a reply
     /// in flight are skipped — deleting a running chat would kill the
     /// turn mid-stream, so the confirm's detail names the skip and a
@@ -163,10 +227,19 @@ impl Workspace {
     }
 }
 
+/// The sweep's toast copy — a free fn so tests can pin the count wording.
+fn sweep_toast(n: usize) -> String {
+    format!("Archived {n} chat(s)")
+}
+
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
 #[path = "select_tests.rs"]
 mod select_tests;
+
+#[cfg(test)]
+#[path = "sweep_tests.rs"]
+mod sweep_tests;
 
 #[cfg(test)]
 #[path = "rename_shortcut_tests.rs"]

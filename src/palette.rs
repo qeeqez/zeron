@@ -274,3 +274,8 @@ pub(crate) fn command_footer(confirm: &'static str, cx: &App) -> Div {
         .child(confirm)
         .child("esc close")
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "palette_tests.rs"]
+mod palette_tests;

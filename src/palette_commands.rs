@@ -7,7 +7,7 @@ use gpui_kit::assets::IconName;
 use crate::palette_items::{CommandSpec, Effect};
 use crate::workspace::Workspace;
 
-pub(crate) fn command_specs(running: usize) -> Vec<CommandSpec> {
+pub(crate) fn command_specs(running: usize, archivable: usize) -> Vec<CommandSpec> {
     let mut specs = vec![
         CommandSpec {
             label: "New Chat",
@@ -135,12 +135,26 @@ pub(crate) fn command_specs(running: usize) -> Vec<CommandSpec> {
             effect: Effect::Dispatch(Box::new(crate::ThemeDark)),
         },
     ];
+    // "Archive read chats" only exists while a chat qualifies — at zero
+    // there's nothing to sweep. It joins the chat lifecycle commands,
+    // after "Delete Chat".
+    if archivable > 0 {
+        specs.insert(
+            5,
+            CommandSpec {
+                label: "Archive Read Chats",
+                icon: IconName::Archive,
+                keywords: &["sweep", "clean", "tidy", "hide"],
+                effect: Effect::Run(Workspace::archive_read_chats),
+            },
+        );
+    }
     // "Stop all replies" only exists while 2+ chats stream — below that the
     // composer's per-chat stop covers it. Inserted after the chat lifecycle
     // commands so the empty-query order stays stable.
     if running >= 2 {
         specs.insert(
-            5,
+            5 + usize::from(archivable > 0),
             CommandSpec {
                 label: "Stop All Replies",
                 icon: IconName::Pause,

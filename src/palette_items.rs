@@ -35,12 +35,17 @@ pub(crate) struct CommandSpec {
     pub effect: Effect,
 }
 
-/// A chat row's data, snapshotted when the palette opens.
+/// A chat row's data, snapshotted when the palette opens. The flags feed
+/// the gated "Archive Read Chats" command — it needs the sweep's count
+/// (`Workspace::archivable`) without the workspace lease.
 #[derive(Clone)]
 pub(crate) struct ChatSnapshot {
     pub id: u64,
     pub title: SharedString,
     pub active: bool,
+    pub unread: bool,
+    pub running: bool,
+    pub pinned: bool,
     pub at: std::time::SystemTime,
 }
 
@@ -62,6 +67,9 @@ impl Workspace {
                     id: chat.id,
                     title: chat.title.clone(),
                     active: ix == self.active,
+                    unread: chat.unread,
+                    running: chat.running,
+                    pinned: chat.pinned,
                     at: chat.created_at,
                 }
             })
@@ -82,7 +90,10 @@ fn rank_command(spec: &CommandSpec, query: &str) -> Option<i32> {
 /// each group; an empty query lists everything in table/sidebar order.
 pub(crate) fn build_entries(chats: &[ChatSnapshot], query: &str, running: usize) -> Vec<Entry> {
     let query = query.trim();
-    let specs = crate::palette_commands::command_specs(running);
+    // Snapshots only cover live (non-archived) chats, so the sweep's
+    // count reduces to the flag check — `archived` is already excluded.
+    let archivable = chats.iter().filter(|c| !c.active && !c.unread && !c.running && !c.pinned).count();
+    let specs = crate::palette_commands::command_specs(running, archivable);
     let mut commands: Vec<(usize, i32)> = specs
         .iter()
         .enumerate()
@@ -127,6 +138,9 @@ pub(crate) fn build_entries(chats: &[ChatSnapshot], query: &str, running: usize)
                 id: chat.id,
                 title: chat.title.clone(),
                 active: chat.active,
+                unread: chat.unread,
+                running: chat.running,
+                pinned: chat.pinned,
                 at: chat.at,
             })
         }))
