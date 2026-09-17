@@ -30,6 +30,41 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Enter on the focused sidebar (the "sidebar" key context — a Cmd-click
+    /// lands focus there): rename the single selected row inline, like
+    /// Finder's Enter. Anything else propagates — multi-select has no single
+    /// rename target, and a focused descendant (a button, the search field)
+    /// owns its own Enter. The row must actually render: a selected chat
+    /// filtered out of the list would arm a rename with no editor to catch
+    /// it, so the gate mirrors `render_sidebar`'s title+chip predicate.
+    pub fn rename_selected_row(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.sidebar_focus.is_focused(window)
+            || self.renaming.is_some()
+            || self.settings_open
+            || self.sidebar_tab != crate::views::sidebar::SidebarTab::Chats
+        {
+            cx.propagate();
+            return;
+        }
+        let query = self.search.read(cx).value().to_lowercase();
+        let [ix] = *self
+            .chats
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                self.selected_chats.contains(&c.id)
+                    && (query.is_empty() || c.title.to_lowercase().contains(&query))
+                    && self.sidebar_filters.matches(c)
+            })
+            .map(|(ix, _)| ix)
+            .collect::<Vec<_>>()
+        else {
+            cx.propagate();
+            return;
+        };
+        self.start_inline_rename(ix, window, cx);
+    }
+
     /// Selected ids that still resolve to a chat — the set can hold stale
     /// ids between a delete and the next render.
     fn selected_ids(&self) -> Vec<u64> {
@@ -132,3 +167,7 @@ impl Workspace {
 #[cfg(test)]
 #[path = "select_tests.rs"]
 mod select_tests;
+
+#[cfg(test)]
+#[path = "rename_shortcut_tests.rs"]
+mod rename_shortcut_tests;

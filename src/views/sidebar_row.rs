@@ -100,7 +100,7 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
     } else {
         row.on_click(move |ev, window, cx| {
             if ev.modifiers().platform {
-                toggle_row(&ws_click, chat_id, cx);
+                toggle_row(&ws_click, chat_id, window, cx);
             } else if ev.click_count() >= 2 {
                 rename_row(&ws_click, chat_id, window, cx);
             } else {
@@ -117,19 +117,29 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
 
 /// Row click → select the chat (resolved by id — positions shift on
 /// delete). A plain click also drops the multi-selection — including on
-/// the active row, where `select_chat` early-returns.
+/// the active row, where `select_chat` early-returns. Focus lands on the
+/// composer either way: the sidebar wrap is focusable now, so without the
+/// explicit refocus a click on the already-active row would strand the
+/// keyboard on the sidebar and typing would go nowhere.
 fn select_row(ws: &Entity<Workspace>, chat_id: u64, window: &mut Window, cx: &mut App) {
     ws.update(cx, |this, cx| {
         this.clear_chat_selection(cx);
         if let Some(ix) = this.chat_index(chat_id) {
             this.select_chat(ix, window, cx);
         }
+        this.composer.update(cx, |s, cx| s.focus(window, cx));
     });
 }
 
-/// Cmd-click on a row → toggle the chat in the bulk-op selection.
-fn toggle_row(ws: &Entity<Workspace>, chat_id: u64, cx: &mut App) {
-    ws.update(cx, |this, cx| this.toggle_chat_selection(chat_id, cx));
+/// Cmd-click on a row → toggle the chat in the bulk-op selection and hand
+/// the keyboard to the sidebar, so Enter renames the selected row (see
+/// `Workspace::rename_selected_row`).
+fn toggle_row(ws: &Entity<Workspace>, chat_id: u64, window: &mut Window, cx: &mut App) {
+    ws.update(cx, |this, cx| {
+        this.toggle_chat_selection(chat_id, cx);
+        let sidebar = this.sidebar_focus.clone();
+        window.focus(&sidebar, cx);
+    });
 }
 
 /// Double-click on the title → open the inline rename editor.

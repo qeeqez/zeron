@@ -8,9 +8,9 @@ use gpui_kit::*;
 use crate::workspace::Workspace;
 use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EnterFullscreen,
-    EscapeKey, FindInChat, GoToFile, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RevealChats,
-    SearchAllChats, SearchChat, ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleDictation, ToggleExplorer,
-    TogglePlan, ToggleSidebar, ToggleSnapshots, ToggleTerminal, ViewLogs, ZoomIn, ZoomOut, ZoomReset, ZoomWindow,
+    EscapeKey, FindInChat, GoToFile, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RenameChat,
+    RevealChats, SearchAllChats, SearchChat, ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleDictation,
+    ToggleExplorer, TogglePlan, ToggleSidebar, ToggleSnapshots, ToggleTerminal, ViewLogs, ZoomIn, ZoomOut, ZoomReset, ZoomWindow,
     chat_msg::bookmarks_panel::ToggleBookmarks,
 };
 
@@ -29,6 +29,15 @@ pub(crate) fn workspace_actions(root: Div, window: &Window, cx: &mut Context<Wor
     })
     .on_action(move |_: &DeleteChat, window, cx| {
         ws_del.update(cx, |this, cx| this.delete_chat(this.active, window, cx));
+    })
+    // Enter on the focused sidebar renames the selected chat row — the
+    // binding sits in the "sidebar" key context so it can't fire while an
+    // input (composer, search, the rename editor itself) owns the keys.
+    .on_action({
+        let ws = cx.entity();
+        move |_: &RenameChat, window, cx| {
+            ws.update(cx, |this, cx| this.rename_selected_row(window, cx));
+        }
     })
     .on_action(chat_switch::<Chat1>(cx))
     .on_action(chat_switch::<Chat2>(cx))

@@ -228,7 +228,8 @@ actions!([
     ThemeLight, ThemeDark, Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, QuitApp, OpenSettings, SearchChat,
     SearchAllChats, FindInChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext,
     NewWindow, OpenProject, AboutApp, CheckForUpdates, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront,
-    ToggleDictation, ToggleTerminal, MsgNavDown, MsgNavUp, MsgNavTop, MsgNavBottom, MsgNavEnter, ViewLogs, ZoomIn, ZoomOut, ZoomReset,
+    ToggleDictation, ToggleTerminal, MsgNavDown, MsgNavUp, MsgNavTop, MsgNavBottom, MsgNavEnter, RenameChat, ViewLogs, ZoomIn, ZoomOut,
+    ZoomReset,
 ]);
 
 // Re-exported at the crate root for tests — they bind the workspace keymap

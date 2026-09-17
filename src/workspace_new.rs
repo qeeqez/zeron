@@ -141,6 +141,7 @@ impl Workspace {
             find: crate::chat_find::FindBar::new(crate::chat_find::new_find_input(window, cx)),
             nav: None,
             nav_focus: cx.focus_handle(),
+            sidebar_focus: cx.focus_handle(),
             pending_g: None,
             pill_anchor: None,
             chat_search_open: false,

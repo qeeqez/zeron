@@ -223,6 +223,10 @@ pub struct Workspace {
     pub nav: Option<crate::msg_nav::MsgNav>,
     pub nav_focus: FocusHandle,
     pub pending_g: Option<std::time::Instant>,
+    /// Focus handle the sidebar wrap tracks — Cmd-clicking a chat row lands
+    /// here so Enter can rename the selected row (see
+    /// `chat_ops::select::rename_selected_row`).
+    pub sidebar_focus: FocusHandle,
     /// Visible-row count when the transcript left the tail — the "N new"
     /// count on the jump-to-latest pill (see `crate::chat_search`).
     pub pill_anchor: Option<usize>,

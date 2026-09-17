@@ -208,6 +208,11 @@ impl Workspace {
         div()
             .id("sidebar-wrap")
             .test_support()
+            // The wrap is focusable so a row click can hand it the keyboard:
+            // Cmd-click lands focus here (plain clicks refocus the composer
+            // in `select_row`), giving Enter-to-rename a "sidebar" context.
+            .track_focus(&self.sidebar_focus)
+            .key_context("sidebar")
             .h_full()
             .relative()
             .flex()

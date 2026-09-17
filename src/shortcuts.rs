@@ -54,6 +54,21 @@ macro_rules! spec {
             group: ShortcutGroup::$group,
         }
     };
+    // Context-qualified variant for bindings that live outside "workspace"
+    // (the sidebar's Enter-to-rename).
+    ($keys:literal @ $ctx:literal, $action:ident, $desc:literal, $group:ident) => {
+        ShortcutSpec {
+            keys: $keys,
+            bind: Some({
+                fn bind(keys: &'static str) -> KeyBinding {
+                    KeyBinding::new(keys, crate::$action, Some($ctx))
+                }
+                bind
+            }),
+            description: $desc,
+            group: ShortcutGroup::$group,
+        }
+    };
     ($keys:literal, $desc:literal, $group:ident) => {
         ShortcutSpec {
             keys: $keys,
@@ -110,5 +125,6 @@ pub static SHORTCUT_SPECS: &[ShortcutSpec] = &[
     spec!("gg", "Focus first message", Navigation),
     spec!("shift-g", MsgNavBottom, "Focus last message", Navigation),
     spec!("enter", MsgNavEnter, "Edit / copy focused message", Navigation),
+    spec!("enter" @ "sidebar", RenameChat, "Rename selected chat", Navigation),
     spec!("cmd-,", OpenSettings, "Open settings", Settings),
 ];

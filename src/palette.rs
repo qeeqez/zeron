@@ -129,9 +129,14 @@ impl Workspace {
             return;
         }
         // A sidebar multi-selection drops next — it's a lighter state than
-        // the side panels, so Esc peels it before they close.
+        // the side panels, so Esc peels it before they close. When the
+        // sidebar holds the keyboard (a Cmd-click put it there), focus goes
+        // back to the composer too so the next keystroke isn't stranded.
         if !self.selected_chats.is_empty() {
             self.selected_chats.clear();
+            if self.sidebar_focus.is_focused(window) {
+                self.composer.update(cx, |s, cx| s.focus(window, cx));
+            }
             cx.notify();
             return;
         }
@@ -141,6 +146,13 @@ impl Workspace {
         }
         if self.changes_panel_open {
             self.changes_panel_open = false;
+            cx.notify();
+        }
+        // Nothing else to peel — if the sidebar still holds the keyboard
+        // (Cmd-clicked a row, then Esc dropped the selection), hand focus
+        // back to the composer.
+        if self.sidebar_focus.is_focused(window) {
+            self.composer.update(cx, |s, cx| s.focus(window, cx));
             cx.notify();
         }
     }
