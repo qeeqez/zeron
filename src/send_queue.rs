@@ -76,6 +76,12 @@ impl SendQueue {
         self.by_chat.get(&chat_id).map(|d| d.iter().cloned().collect()).unwrap_or_default()
     }
 
+    /// Count of a chat's queued messages — the sidebar badge's `+N`. The
+    /// parked edit stays out: it's parked in the composer, not queued.
+    pub fn len(&self, chat_id: u64) -> usize {
+        self.by_chat.get(&chat_id).map_or(0, VecDeque::len)
+    }
+
     pub fn pop(&mut self, chat_id: u64) -> Option<Queued> {
         let item = self.by_chat.get_mut(&chat_id)?.pop_front();
         if self.by_chat.get(&chat_id).is_some_and(VecDeque::is_empty) {

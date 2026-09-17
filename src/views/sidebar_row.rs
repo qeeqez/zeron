@@ -104,7 +104,7 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
             cx.stop_propagation();
             cx.new(|_| ChatDragGhost { title: drag.title.clone() })
         })
-        .suffix(row_suffix(cx.entity(), chat_id, flags, (chat.running, chat.unread)))
+        .suffix(row_suffix(cx.entity(), chat_id, flags, (chat.running, chat.unread), ws.send_queue.len(chat_id)))
     }
 }
 
@@ -169,10 +169,13 @@ fn rename_editor(ws: Entity<Workspace>, input: Entity<InputState>, chat_id: u64)
     }
 }
 
-/// Trailing row content: spinner while a reply streams, unread dot, then the
-/// "…" button that opens the same menu as right-click. The button stays
-/// visible while its menu is up, even after the pointer leaves the row.
-fn row_suffix(ws: Entity<Workspace>, chat_id: u64, flags: RowFlags, status: (bool, bool)) -> impl Fn(&mut Window, &mut App) -> AnyElement {
+/// Trailing row content: queued-count chip, spinner while a reply streams,
+/// unread dot, then the "…" button that opens the same menu as right-click.
+/// The button stays visible while its menu is up, even after the pointer
+/// leaves the row.
+fn row_suffix(
+    ws: Entity<Workspace>, chat_id: u64, flags: RowFlags, status: (bool, bool), queued: usize,
+) -> impl Fn(&mut Window, &mut App) -> AnyElement {
     let (running, unread) = status;
     move |window, cx| {
         let menu_open = window.use_keyed_state(("chat-menu-open", chat_id), cx, |_, _| false);
@@ -201,6 +204,10 @@ fn row_suffix(ws: Entity<Workspace>, chat_id: u64, flags: RowFlags, status: (boo
                         .child(IconName::Ghost),
                 )
             })
+            // Queued sends get a muted "+N" chip ahead of the status
+            // affordances; clicking it opens the chat (the queue lives in
+            // its composer, which select_chat focuses).
+            .when(queued > 0, |d| d.child(queue_badge(chat_id, queued, &ws, cx)))
             .child(if running {
                 IconName::LoaderCircle.into_any_element()
             } else if unread {
@@ -232,6 +239,37 @@ fn row_suffix(ws: Entity<Workspace>, chat_id: u64, flags: RowFlags, status: (boo
             )
             .into_any_element()
     }
+}
+
+/// The "+N" queued-send chip: same pill geometry as the titlebar's unread
+/// badge, muted instead of red. Clicking selects the chat — its composer
+/// holds the queue UI — and stops the row's own click (rename on
+/// double-click) from seeing the press.
+fn queue_badge(chat_id: u64, queued: usize, ws: &Entity<Workspace>, cx: &App) -> impl IntoElement {
+    let tip = format!("{queued} queued");
+    div()
+        .id(("queue-badge", chat_id))
+        .test_support()
+        .aria_label(tip.clone())
+        .min_w(px(14.))
+        .h(px(14.))
+        .px(px(3.))
+        .rounded_full()
+        .bg(cx.theme().muted)
+        .text_color(cx.theme().muted_foreground)
+        .text_size(px(9.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(format!("+{queued}"))
+        .tooltip(move |window, cx| gpui_kit::component::tooltip::Tooltip::new(tip.clone()).build(window, cx))
+        .on_click({
+            let ws = ws.clone();
+            move |_, window, cx| {
+                cx.stop_propagation();
+                select_row(&ws, chat_id, window, cx);
+            }
+        })
 }
 
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
