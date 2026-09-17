@@ -41,8 +41,12 @@ impl WorkspaceInputs {
         let scroller = cx.new(|cx| MessageScrollerState::new(0, cx));
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search chats"));
 
-        cx.subscribe_in(&search, window, |_this, _s, event: &InputEvent, _window, cx| {
+        cx.subscribe_in(&search, window, |this, _s, event: &InputEvent, _window, cx| {
             if matches!(event, InputEvent::Change) {
+                // Title filtering re-reads the input in render; the
+                // message-body scan runs here (live chats now, disk after
+                // a debounce — see `crate::global_search::sidebar_search`).
+                this.schedule_sidebar_search(cx);
                 cx.notify()
             }
         })

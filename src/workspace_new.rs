@@ -75,6 +75,9 @@ impl Workspace {
             diff_mode: crate::changes_diff::DiffMode::from_name(&settings.diff_mode),
             search: inputs.search,
             sidebar_filters: crate::sidebar_filter::SidebarFilters::default(),
+            sidebar_hits: Vec::new(),
+            sidebar_hits_extra: 0,
+            sidebar_search_gen: 0,
             scroller: inputs.scroller,
             model: providers.iter().find(|p| p.id == selected_provider).map_or_else(SharedString::default, |p| {
                 crate::model_catalog::resolve_model(

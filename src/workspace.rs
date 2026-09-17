@@ -85,6 +85,15 @@ pub struct Workspace {
     /// accent rows and the bulk Archive/Delete bar. Runtime-only; ids are
     /// pruned as chats are deleted.
     pub selected_chats: std::collections::HashSet<u64>,
+    /// Message-body hits for the chat-list query — the "Messages" group
+    /// (see `crate::global_search::sidebar_search`). Refreshed per keystroke for live
+    /// chats, after a debounce for on-disk transcripts.
+    pub sidebar_hits: Vec<crate::global_search::sidebar_search::SidebarMsgHit>,
+    /// Hits past the shown cap — the group's "+N more" footer.
+    pub sidebar_hits_extra: usize,
+    /// Bumped per query edit; a landing disk scan stamped with an older
+    /// generation is discarded.
+    pub sidebar_search_gen: u64,
     pub scroller: Entity<MessageScrollerState>,
     pub model: SharedString,
     /// Selected provider instance id — an entry in `providers`. The

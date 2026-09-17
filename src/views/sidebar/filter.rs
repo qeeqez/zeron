@@ -28,6 +28,7 @@ impl Workspace {
                 d.child(
                     div()
                         .id("search-clear")
+                        .test_support()
                         .cursor_pointer()
                         .text_color(cx.theme().muted_foreground)
                         .child(IconName::X)

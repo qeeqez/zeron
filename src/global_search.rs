@@ -147,7 +147,7 @@ pub(crate) struct SearchFilters {
 
 /// `(index, path)` pairs for every `N.json` chat file in `dir`, sorted —
 /// the same naming `persist::save_chats` writes.
-fn chat_files(dir: &Path) -> Vec<(usize, PathBuf)> {
+pub(crate) fn chat_files(dir: &Path) -> Vec<(usize, PathBuf)> {
     let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
     let mut files: Vec<(usize, PathBuf)> = entries
         .filter_map(|e| {
@@ -164,7 +164,7 @@ fn chat_files(dir: &Path) -> Vec<(usize, PathBuf)> {
 }
 
 /// Parse one chat file; `None` on unreadable or foreign-format content.
-fn read_stored(path: &Path) -> Option<crate::persist::StoredChat> {
+pub(crate) fn read_stored(path: &Path) -> Option<crate::persist::StoredChat> {
     let stored: crate::persist::StoredChat = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
     (stored.v == 1).then_some(stored)
 }
@@ -220,12 +220,18 @@ impl Workspace {
     /// Cmd-Shift-F: search every conversation. Pressing it again (or with
     /// any dialog up) closes the dialog, like the palette.
     pub fn open_global_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_global_search_seeded("", window, cx);
+    }
+
+    /// The dialog with `query` already typed — the sidebar's "+N more" row
+    /// carries its query over so the full result set is one click away.
+    pub(crate) fn open_global_search_seeded(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
         if window.has_active_dialog(cx) {
             window.close_dialog(cx);
             return;
         }
-        // Fresh query each open — the state entity persists across dialogs.
-        self.global_search.update(cx, |state, cx| state.set_query("", window, cx));
+        // The state entity persists across dialogs — set, don't append.
+        self.global_search.update(cx, |state, cx| state.set_query(query, window, cx));
         // the workspace lease, so it can't read `self`.
         let docs = self.search_docs();
         let state = self.global_search.clone();
@@ -272,6 +278,8 @@ impl Workspace {
 
     /// Open the hit's chat — loading it from its file when this window
     /// never did — and land on the matched message via the find bar.
+    /// `SidebarMsgHit::as_search_hit` feeds the sidebar's Messages rows
+    /// through the same path.
     pub(crate) fn open_hit(&mut self, hit: &SearchHit, query: &str, window: &mut Window, cx: &mut Context<Self>) {
         let ix = hit.chat_id.and_then(|id| self.chat_index(id)).or_else(|| {
             let chat = self.load_chat(hit.file_ix)?;
@@ -293,6 +301,10 @@ impl Workspace {
         Some(chat)
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[path = "sidebar_search.rs"]
+pub(crate) mod sidebar_search;
 
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]

@@ -1,5 +1,6 @@
 mod filter;
 mod group;
+mod messages;
 mod selection;
 
 use gpui_kit::assets::IconName;
@@ -49,7 +50,8 @@ impl Workspace {
         let collapsed = self.sidebar_collapsed;
         let tab = self.sidebar_tab;
         // Computed before the header so the filter row can show "N of M".
-        let query = self.search.read(cx).value().to_lowercase();
+        let raw_query = self.search.read(cx).value().to_string();
+        let query = raw_query.to_lowercase();
         let filtered = self.sidebar_visible(&query);
         let archived: Vec<usize> = (0..self.chats.len())
             .filter(|ix| {
@@ -137,6 +139,13 @@ impl Workspace {
         // muted placeholder row — same shape as the settings nav's.
         if filtered.is_empty() && archived.is_empty() && (!query.is_empty() || self.sidebar_filters.any()) {
             groups.push(filter::no_match_group());
+        }
+
+        // Message-body hits for the query — live chats rescan per
+        // keystroke, disk transcripts land after the debounce (see
+        // `crate::global_search::sidebar_search`).
+        if let Some(messages) = self.messages_group(&raw_query, cx) {
+            groups.push(messages);
         }
 
         // Plan + Scheduled + Bookmarks panel rows — their suffixes are the
