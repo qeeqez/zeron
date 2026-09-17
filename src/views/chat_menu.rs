@@ -180,7 +180,7 @@ pub fn chat_menu(
             cx.notify();
         });
     }))
-    .item(PopupMenuItem::new("Chat info").icon(IconName::Info).on_click(move |_, window, cx| {
-        ws_info.update(cx, |this, cx| this.open_chat_info(window, cx));
+    .item(PopupMenuItem::new("Chat info").icon(IconName::Info).on_click(move |_, _window, cx| {
+        ws_info.update(cx, |this, cx| this.open_chat_info(cx));
     }))
 }

@@ -46,6 +46,7 @@ impl Workspace {
         let ws_menu = cx.entity();
         let ws_toggle = cx.entity();
         let ws_term = cx.entity();
+        let ws_info = cx.entity();
 
         let running_agents = self.running_agents();
         let panel_open = self.agents_panel_open;
@@ -115,7 +116,7 @@ impl Workspace {
                 .border_b_1()
                 .border_color(cx.theme().border)
                 .text_sm()
-                .child(title)
+                .child(crate::views::chat_info::chat_info_popover(title, self.chat_info_open, &ws_info))
                 .when_some(color, |d, color| d.child(crate::views::chat_menu::color_dot("chat-color-dot", color, px(8.))))
                 .when(worktree, |d| d.child(crate::views::chat_menu::worktree_badge("worktree-badge", &workdir, cx)))
                 .when(ephemeral, |d| d.child(crate::views::chat_menu::temp_badge("temp-badge", cx)))

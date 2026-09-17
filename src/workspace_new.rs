@@ -56,6 +56,7 @@ impl Workspace {
             activity: crate::activity::ActivityFeed::load(project.dir()),
             resizing_sidebar: false,
             agents_panel_open: false,
+            chat_info_open: false,
             plan_panel: crate::plan_panel::PlanPanel { open: settings.plan_panel_open },
             automations: crate::persist::load_automations(project.dir()),
             next_automation_id: 0,

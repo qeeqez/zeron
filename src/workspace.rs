@@ -36,6 +36,10 @@ pub struct Workspace {
     pub send_queue: SendQueue,
     pub agents_panel_open: bool,
     pub changes_panel_open: bool,
+    /// Chat-info popover open/closed — the titlebar title's details card
+    /// (see `crate::views::chat_info`). Transient; the ⋯ menu's "Chat info"
+    /// sets it, the popover's `on_open_change` clears it.
+    pub chat_info_open: bool,
     /// Plan panel state — the active chat's checklist side panel (see
     /// `crate::plan_panel`). `open` persists via `Settings`.
     pub plan_panel: crate::plan_panel::PlanPanel,
