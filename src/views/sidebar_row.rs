@@ -89,6 +89,12 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
         Some(color) => row.leading(move |_, _| crate::views::chat_menu::color_dot(("chat-color-dot", chat_id), color, px(6.))),
         None => row,
     };
+    // A colored folder marks its member rows with a thin left-edge bar —
+    // the grouping cue that pairs with the header's color dot.
+    let row = match ws.folder_colors.get(&chat.folder) {
+        Some(color) => row.edge_accent(color.hsla()),
+        None => row,
+    };
     if renaming {
         row.body(rename_editor(ws_click.clone(), ws.rename.clone(), chat_id))
     } else {

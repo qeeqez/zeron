@@ -25,6 +25,30 @@ impl Workspace {
         names
     }
 
+    /// The folder's color tag — `None` when untagged or unknown.
+    pub fn folder_color(&self, name: &str) -> Option<crate::model::ChatColor> {
+        self.folder_colors.get(name).copied()
+    }
+
+    /// Tag folder `name` with `color`; `None` clears the tag. The tag lives
+    /// in `ProjectState.folder_colors` (folders are implicit — there's no
+    /// folder table to hang it on), so this saves state.json, not a chat.
+    pub fn set_folder_color(&mut self, name: &str, color: Option<crate::model::ChatColor>, cx: &mut Context<Self>) {
+        if name.is_empty() || self.folder_colors.get(name).copied() == color {
+            return;
+        }
+        match color {
+            Some(color) => {
+                self.folder_colors.insert(name.to_string(), color);
+            },
+            None => {
+                self.folder_colors.remove(name);
+            },
+        }
+        cx.notify();
+        self.save_project_state();
+    }
+
     /// File the chat with `id` under `folder`; empty unfiles it.
     pub fn set_chat_folder(&mut self, id: u64, folder: &str, cx: &mut Context<Self>) {
         let folder = folder.trim();
@@ -55,6 +79,11 @@ impl Workspace {
         if self.collapsed_folders.remove(old) {
             self.collapsed_folders.insert(new.to_string());
         }
+        // The color tag follows the name — a rename keeps the folder's tag.
+        if let Some(color) = self.folder_colors.remove(old) {
+            self.folder_colors.insert(new.to_string(), color);
+            self.save_project_state();
+        }
         cx.notify();
         self.save();
     }
@@ -70,6 +99,9 @@ impl Workspace {
             }
         }
         self.collapsed_folders.remove(name);
+        if self.folder_colors.remove(name).is_some() {
+            self.save_project_state();
+        }
         cx.notify();
         self.save();
     }
@@ -139,3 +171,8 @@ impl Workspace {
 #[cfg(test)]
 #[path = "folder_tests.rs"]
 mod folder_tests;
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "../folder_color_tests.rs"]
+mod folder_color_tests;

@@ -51,6 +51,9 @@ pub(crate) struct NavRow {
     /// Extra content between the icon and the label — the chat row's color
     /// dot lives here. Rendered only in the expanded row.
     leading: Option<RowContent>,
+    /// A 2px colored bar on the row's left edge — the folder color tag's
+    /// grouping cue on member chat rows.
+    edge: Option<Hsla>,
     /// Drag source applied to the row's `Stateful<Div>` — the toolkit's 2px
     /// threshold keeps plain clicks from starting a drag.
     on_drag: Option<DragSource>,
@@ -68,10 +71,11 @@ impl NavRow {
             hoverable: true,
             collapsed: false,
             group: None,
+            leading: None,
+            edge: None,
             on_click: None,
             body: None,
             suffix: None,
-            leading: None,
             context_menu: None,
             on_drag: None,
         }
@@ -149,6 +153,13 @@ impl NavRow {
         self
     }
 
+    /// A 2px colored bar on the row's left edge — the folder color tag's
+    /// grouping cue on member chat rows.
+    pub(crate) fn edge_accent(mut self, color: Hsla) -> Self {
+        self.edge = Some(color);
+        self
+    }
+
     pub(crate) fn context_menu(mut self, menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static) -> Self {
         self.context_menu = Some(Rc::new(menu));
         self
@@ -187,6 +198,22 @@ impl SidebarItem for NavRow {
                 .into_any_element(),
         };
         let leading = self.leading.map(|leading| leading(window, cx));
+        // The folder-color edge bar — built before `row` moves `self.id`.
+        // Painted after the row so it stays visible over the active fill;
+        // the vertical inset clears the row's rounded corners.
+        let edge = self.edge.map(|color| {
+            div()
+                .id(format!("{}-folder-edge", self.id))
+                .test_support()
+                .absolute()
+                .left_0()
+                .top(px(4.))
+                .bottom(px(4.))
+                .w(px(2.))
+                .rounded_full()
+                .bg(color)
+                .into_any_element()
+        });
         let row = h_flex()
             .size_full()
             .id(self.id)
@@ -215,7 +242,9 @@ impl SidebarItem for NavRow {
             .id(id)
             .test_support()
             .w_full()
+            .relative()
             .when_some(self.group, |this, group| this.group(group))
             .child(row)
+            .when_some(edge, |this, edge| this.child(edge))
     }
 }

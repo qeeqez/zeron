@@ -188,6 +188,10 @@ pub struct Workspace {
     /// just `Chat::folder` values, so this set may name a folder that no
     /// longer exists.
     pub collapsed_folders: std::collections::HashSet<String>,
+    /// Folder color tags — folder name → `ChatColor`, persisted as
+    /// `ProjectState.folder_colors` in state.json. May name a folder that
+    /// no longer exists; the sidebar only reads it for live folders.
+    pub folder_colors: std::collections::HashMap<String, crate::model::ChatColor>,
     /// Index into user messages for Cmd+Shift+Up/Down recall cycling.
     pub recall_ix: Option<usize>,
     /// Ticks since the composer draft last changed — `Some` while a

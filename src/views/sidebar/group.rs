@@ -29,6 +29,8 @@ type MenuBuilder = Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) ->
 #[derive(Clone)]
 pub(super) struct ChatGroup {
     label: SharedString,
+    /// The folder's color tag — a dot beside the header label.
+    color: Option<crate::model::ChatColor>,
     icon: Option<IconName>,
     folded: bool,
     collapsed: bool,
@@ -43,6 +45,7 @@ impl ChatGroup {
     pub(super) fn new(label: impl Into<SharedString>) -> Self {
         Self {
             label: label.into(),
+            color: None,
             icon: None,
             folded: false,
             collapsed: false,
@@ -51,6 +54,12 @@ impl ChatGroup {
             children: Vec::new(),
             chat_drop: None,
         }
+    }
+
+    /// The folder's color tag — renders as a dot beside the header label.
+    pub(super) fn color(mut self, color: Option<crate::model::ChatColor>) -> Self {
+        self.color = color;
+        self
     }
 
     pub(super) fn icon(mut self, icon: IconName) -> Self {
@@ -123,6 +132,9 @@ impl SidebarItem for ChatGroup {
             .gap_1()
             .items_center()
             .when_some(self.icon, |this, icon| this.child(icon))
+            .when_some(self.color, |this, color| {
+                this.child(crate::views::chat_menu::color_dot(format!("folder-color-dot-{}", self.label), color, px(8.)))
+            })
             .child(div().flex_1().overflow_x_hidden().child(self.label.clone()))
             .when_some(self.on_toggle, |this, on_toggle| {
                 this.cursor_pointer()
@@ -154,17 +166,26 @@ impl SidebarItem for ChatGroup {
             })
     }
 }
-
 /// The folder header's right-click menu — rename rewrites member chats,
-/// delete unfiles them.
-fn folder_menu(ws: &Entity<Workspace>, name: &str, menu: PopupMenu) -> PopupMenu {
+/// the Color submenu tags the folder, delete unfiles them.
+fn folder_menu(ws: &Entity<Workspace>, name: &str, menu: PopupMenu, window: &mut Window, cx: &mut Context<PopupMenu>) -> PopupMenu {
     let ws_rename = ws.clone();
     let ws_delete = ws.clone();
+    let ws_color = ws.clone();
     let rename_to = name.to_string();
     let delete = name.to_string();
+    let tag = name.to_string();
+    let current = ws.read(cx).folder_color(name);
     menu.item(PopupMenuItem::new("Rename folder").icon(IconName::Pencil).on_click(move |_, w, cx| {
         ws_rename.update(cx, |this, cx| this.open_rename_folder_dialog(&rename_to, w, cx));
     }))
+    .submenu("Color", window, cx, move |m, _w, _cx| {
+        let ws_color = ws_color.clone();
+        let tag = tag.clone();
+        crate::views::chat_menu::color_submenu(current, m, move |color, _w, cx| {
+            ws_color.update(cx, |this, cx| this.set_folder_color(&tag, color, cx));
+        })
+    })
     .item(PopupMenuItem::new("Delete folder").icon(IconName::Delete).on_click(move |_, _w, cx| {
         ws_delete.update(cx, |this, cx| this.delete_folder(&delete, cx));
     }))
@@ -206,9 +227,10 @@ pub(super) fn chat_groups(
             groups.push(
                 ChatGroup::new(name.clone())
                     .icon(IconName::Folder)
+                    .color(state.folder_color(name))
                     .folded(folded)
                     .on_toggle(move |_, _, cx| ws_toggle.update(cx, |this, cx| this.toggle_folder(&toggle, cx)))
-                    .context_menu(move |menu, _window, _cx| folder_menu(&ws_menu, &menu_name, menu))
+                    .context_menu(move |menu, window, cx| folder_menu(&ws_menu, &menu_name, menu, window, cx))
                     .children(items)
                     .chat_drop_target(ws, name.clone()),
             );

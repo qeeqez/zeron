@@ -124,6 +124,11 @@ impl Workspace {
                     .placeholder("Instructions applied to this chat's turns — appended after the global and project instructions.")
             }),
             collapsed_folders: std::collections::HashSet::new(),
+            folder_colors: project_state
+                .folder_colors
+                .iter()
+                .filter_map(|(name, color)| crate::model::ChatColor::from_name(color).map(|c| (name.clone(), c)))
+                .collect(),
             selected_chats: std::collections::HashSet::new(),
             recall_ix: None,
             palette: inputs.palette,

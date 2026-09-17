@@ -43,17 +43,18 @@ impl Workspace {
         }
     }
 
-    /// Persist the project's `state.json` — active chat, setup script and
-    /// the approval allowlist. `active_chat` indexes the loaded
-    /// (non-ephemeral) set: count the persisted chats before `active`; an
-    /// ephemeral active chat leaves the index pointing at the next real
-    /// one.
+    /// Persist the project's `state.json` — active chat, setup script, the
+    /// approval allowlist and folder color tags. `active_chat` indexes the
+    /// loaded (non-ephemeral) set: count the persisted chats before
+    /// `active`; an ephemeral active chat leaves the index pointing at the
+    /// next real one.
     pub(crate) fn save_project_state(&self) {
         let active_chat = self.chats[..self.active.min(self.chats.len())].iter().filter(|c| !c.ephemeral).count();
         self.project.save_state(&crate::project::ProjectState {
             active_chat,
             setup_script: self.setup_script.clone(),
             approval_rules: self.approval_rules.clone(),
+            folder_colors: self.folder_colors.iter().map(|(name, color)| (name.clone(), color.name().to_string())).collect(),
         });
     }
 

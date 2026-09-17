@@ -43,6 +43,11 @@ pub struct ProjectState {
     /// request auto-approves instead of prompting (see
     /// `crate::approval_ops`). Per-project, never global.
     pub approval_rules: Vec<crate::backend::ApprovalRule>,
+    /// Folder color tags — folder name → `ChatColor::name`. Folders are
+    /// implicit (a shared `Chat::folder` string), so their tags live here
+    /// rather than on a member chat. BTreeMap keeps state.json's key order
+    /// stable across saves.
+    pub folder_colors: std::collections::BTreeMap<String, String>,
 }
 
 impl Project {

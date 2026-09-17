@@ -10,7 +10,8 @@ mod schedule;
 mod worktree;
 pub(crate) use badges::{color_dot, context_chip, temp_badge, worktree_badge};
 use bookmarks::bookmarks_submenu;
-use color::color_submenu;
+use color::chat_color_submenu;
+pub(crate) use color::color_submenu;
 use compare::compare_item;
 use continue_with::continue_with_submenu;
 use schedule::schedule_item;
@@ -87,7 +88,7 @@ pub fn chat_menu(
         }))
         .submenu("Color", window, cx, {
             let ws = ws.clone();
-            move |m, _w, _cx| color_submenu(&ws, color, m)
+            move |m, _w, _cx| chat_color_submenu(&ws, color, m)
         })
         .item(PopupMenuItem::new("Custom instructions…").icon(IconName::NotebookPen).on_click({
             let ws = ws.clone();
