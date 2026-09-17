@@ -116,15 +116,28 @@ fn card(ws: &Entity<Workspace>, cx: &mut VisualTestContext) -> crate::backend::A
     })
 }
 
+/// Poll until the card's `button` registers in the element tree — the
+/// card lands in model state a beat before its buttons mount, so a single
+/// draw races the mount under parallel test load.
+fn wait_button(cx: &mut VisualTestContext, button: &'static str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.try_find((button, 1usize)).is_some_and(|b| b.visible())
+    }) {
+        assert!(std::time::Instant::now() < deadline, "{button} button never rendered");
+        cx.run_until_parked();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 /// Click a button on the rendered card and return the decision the
 /// backend's blocked thread received.
 fn click_and_collect(
     cx: &mut VisualTestContext, button: &'static str, decisions: std::sync::mpsc::Receiver<ApprovalDecision>,
 ) -> ApprovalDecision {
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        window.click((button, 1usize), cx);
-    });
+    wait_button(cx, button);
+    cx.update(|window, cx| window.click((button, 1usize), cx));
     decisions.recv_timeout(std::time::Duration::from_secs(5)).expect("backend got a decision")
 }
 
@@ -201,6 +214,7 @@ fn non_matching_rule_still_prompts() {
     let card = card(&ws, cx);
     assert_eq!(card.decision, None, "no rule matched — the prompt waits");
     assert!(card.respond.is_some());
+    wait_button(cx, "approve");
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert!(window.find(("approve", 1usize)).visible(), "buttons render for an unmatched request");
