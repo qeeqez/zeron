@@ -7,12 +7,14 @@
 
 use std::sync::mpsc::Sender;
 
-use gpui_kit::TestAppContext;
 use gpui_kit::component::input::InputState;
 use gpui_kit::test::TestWindowExt;
+use gpui_kit::{Entity, TestAppContext, VisualTestContext};
 
-use crate::composer_testutil::open_workspace;
+use crate::composer_testutil::{composer_value, open_workspace, until};
 use crate::terminal::{Pty, PtyEvent, TermSession};
+use crate::views::terminal_blocks::block_quote;
+use crate::workspace::Workspace;
 
 /// Shared write log the fake PTY records into — same shape as
 /// `terminal_tests`' `Writes`.
@@ -190,4 +192,90 @@ fn panel_renders_block_headers_and_reruns() {
         "re-run writes the command back to the PTY"
     );
     assert_eq!(ws.read_with(cx, |ws, _| ws.terminal.sessions[0].blocks.len()), 2);
+}
+
+#[test]
+fn block_quote_wraps_output_with_command_provenance() {
+    assert_eq!(block_quote("ls", "a\nb"), "$ ls\n```text\na\nb\n```");
+    // Trailing blanks drop, and a whitespace-only command loses its `$` line.
+    assert_eq!(block_quote("  ", "out\n\n"), "```text\nout\n```");
+}
+
+#[test]
+fn block_quote_empty_output_is_empty() {
+    assert!(block_quote("ls", "").is_empty());
+    assert!(block_quote("ls", "  \n \n").is_empty());
+}
+
+#[test]
+fn block_quote_fence_outruns_backticks() {
+    assert_eq!(block_quote("cat", "```\nfenced\n```"), "$ cat\n````text\n```\nfenced\n```\n````");
+}
+
+/// Mount a workspace with a fake-PTY terminal session, submit `cmd` via
+/// the real input path, then feed `output` back as the shell's bytes.
+fn panel_session(cx: &mut VisualTestContext, ws: &Entity<Workspace>, cmd: &str, output: &[u8]) -> Sender<PtyEvent> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let writes: Writes = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
+    let fake_writes = writes.clone();
+    cx.update(|_, cx| {
+        ws.update(cx, |ws, _| {
+            ws.terminal
+                .spawners
+                .push_back(Box::new(move |_spec| (Box::new(FakePty { writes: fake_writes }), rx)));
+        });
+    });
+    cx.update(|window, cx| {
+        ws.update(cx, |ws, cx| ws.toggle_terminal(window, cx));
+    });
+    tx.send(PtyEvent::Output(b"$ ".to_vec())).unwrap();
+    cx.update(|window, cx| {
+        ws.update(cx, |ws, cx| {
+            ws.terminal.input.update(cx, |s: &mut InputState, cx| s.focus(window, cx));
+        });
+        window.input(cmd, cx);
+        window.press("enter", cx);
+    });
+    tx.send(PtyEvent::Output(output.to_vec())).unwrap();
+    tx
+}
+
+#[test]
+fn panel_send_button_quotes_output_into_composer() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = open_workspace(&mut app);
+    panel_session(cx, &ws, "echo hi", b"echo hi\r\nhi\r\n$ ");
+    // The drain pump runs on a 50ms timer — wait until the output lands.
+    until(&ws, cx, |ws| !ws.terminal.sessions[0].block_output(0).is_empty());
+    cx.update(|window, cx| {
+        ws.update(cx, |ws, cx| {
+            ws.composer.update(cx, |s, cx| s.set_value("explain this", window, cx));
+        });
+        window.draw(cx).clear(cx);
+        window.hover(("term-block", 0usize), cx);
+        window.draw(cx).clear(cx);
+        window.click(("term-send", 0usize), cx);
+    });
+    let value = composer_value(&ws, cx);
+    assert!(value.starts_with("$ echo hi\n```text\nhi"), "quoted block leads the draft: {value:?}");
+    assert!(value.ends_with("explain this"), "existing draft kept below the quote: {value:?}");
+}
+
+#[test]
+fn panel_send_button_no_output_keeps_draft() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = open_workspace(&mut app);
+    // The command is still running — nothing echoed past its own line yet.
+    panel_session(cx, &ws, "sleep 9", b"sleep 9\r\n");
+    until(&ws, cx, |ws| ws.terminal.sessions[0].transcript().lines.iter().any(|l| l.contains("sleep 9")));
+    cx.update(|window, cx| {
+        ws.update(cx, |ws, cx| {
+            ws.composer.update(cx, |s, cx| s.set_value("keep me", window, cx));
+        });
+        window.draw(cx).clear(cx);
+        window.hover(("term-block", 0usize), cx);
+        window.draw(cx).clear(cx);
+        window.click(("term-send", 0usize), cx);
+    });
+    assert_eq!(composer_value(&ws, cx), "keep me", "empty output leaves the draft alone");
 }

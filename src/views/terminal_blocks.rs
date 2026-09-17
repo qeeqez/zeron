@@ -4,8 +4,9 @@
 //! reports one), the echoed line it replaces is hidden, and the output
 //! below stays ordinary interactive text so find highlights and links
 //! keep working. Hovering a header reveals re-run (writes the command
-//! back to the PTY) and copy-output; exited sessions keep their blocks
-//! read-only — copy stays, re-run is gone.
+//! back to the PTY), copy-output, and send-to-chat (the output drops
+//! into the composer draft as a fenced quote); exited sessions keep
+//! their blocks read-only — copy and send stay, re-run is gone.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::theme::ActiveTheme;
@@ -79,6 +80,32 @@ impl Workspace {
             }
         }
     }
+
+    /// A block header's send-to-chat button: the block's output drops
+    /// into the composer as a `$ cmd` line over a fenced block — quoted
+    /// context above any in-progress draft, the same shape `quote_text`
+    /// gives message quotes. Empty output no-ops, same as copy.
+    pub(crate) fn terminal_send_block(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(session) = self.terminal.active_session() else {
+            return;
+        };
+        let Some(command) = session.blocks.get(ix).map(|b| b.command.clone()) else {
+            return;
+        };
+        let quote = block_quote(&command, &session.block_output(ix));
+        if quote.is_empty() {
+            return;
+        }
+        let draft = self.composer.read(cx).value().to_string();
+        let value = if draft.is_empty() { quote } else { format!("{quote}\n\n{draft}") };
+        self.composer.update(cx, |s, cx| {
+            s.set_value(value, window, cx);
+            s.focus(window, cx);
+        });
+        // `set_value` suppresses Change — nudge so the send button's
+        // enabled state re-reads the new draft.
+        cx.notify();
+    }
 }
 
 /// The shared context a text segment needs: the whole contents, each
@@ -149,7 +176,8 @@ impl Seg<'_> {
 
 /// The muted row standing in for a command's echo: the command text, an
 /// exit mark when OSC 133 reported one, and hover-revealed re-run /
-/// copy-output buttons. Exited sessions drop the re-run affordance.
+/// copy-output / send-to-chat buttons. Exited sessions drop the re-run
+/// affordance.
 fn block_header(ix: usize, bl: &BlockLayout, exited: bool, cx: &mut Context<Workspace>) -> AnyElement {
     let group = SharedString::from(format!("term-block-{ix}"));
     let mut actions = div()
@@ -177,6 +205,14 @@ fn block_header(ix: usize, bl: &BlockLayout, exited: bool, cx: &mut Context<Work
             .child(IconName::Copy)
             .on_click(cx.listener(move |this, _, _, cx| this.terminal_copy_block(ix, cx))),
     );
+    actions = actions.child(
+        div()
+            .id(("term-send", ix))
+            .test_support()
+            .cursor_pointer()
+            .child(IconName::MessageSquareShare)
+            .on_click(cx.listener(move |this, _, window, cx| this.terminal_send_block(ix, window, cx))),
+    );
     div()
         .id(("term-block", ix))
         .test_support()
@@ -203,4 +239,36 @@ fn block_header(ix: usize, bl: &BlockLayout, exited: bool, cx: &mut Context<Work
         })
         .child(actions)
         .into_any_element()
+}
+
+/// The composer snippet a block's send button inserts: a `$ cmd`
+/// provenance line (dropped when the command is blank) over the output
+/// in a fenced `text` block whose fence outruns any backtick run inside
+/// it. Whitespace-only output yields an empty string — callers no-op.
+pub(crate) fn block_quote(command: &str, output: &str) -> String {
+    let output = output.trim_end();
+    if output.is_empty() {
+        return String::new();
+    }
+    let fence = code_fence(output);
+    match command.trim() {
+        "" => format!("{fence}text\n{output}\n{fence}"),
+        cmd => format!("$ {cmd}\n{fence}text\n{output}\n{fence}"),
+    }
+}
+
+/// A backtick fence `content` can't close: one tick longer than its
+/// longest backtick run, three at minimum.
+fn code_fence(content: &str) -> String {
+    let mut longest = 0usize;
+    let mut run = 0usize;
+    for c in content.chars() {
+        if c == '`' {
+            run += 1;
+            longest = longest.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    "`".repeat(longest.max(2) + 1)
 }

@@ -118,7 +118,7 @@ mod split_cards;
 mod split_pane;
 mod templates;
 pub(crate) mod terminal;
-mod terminal_blocks;
+pub(crate) mod terminal_blocks;
 mod terminal_tabs;
 #[cfg(test)]
 mod tool_group_tests;
