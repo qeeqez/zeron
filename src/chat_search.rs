@@ -307,7 +307,7 @@ impl Workspace {
         let mut order: Vec<usize> = (0..self.chats.len())
             .filter(|ix| !self.chats[*ix].archived && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(query)))
             .collect();
-        order.sort_by_key(|ix| (self.chat_bucket(*ix), std::cmp::Reverse(crate::workspace::sort_order(&self.chats[*ix]))));
+        order.sort_by_key(|ix| (self.chat_bucket(*ix), std::cmp::Reverse(crate::workspace::sort_key(&self.chats[*ix]))));
         order
     }
 }

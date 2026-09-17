@@ -21,10 +21,19 @@ pub(crate) fn sort_order(chat: &Chat) -> i64 {
     chat.created_at.duration_since(std::time::SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
 }
 
+/// The full ordering key: `sort_order` alone ties on same-second
+/// `created_at`s (two chats created inside one second would sort
+/// oldest-first), so sub-second nanos and then `id` break ties
+/// newest-first. `order` arithmetic (`drop_chat_on_row`'s `base`) keeps
+/// using `sort_order` — the tie-break fields never enter the rank scale.
+pub(crate) fn sort_key(chat: &Chat) -> (i64, u32, u64) {
+    (sort_order(chat), chat.created_at.duration_since(std::time::SystemTime::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos()), chat.id)
+}
+
 /// Sort `ixs` (indices into `ws.chats`) by sidebar position — the within-
 /// group order for folders and Unfiled, where recency buckets don't apply.
 pub(crate) fn sort_group(ws: &Workspace, ixs: &mut [usize]) {
-    ixs.sort_by_key(|ix| std::cmp::Reverse(sort_order(&ws.chats[*ix])));
+    ixs.sort_by_key(|ix| std::cmp::Reverse(sort_key(&ws.chats[*ix])));
 }
 
 impl Workspace {

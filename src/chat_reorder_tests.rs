@@ -124,7 +124,7 @@ fn reorder_persists_through_save_load() {
     let loaded = crate::persist::load_chats(&dir, &mut next_id, false);
     assert_eq!(loaded.len(), 3, "all chats reload");
     let mut sorted = loaded;
-    sorted.sort_by_key(|c| std::cmp::Reverse(crate::workspace::sort_order(c)));
+    sorted.sort_by_key(|c| std::cmp::Reverse(crate::workspace::sort_key(c)));
     let titles: Vec<String> = sorted.iter().map(|c| c.title.to_string()).collect();
     assert_eq!(titles, vec!["chat-1", "chat-2", "chat-0"], "persisted order reproduces the drag");
 }

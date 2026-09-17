@@ -414,7 +414,7 @@ mod draft_persist_tests;
 /// crate root is at the SLOC cap.
 #[path = "chat_reorder.rs"]
 pub(crate) mod reorder;
-pub(crate) use reorder::{sort_group, sort_order};
+pub(crate) use reorder::{sort_group, sort_key};
 
 #[cfg(test)]
 #[path = "chat_reorder_tests.rs"]
