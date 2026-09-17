@@ -50,6 +50,10 @@ pub(crate) struct StoredChat {
     pub(crate) workdir: String,
     #[serde(default)]
     pub(crate) worktree: bool,
+    /// The ref a worktree chat's Changes panel diffs against — missing in
+    /// files written before the diff-base picker existed.
+    #[serde(default)]
+    pub(crate) diff_base: Option<String>,
     /// Backend thread the chat continues (resumed sessions); missing in
     /// files written before resume existed.
     #[serde(default)]
@@ -104,6 +108,7 @@ impl StoredChat {
         chat.effort = if self.effort.is_empty() { None } else { Some(self.effort) };
         chat.workdir = self.workdir;
         chat.worktree = self.worktree;
+        chat.diff_base = self.diff_base;
         chat.checkpoints = self.checkpoints;
         chat.thread_id = self.thread_id;
         chat.feedback = self.feedback;
@@ -151,6 +156,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             workdir: chat.workdir.clone(),
             effort: chat.effort.clone().unwrap_or_default(),
             worktree: chat.worktree,
+            diff_base: chat.diff_base.clone(),
             thread_id: chat.thread_id.clone(),
             checkpoints: chat.checkpoints.clone(),
             feedback: chat.feedback.clone(),

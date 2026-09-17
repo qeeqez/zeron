@@ -72,7 +72,7 @@ fn discard_restores_a_modified_tracked_file() {
     std::fs::write(dir.join("other.txt"), "untouched\n").unwrap();
     let change = collected(&dir, "f.txt");
     assert_eq!(change.status, ChangeStatus::Modified);
-    git::discard_file(&dir, &change).unwrap();
+    git::discard_file_at(&dir, &change, None).unwrap();
     assert_eq!(std::fs::read_to_string(dir.join("f.txt")).unwrap(), "one\n");
     let rest = git::collect(&dir);
     assert_eq!(rest.len(), 1, "only the untracked neighbor remains");
@@ -87,7 +87,7 @@ fn discard_deletes_an_untracked_file() {
     let change = collected(&dir, "new.txt");
     assert_eq!(change.status, ChangeStatus::Added);
     assert!(!change.staged, "untracked files report staged=false");
-    git::discard_file(&dir, &change).unwrap();
+    git::discard_file_at(&dir, &change, None).unwrap();
     assert!(!dir.join("new.txt").exists(), "untracked file deleted");
     assert!(git::collect(&dir).is_empty(), "status clean for that path");
     let _ = std::fs::remove_dir_all(&dir);
@@ -100,7 +100,7 @@ fn discard_restores_a_staged_modification() {
     assert!(run(&dir, &["add", "f.txt"]));
     let change = collected(&dir, "f.txt");
     assert!(change.staged);
-    git::discard_file(&dir, &change).unwrap();
+    git::discard_file_at(&dir, &change, None).unwrap();
     assert_eq!(std::fs::read_to_string(dir.join("f.txt")).unwrap(), "one\n");
     assert!(git::collect(&dir).is_empty(), "gone from index and worktree");
     let _ = std::fs::remove_dir_all(&dir);
@@ -114,7 +114,7 @@ fn discard_removes_a_staged_new_file() {
     let change = collected(&dir, "new.txt");
     assert_eq!(change.status, ChangeStatus::Added);
     assert!(change.staged);
-    git::discard_file(&dir, &change).unwrap();
+    git::discard_file_at(&dir, &change, None).unwrap();
     assert!(!dir.join("new.txt").exists(), "staged-new file deleted");
     assert!(git::collect(&dir).is_empty(), "gone from index and worktree");
     let _ = std::fs::remove_dir_all(&dir);
@@ -127,7 +127,7 @@ fn discard_restores_a_staged_rename() {
     let change = collected(&dir, "renamed.txt");
     assert_eq!(change.status, ChangeStatus::Renamed);
     assert_eq!(change.source.as_deref(), Some("f.txt"));
-    git::discard_file(&dir, &change).unwrap();
+    git::discard_file_at(&dir, &change, None).unwrap();
     assert_eq!(std::fs::read_to_string(dir.join("f.txt")).unwrap(), "one\n", "source restored");
     assert!(!dir.join("renamed.txt").exists(), "rename target deleted");
     assert!(git::collect(&dir).is_empty(), "no staged deletion left behind");

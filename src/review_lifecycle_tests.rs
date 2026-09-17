@@ -30,6 +30,7 @@ fn land(workspace: &Entity<Workspace>, changes: Vec<crate::git::FileChange>, cx:
                 generation,
                 ChangesSnapshot {
                     changes,
+                    scope: crate::changes::ChangesScope::default(),
                     branch: None,
                     commits: vec![],
                     stashes: vec![],

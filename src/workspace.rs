@@ -65,6 +65,10 @@ pub struct Workspace {
     /// stamped with an older generation is discarded, so a slow earlier
     /// refresh can't overwrite a newer snapshot.
     pub(crate) changes_generation: u64,
+    /// The scope `changes` was collected under — the checkout dir plus, for
+    /// worktree chats, the merge-base commit rows diff against (see
+    /// `crate::changes::ChangesScope`). Lands with each snapshot.
+    pub(crate) changes_scope: crate::changes::ChangesScope,
     /// Pending diff review — comments collected from the Changes panel's
     /// diff lines plus the inline editor's state (see `crate::review`).
     pub review: crate::review::Review,

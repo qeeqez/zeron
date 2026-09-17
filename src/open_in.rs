@@ -195,6 +195,13 @@ impl Workspace {
         self.reveal_path_in_finder(&abs, cx);
     }
 
+    /// `reveal_in_finder` under an explicit dir — the Changes panel's
+    /// worktree rows, whose files live outside the project root.
+    pub fn reveal_in_finder_at(&mut self, dir: &std::path::Path, rel: &str, cx: &mut Context<Self>) {
+        let abs = dir.join(rel);
+        self.reveal_path_in_finder(&abs, cx);
+    }
+
     /// `open -R` an absolute path — the worktree menu's entry point, where
     /// the directory lives outside the project-relative scheme.
     pub fn reveal_path_in_finder(&mut self, abs: &std::path::Path, cx: &mut Context<Self>) {
@@ -210,6 +217,13 @@ impl Workspace {
         self.open_path_in_editor(&abs, editor, cx);
     }
 
+    /// `open_in_editor` under an explicit dir — the Changes panel's
+    /// worktree rows.
+    pub fn open_in_editor_at(&mut self, dir: &std::path::Path, rel: &str, editor: Option<PreferredEditor>, cx: &mut Context<Self>) {
+        let abs = dir.join(rel);
+        self.open_path_in_editor(&abs, editor, cx);
+    }
+
     /// Open an absolute path in `editor` (or the preferred editor when
     /// `None`) — the worktree menu's entry point. Same `Ask` no-op rule.
     pub fn open_path_in_editor(&mut self, abs: &std::path::Path, editor: Option<PreferredEditor>, cx: &mut Context<Self>) {
@@ -218,16 +232,18 @@ impl Workspace {
         self.run_open_command(cmd, cx);
     }
 
-    /// `open_in_editor` plus a target line — the diff rows' ⌘-click entry
-    /// point. `Ask` can't pick an editor without a menu, so it reveals the
-    /// file in Finder instead (same fallback as the conflict rows).
-    pub fn open_in_editor_at(&mut self, rel: &str, line: u32, editor: Option<PreferredEditor>, cx: &mut Context<Self>) {
-        let abs = self.project.root().join(rel);
+    /// Open an absolute path in `editor` (or the preferred editor when
+    /// `None`) at a target line — the diff rows' ⌘-click entry point. `Ask`
+    /// can't pick an editor without a menu, so it reveals the file in
+    /// Finder instead (same fallback as the conflict rows). Changes-panel
+    /// rows pass paths under the changes scope's dir — a worktree for
+    /// worktree chats, not always the project root.
+    pub fn open_path_in_editor_at(&mut self, abs: &std::path::Path, line: u32, editor: Option<PreferredEditor>, cx: &mut Context<Self>) {
         let editor = editor.unwrap_or(self.preferred_editor);
         let cmd = if editor == PreferredEditor::Ask {
-            reveal_command(&abs)
+            reveal_command(abs)
         } else {
-            let Some(cmd) = open_command_at(editor, &abs, line) else { return };
+            let Some(cmd) = open_command_at(editor, abs, line) else { return };
             cmd
         };
         self.run_open_command(cmd, cx);
@@ -242,8 +258,8 @@ impl Workspace {
         let Some(change) = self.changes.get(file_ix) else { return };
         let Some(line) = change.diff.as_ref().and_then(|d| d.lines.get(line_ix)) else { return };
         let Some(n) = line.new.or(line.old) else { return };
-        let path = change.path.clone();
-        self.open_in_editor_at(&path, n, None, cx);
+        let path = self.changes_scope().dir.join(&change.path);
+        self.open_path_in_editor_at(&path, n, None, cx);
     }
 
     /// Route a click on a numbered diff row: ⌘-click opens the file at that
@@ -258,9 +274,11 @@ impl Workspace {
         }
     }
 
-    /// Copy the file's absolute path to the clipboard.
-    pub fn copy_file_path(&mut self, rel: &str, cx: &mut Context<Self>) {
-        let abs = self.project.root().join(rel);
+    /// Copy the file's absolute path under `dir` to the clipboard — `dir`
+    /// is the changes scope's dir for worktree rows, the project root
+    /// elsewhere.
+    pub fn copy_file_path_at(&mut self, dir: &std::path::Path, rel: &str, cx: &mut Context<Self>) {
+        let abs = dir.join(rel);
         cx.write_to_clipboard(ClipboardItem::new_string(abs.display().to_string()));
     }
 
@@ -300,7 +318,7 @@ fn notify_failure(this: WeakEntity<Workspace>, action: &str, e: &str, cx: &mut A
 /// so callers keep using `crate::open_in::file_menu` / `copy_diff_item`.
 #[path = "open_in_menu.rs"]
 mod menu;
-pub use menu::{copy_diff_item, explorer_dir_menu, explorer_file_menu, explorer_root_menu, file_menu};
+pub use menu::{FileTarget, copy_diff_item, explorer_dir_menu, explorer_file_menu, explorer_root_menu, file_menu, file_menu_at};
 
 #[cfg(test)]
 #[path = "diff_open_tests.rs"]

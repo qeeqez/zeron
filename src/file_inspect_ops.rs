@@ -22,10 +22,12 @@ pub(crate) enum FileInspect {
 
 impl Workspace {
     /// The file menu's "File History" — open the overlay and fetch
-    /// `git log --follow` for `rel` on the background executor.
-    pub fn open_file_history(&mut self, rel: &str, cx: &mut Context<Self>) {
+    /// `git log --follow` for `rel` under `dir` on the background executor.
+    /// `dir` is the changes scope's dir for worktree rows, the project root
+    /// elsewhere.
+    pub fn open_file_history_at(&mut self, dir: &std::path::Path, rel: &str, cx: &mut Context<Self>) {
         self.file_inspect = Some(FileInspect::History { path: rel.to_string(), result: None });
-        let dir = self.project.root().to_path_buf();
+        let dir = dir.to_path_buf();
         let path = rel.to_string();
         cx.spawn(async move |this, cx| {
             let job = path.clone();
@@ -37,10 +39,11 @@ impl Workspace {
     }
 
     /// The file menu's "Blame" — open the overlay and fetch
-    /// `git blame --porcelain` for `rel` on the background executor.
-    pub fn open_file_blame(&mut self, rel: &str, cx: &mut Context<Self>) {
+    /// `git blame --porcelain` for `rel` under `dir` on the background
+    /// executor.
+    pub fn open_file_blame_at(&mut self, dir: &std::path::Path, rel: &str, cx: &mut Context<Self>) {
         self.file_inspect = Some(FileInspect::Blame { path: rel.to_string(), result: None });
-        let dir = self.project.root().to_path_buf();
+        let dir = dir.to_path_buf();
         let path = rel.to_string();
         cx.spawn(async move |this, cx| {
             let job = path.clone();

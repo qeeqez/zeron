@@ -10,13 +10,14 @@ use crate::workspace::Workspace;
 
 use super::PreferredEditor;
 
-/// One "Open in <editor>" item for the `Ask` submenu — a free fn so the
-/// submenu fold stays under the nesting lint.
-fn editor_pick_item(ws: &Entity<Workspace>, rel: &str, editor: PreferredEditor) -> PopupMenuItem {
+/// `editor_pick_item` under an explicit dir — the Changes panel's worktree
+/// rows.
+fn editor_pick_item_at(ws: &Entity<Workspace>, dir: &std::path::Path, rel: &str, editor: PreferredEditor) -> PopupMenuItem {
     let ws = ws.clone();
     let rel = rel.to_string();
+    let dir = dir.to_path_buf();
     PopupMenuItem::new(editor.label()).on_click(move |_, _w, cx| {
-        ws.update(cx, |this, cx| this.open_in_editor(&rel, Some(editor), cx));
+        ws.update(cx, |this, cx| this.open_in_editor_at(&dir, &rel, Some(editor), cx));
     })
 }
 
@@ -36,21 +37,24 @@ pub fn copy_diff_item(ws: &Entity<Workspace>, rel: &str, staged: bool) -> PopupM
 /// "File History" + "Blame" — offered only for tracked files (the repo-root
 /// row passes `rel` empty, untracked files fail `ls-files --error-unmatch`),
 /// since both shell out to git and an untracked path has neither. The probe
-/// is one `git ls-files` on menu open.
-fn git_items(ws: &Entity<Workspace>, rel: &str, menu: PopupMenu, cx: &mut Context<PopupMenu>) -> PopupMenu {
-    if rel.is_empty() || !crate::git::tracked(ws.read(cx).project.root(), rel) {
+/// is one `git ls-files` on menu open, run in `dir` — the changes scope's
+/// dir for worktree rows, the project root elsewhere.
+fn git_items(ws: &Entity<Workspace>, dir: &std::path::Path, rel: &str, menu: PopupMenu, _cx: &mut Context<PopupMenu>) -> PopupMenu {
+    if rel.is_empty() || !crate::git::tracked(dir, rel) {
         return menu;
     }
     let ws_log = ws.clone();
     let rel_log = rel.to_string();
+    let dir_log = dir.to_path_buf();
     let ws_blame = ws.clone();
     let rel_blame = rel.to_string();
+    let dir_blame = dir.to_path_buf();
     menu.separator()
         .item(PopupMenuItem::new("File History").icon(IconName::GitCommitHorizontal).on_click(move |_, _w, cx| {
-            ws_log.update(cx, |this, cx| this.open_file_history(&rel_log, cx));
+            ws_log.update(cx, |this, cx| this.open_file_history_at(&dir_log, &rel_log, cx));
         }))
         .item(PopupMenuItem::new("Blame").icon(IconName::UserSearch).on_click(move |_, _w, cx| {
-            ws_blame.update(cx, |this, cx| this.open_file_blame(&rel_blame, cx));
+            ws_blame.update(cx, |this, cx| this.open_file_blame_at(&dir_blame, &rel_blame, cx));
         }))
 }
 
@@ -59,36 +63,57 @@ fn git_items(ws: &Entity<Workspace>, rel: &str, menu: PopupMenu, cx: &mut Contex
 /// "Open in Editor" reads the preferred editor; `Ask` turns the item into a
 /// submenu of concrete editors.
 pub fn file_menu(ws: &Entity<Workspace>, rel: &str, menu: PopupMenu, window: &mut Window, cx: &mut Context<PopupMenu>) -> PopupMenu {
+    let target = FileTarget {
+        dir: ws.read(cx).project.root().to_path_buf(),
+        rel: rel.to_string(),
+    };
+    file_menu_at(ws, &target, menu, window, cx)
+}
+
+/// A file the menu acts on: the checkout dir it lives under plus its
+/// repo-relative path — bundled so `file_menu_at` stays under the arg lint.
+pub struct FileTarget {
+    pub dir: std::path::PathBuf,
+    pub rel: String,
+}
+
+/// `file_menu` under an explicit dir — the Changes panel's worktree rows,
+/// whose files live outside the project root. `rel` stays repo-relative so
+/// git probes and the copy-diff payload keep working.
+pub fn file_menu_at(
+    ws: &Entity<Workspace>, target: &FileTarget, menu: PopupMenu, window: &mut Window, cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
     let preferred = ws.read(cx).preferred_editor;
     let ws_reveal = ws.clone();
-    let rel_reveal = rel.to_string();
+    let target_reveal = FileTarget { dir: target.dir.clone(), rel: target.rel.clone() };
     let menu = menu.item(PopupMenuItem::new("Reveal in Finder").icon(IconName::FolderOpen).on_click(move |_, _w, cx| {
-        ws_reveal.update(cx, |this, cx| this.reveal_in_finder(&rel_reveal, cx));
+        ws_reveal.update(cx, |this, cx| this.reveal_in_finder_at(&target_reveal.dir, &target_reveal.rel, cx));
     }));
     let menu =
         if preferred == PreferredEditor::Ask {
             let ws_pick = ws.clone();
-            let rel_pick = rel.to_string();
+            let dir_pick = target.dir.clone();
+            let rel_pick = target.rel.clone();
             menu.submenu("Open in Editor", window, cx, move |m, _w, _cx| {
                 PreferredEditor::CHOICES
                     .into_iter()
-                    .fold(m, |m, editor| m.item(editor_pick_item(&ws_pick, &rel_pick, editor)))
+                    .fold(m, |m, editor| m.item(editor_pick_item_at(&ws_pick, &dir_pick, &rel_pick, editor)))
             })
         } else {
             let ws_open = ws.clone();
-            let rel_open = rel.to_string();
+            let target_open = FileTarget { dir: target.dir.clone(), rel: target.rel.clone() };
             menu.item(PopupMenuItem::new(format!("Open in {}", preferred.label())).icon(IconName::ExternalLink).on_click(
                 move |_, _w, cx| {
-                    ws_open.update(cx, |this, cx| this.open_in_editor(&rel_open, None, cx));
+                    ws_open.update(cx, |this, cx| this.open_in_editor_at(&target_open.dir, &target_open.rel, None, cx));
                 },
             ))
         };
     let ws_copy = ws.clone();
-    let rel_copy = rel.to_string();
+    let target_copy = FileTarget { dir: target.dir.clone(), rel: target.rel.clone() };
     let menu = menu.item(PopupMenuItem::new("Copy Path").icon(IconName::Copy).on_click(move |_, _w, cx| {
-        ws_copy.update(cx, |this, cx| this.copy_file_path(&rel_copy, cx));
+        ws_copy.update(cx, |this, cx| this.copy_file_path_at(&target_copy.dir, &target_copy.rel, cx));
     }));
-    git_items(ws, rel, menu, cx)
+    git_items(ws, &target.dir, &target.rel, menu, cx)
 }
 
 /// "New File…" / "New Folder…" items for a directory's menu — `dir` is the

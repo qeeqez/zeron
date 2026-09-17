@@ -243,6 +243,11 @@ fn git_err(dir: &Path, args: &[&str]) -> Result<String, String> {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
     }
 }
+/// The Changes panel's diff base for worktree chats — base resolution and
+/// the scratch-index change list — split into `worktree_diff.rs` for the
+/// SLOC cap; it uses this module's `git_err` and `merge::merge_base`.
+#[path = "worktree_diff.rs"]
+pub(crate) mod diff;
 /// Merge-back — "Merge into project" applies a worktree chat's delta to
 /// the project checkout — split into `worktree_merge.rs` for the SLOC
 /// cap; it uses this module's `git_err`, `is_clean` and `remove`.

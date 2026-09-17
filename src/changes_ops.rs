@@ -17,7 +17,9 @@ pub(crate) enum GitOp {
         patch: String,
     },
     /// Destructive per-file discard — the row's context menu confirms first.
-    Discard(crate::git::FileChange),
+    /// `dir`/`base` come from the changes scope: worktree rows restore from
+    /// the diff base in the worktree, project rows from HEAD in the root.
+    Discard(Box<DiscardOp>),
     Commit(String),
     /// `commit --amend` — `None` keeps HEAD's message (`--no-edit`).
     CommitAmend(Option<String>),
@@ -41,6 +43,14 @@ pub(crate) enum GitOp {
     Resolve(String, crate::changes_conflicts::ConflictSide),
 }
 
+/// The `Discard` op's payload — boxed so the enum stays small. `dir`/`base`
+/// come from the changes scope (worktree rows restore from the diff base).
+pub(crate) struct DiscardOp {
+    pub change: crate::git::FileChange,
+    pub dir: std::path::PathBuf,
+    pub base: Option<String>,
+}
+
 impl GitOp {
     /// Run the op against `dir`; returns the op back with its outcome so the
     /// landing path can tell a commit (clears the message box) from the rest.
@@ -50,7 +60,7 @@ impl GitOp {
             Self::Unstage(path) => crate::git::unstage(dir, path),
             Self::StageHunk { path, patch } => crate::git::stage_hunk(dir, path, patch),
             Self::UnstageHunk { path, patch } => crate::git::unstage_hunk(dir, path, patch),
-            Self::Discard(change) => crate::git::discard_file(dir, change),
+            Self::Discard(op) => crate::git::discard_file_at(&op.dir, &op.change, op.base.as_deref()),
             Self::Commit(message) => crate::git::commit(dir, message),
             Self::CommitAmend(message) => crate::git::commit_amend(dir, message.as_deref()),
             Self::Push => crate::git::push(dir),
@@ -100,7 +110,12 @@ impl Workspace {
 
     /// Stage or unstage the file at row `ix` — `git add` / `git restore
     /// --staged` — then refresh so the row's staged marker and counts update.
+    /// Worktree rows have no index semantics (the list diffs against a base
+    /// commit), so the toggle is hidden and this refuses stray calls.
     pub fn toggle_change_stage(&mut self, ix: usize, cx: &mut Context<Self>) {
+        if self.changes_scope.base.is_some() {
+            return;
+        }
         let Some(change) = self.changes.get(ix) else { return };
         let op = if change.staged { GitOp::Unstage(change.path.clone()) } else { GitOp::Stage(change.path.clone()) };
         self.run_git_op(op, cx);
@@ -146,13 +161,22 @@ impl Workspace {
     /// itself (not a note), nothing mutates the index so `git.busy` doesn't
     /// gate it, and no refresh follows. `staged` picks the `--cached` half
     /// for a partially-staged file; untracked files get a synthesized
-    /// new-file patch. Failures land as the panel's error note.
+    /// new-file patch. Worktree rows diff against the scope's base commit.
+    /// Failures land as the panel's error note.
     pub fn copy_file_diff(&mut self, path: &str, staged: bool, cx: &mut Context<Self>) {
-        let dir = self.project.root().to_path_buf();
+        let scope = self.changes_scope();
         let path = path.to_string();
         cx.spawn(async move |this, cx| {
             let job = path.clone();
-            let result = cx.background_executor().spawn(async move { crate::git::file_diff(&dir, &job, staged) }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    match scope.base_commit() {
+                        Some(base) => crate::git::file_diff_at(&scope.dir, &job, staged, Some(base)),
+                        None => crate::git::file_diff(&scope.dir, &job, staged),
+                    }
+                })
+                .await;
             let _ = this.update(cx, |this, cx| this.land_copied_diff(&path, result, cx));
         })
         .detach();
@@ -200,6 +224,7 @@ impl Workspace {
             &[PromptButton::ok("Discard"), PromptButton::cancel("Cancel")],
             cx,
         );
+        let scope = self.changes_scope();
         let mut change = change.clone();
         change.diff = None;
         change.diff_load = 0;
@@ -207,90 +232,18 @@ impl Workspace {
             if rx.await != Ok(0) {
                 return;
             }
-            let _ = this.update(cx, |this, cx| this.run_git_op(GitOp::Discard(change), cx));
+            let _ = this.update(cx, |this, cx| {
+                this.run_git_op(
+                    GitOp::Discard(Box::new(DiscardOp {
+                        change,
+                        dir: scope.dir.clone(),
+                        base: scope.base_commit().map(str::to_string),
+                    })),
+                    cx,
+                )
+            });
         })
         .detach();
-    }
-
-    /// Arm the header's rename input for `name` — prefilled with the current
-    /// name and focused so typing replaces it. Choosing "Rename…" from a
-    /// picker's row menu dismisses the popover, so the input lives on the
-    /// always-visible branch header.
-    pub fn begin_rename_branch(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.git.rename_target = Some(name.to_string());
-        self.git.rename_input.update(cx, |s, cx| {
-            s.set_value(name.to_string(), window, cx);
-            s.focus(window, cx);
-        });
-        cx.notify();
-    }
-
-    /// Disarm the rename input without running the op — the header's ✕.
-    pub fn cancel_rename_branch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.git.rename_target = None;
-        self.git.rename_input.update(cx, |s, cx| s.set_value("", window, cx));
-        cx.notify();
-    }
-
-    /// `git branch -m` the armed `rename_target` to the rename input's value
-    /// — Enter in the input and the header's ✓ share this path. An empty or
-    /// unchanged name is refused before spawning, same as the commit box.
-    pub fn rename_branch(&mut self, cx: &mut Context<Self>) {
-        let Some(old) = self.git.rename_target.clone() else { return };
-        let new = self.git.rename_input.read(cx).value().trim().to_string();
-        if new.is_empty() || new == old {
-            return;
-        }
-        self.run_git_op(GitOp::RenameBranch { old, new }, cx);
-    }
-
-    /// `git branch -d <name>` behind a native confirm — the picker's row
-    /// menu. The current branch is never offered this item; the guard stays
-    /// so a stale menu can't delete the checked-out branch. Git's own
-    /// not-merged refusal lands as the note — no force delete.
-    pub fn delete_branch(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if self.git.branch.as_ref().is_some_and(|b| b.name == name) {
-            return;
-        }
-        let rx = window.prompt(
-            PromptLevel::Warning,
-            &format!("Delete branch “{name}”?"),
-            Some("Only merged branches can be deleted."),
-            &[PromptButton::ok("Delete"), PromptButton::cancel("Cancel")],
-            cx,
-        );
-        let name = name.to_string();
-        cx.spawn(async move |this, cx| {
-            if rx.await != Ok(0) {
-                return;
-            }
-            let _ = this.update(cx, |this, cx| this.run_git_op(GitOp::DeleteBranch(name), cx));
-        })
-        .detach();
-    }
-
-    /// Re-list local branches for the picker — runs when the picker opens so
-    /// branches created outside the app show up. Off the UI thread like the
-    /// rest of the panel's git calls.
-    pub fn refresh_branches(&mut self, cx: &mut Context<Self>) {
-        self.git.branches_generation += 1;
-        let generation = self.git.branches_generation;
-        let dir = self.project.root().to_path_buf();
-        cx.spawn(async move |this, cx| {
-            let branches = cx.background_executor().spawn(async move { crate::git::list_branches(&dir) }).await;
-            let _ = this.update(cx, |this, cx| this.land_branches(generation, branches, cx));
-        })
-        .detach();
-    }
-
-    /// Publish a fetched branch list — skipped when a newer fetch was
-    /// requested while this one ran, same guard as `land_changes`.
-    fn land_branches(&mut self, generation: u64, branches: Vec<crate::git::Branch>, cx: &mut Context<Self>) {
-        if generation != self.git.branches_generation {
-            return;
-        }
-        self.git.branches = branches;
-        cx.notify();
     }
 }
 

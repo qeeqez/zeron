@@ -47,7 +47,7 @@ fn try_merge(root: &Path, wt: &Path) -> Result<MergeOutcome, String> {
 /// HEAD and the project checkout's current HEAD. Both live in the same
 /// object store, so either side can run the lookup; the worktree does so
 /// the base is found even when the root's HEAD moved since creation.
-fn merge_base(root: &Path, wt: &Path) -> Result<String, String> {
+pub(super) fn merge_base(root: &Path, wt: &Path) -> Result<String, String> {
     let head = super::git_err(root, &["rev-parse", "HEAD"])?;
     super::git_err(wt, &["merge-base", "HEAD", head.trim()]).map(|s| s.trim().to_string())
 }

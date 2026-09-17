@@ -46,7 +46,9 @@ pub(crate) fn unified_rows(
 ) -> Vec<AnyElement> {
     let diff = change.diff.as_ref().expect("unified_rows needs an expanded diff");
     let marked = MarkedDiff::new(diff, !ws.git.ignore_ws);
-    let stageable = change.status == ChangeStatus::Modified;
+    // Worktree rows diff against a base commit — there is no index side to
+    // stage into, so the hunk button hides like the row's stage toggle.
+    let stageable = change.status == ChangeStatus::Modified && ws.changes_scope().base.is_none();
     let mut hunk_ix = 0usize;
     let mut rows = Vec::with_capacity(diff.lines.len());
     for line_ix in 0..diff.lines.len() {

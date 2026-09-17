@@ -73,6 +73,9 @@ impl Workspace {
                                     .on_click(cx.listener(|this, _, _, cx| this.toggle_changes_panel(cx))),
                             ),
                     )
+                    // Worktree chats get a diff-base picker — the file list
+                    // diffs the worktree against this ref's merge-base.
+                    .when(self.changes_scope().base.is_some(), |d| d.child(super::changes_base::base_row(self, cx)))
                     // `K files changed · +N −M` — the same rollup real Codex
                     // shows under the panel title; hidden on a clean tree.
                     .when_some(summary, |d, s| {
@@ -148,7 +151,9 @@ fn change_row(ix: usize, change: &FileChange, ws: &Workspace, cx: &mut Context<W
         .hover(|d| d.bg(cx.theme().muted))
         // The stage toggle only exists in a repo — `ws.git.branch` is the
         // same probe that gates the commit/push block below the list.
-        .when(ws.git.branch.is_some(), |d| {
+        // Worktree rows diff against a base commit, not the index, so
+        // staging is meaningless there.
+        .when(ws.git.branch.is_some() && ws.changes_scope().base.is_none(), |d| {
             d.child(
                 div()
                     .id(("stage-toggle", ix))
@@ -186,15 +191,16 @@ fn change_row(ix: usize, change: &FileChange, ws: &Workspace, cx: &mut Context<W
         })
         .on_click(cx.listener(move |this, _, _, cx| this.toggle_change_diff(ix, cx)))
         .context_menu({
+            let dir = ws.changes_scope().dir.clone();
             let ws = cx.entity();
-            let path = change.path.clone();
             let staged = change.staged;
             let change = change.clone();
             move |menu, window, cx| {
                 // The shared file menu first, then the Changes-only
                 // destructive item — explorer rows keep `file_menu` as-is.
-                let menu = crate::open_in::file_menu(&ws, &path, menu, window, cx)
-                    .item(crate::open_in::copy_diff_item(&ws, &path, staged));
+                let target = crate::open_in::FileTarget { dir: dir.clone(), rel: change.path.clone() };
+                let menu = crate::open_in::file_menu_at(&ws, &target, menu, window, cx)
+                    .item(crate::open_in::copy_diff_item(&ws, &change.path, staged));
                 let ws = ws.clone();
                 let change = change.clone();
                 menu.separator().item(PopupMenuItem::new("Discard Changes…").icon(IconName::Trash).on_click(

@@ -220,10 +220,30 @@ pub(crate) fn review_anchor(changes: &[FileChange], target: crate::model::Review
 /// side the button acts on: `apply --cached` for unstaged hunks,
 /// `apply --cached --reverse` for staged ones.
 pub(crate) fn diff_for_file(dir: &Path, change: &FileChange, ignore_ws: bool) -> Option<FileDiff> {
+    diff_for_file_at(dir, change, None, ignore_ws)
+}
+
+/// `diff_for_file` with an explicit base commit — the worktree diff-base
+/// mode. `git diff <base> -- <path>` covers the file's whole delta against
+/// the base (committed and uncommitted alike), so the `staged` split
+/// doesn't apply. Files untracked in the worktree still diff against
+/// /dev/null — a base diff can't see them.
+pub(crate) fn diff_for_file_at(dir: &Path, change: &FileChange, base: Option<&str>, ignore_ws: bool) -> Option<FileDiff> {
     let (raw, capped) = if change.status == ChangeStatus::Added && !tracked(dir, &change.path) {
         // Untracked files have no index entry — diff against /dev/null.
         let abs = dir.join(&change.path);
         git_diff(dir, &["diff", "--no-index", "--", "/dev/null", &abs.to_string_lossy()], MAX_DIFF_BYTES)?
+    } else if let Some(base) = base {
+        let mut args = vec!["diff"];
+        if ignore_ws {
+            args.push("--ignore-all-space");
+        }
+        args.push(base);
+        args.extend(["--", change.path.as_str()]);
+        if let Some(source) = &change.source {
+            args.push(source.as_str());
+        }
+        git_diff(dir, &args, MAX_DIFF_BYTES)?
     } else {
         git_diff(dir, &diff_args(change, ignore_ws), MAX_DIFF_BYTES)?
     };

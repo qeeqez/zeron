@@ -25,6 +25,9 @@ pub(crate) type DiffStamp = (u64, u64);
 /// a half-new snapshot.
 pub(crate) struct ChangesSnapshot {
     pub changes: Vec<FileChange>,
+    /// The scope `changes` was collected under — lands on the workspace so
+    /// row actions diff and resolve paths against the same base.
+    pub scope: crate::changes::base::ChangesScope,
     pub branch: Option<BranchStatus>,
     pub commits: Vec<Commit>,
     pub stashes: Vec<StashEntry>,
@@ -46,6 +49,9 @@ pub struct ChangesGit {
     /// Local branches for the picker's list — filled when the picker opens,
     /// empty until then.
     pub branches: Vec<Branch>,
+    /// Branches + tags for the worktree diff-base picker — filled when the
+    /// picker opens, empty until then.
+    pub diff_bases: Vec<crate::git::BaseRef>,
     /// Recent commits for the "Recent commits" section — refreshed alongside
     /// `branch` by `refresh_changes`, empty on unborn HEADs.
     pub commits: Vec<Commit>,
@@ -62,6 +68,9 @@ pub struct ChangesGit {
     /// Bumped per `refresh_branches` request; a stale list can't overwrite a
     /// newer one when two fetches land out of order.
     branches_generation: u64,
+    /// Bumped per `refresh_diff_bases` request — same stale-landing guard
+    /// as `branches_generation`.
+    bases_generation: u64,
     /// Commit message input — Enter commits, same as the button.
     pub commit_input: Entity<InputState>,
     /// Stash message input — Enter stashes, same as the button; an empty
@@ -131,11 +140,13 @@ impl ChangesGit {
         Self {
             branch: None,
             branches: Vec::new(),
+            diff_bases: Vec::new(),
             commits: Vec::new(),
             stashes: Vec::new(),
             conflicts: Vec::new(),
             pr: None,
             branches_generation: 0,
+            bases_generation: 0,
             commit_input,
             stash_input,
             new_branch_input,
@@ -156,95 +167,36 @@ impl ChangesGit {
 pub(crate) mod ops;
 pub(crate) use ops::GitOp;
 
+/// The panel's diff scope, the worktree diff-base picker ops, and per-row
+/// diff loads — split into `changes_base.rs` for the SLOC cap; re-exported
+/// so callers keep using `crate::changes::ChangesScope`.
+#[path = "changes_base.rs"]
+pub(crate) mod base;
+pub(crate) use base::ChangesScope;
+
+/// Branch header ops — split into `changes_branches.rs` for the SLOC cap.
+#[path = "changes_branches.rs"]
+pub(crate) mod branches;
+
 impl Workspace {
-    /// Expand/collapse a row's inline diff. Expanding stamps the row with a
-    /// load token and fetches the working-tree diff on the background
-    /// executor; collapsing drops the cached diff and clears the token so a
-    /// still-running load is discarded when it lands.
-    pub fn toggle_change_diff(&mut self, ix: usize, cx: &mut Context<Self>) {
-        if self.changes.get(ix).is_some_and(|c| c.diff.is_some() || c.diff_load != 0) {
-            let row = &mut self.changes[ix];
-            row.diff = None;
-            row.diff_load = 0;
-            cx.notify();
-            return;
-        }
-        self.start_diff_load(ix, cx);
-    }
-
-    /// Issue a background diff load for row `ix` under a fresh token — a
-    /// still-running older load can't attach once this lands, so toggling
-    /// `ignore_ws` mid-load can't be reverted by the stale result.
-    fn start_diff_load(&mut self, ix: usize, cx: &mut Context<Self>) {
-        let stamp: DiffStamp = (self.changes_generation, NEXT_DIFF_LOAD.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
-        let Some(row) = self.changes.get_mut(ix) else { return };
-        row.diff_load = stamp.1;
-        let change = row.clone();
-        let dir = self.project.root().to_path_buf();
-        let ignore_ws = self.git.ignore_ws;
-        cx.spawn(async move |this, cx| {
-            let diff = cx
-                .background_executor()
-                .spawn(async move { crate::changes_diff::diff_for_file(&dir, &change, ignore_ws) })
-                .await;
-            let _ = this.update(cx, |this, cx| this.land_change_diff(stamp, diff, cx));
-        })
-        .detach();
-    }
-
-    /// Flip the ignore-whitespace diff filter, persist it, and re-issue the
-    /// load for every expanded (or still-loading) row so the new flag takes
-    /// effect without a collapse+re-expand.
-    pub fn toggle_diff_ignore_ws(&mut self, cx: &mut Context<Self>) {
-        self.git.ignore_ws = !self.git.ignore_ws;
-        self.save_settings();
-        for ix in 0..self.changes.len() {
-            if self.changes[ix].diff.is_some() || self.changes[ix].diff_load != 0 {
-                self.start_diff_load(ix, cx);
-            }
-        }
-        cx.notify();
-    }
-
-    /// Store a loaded diff on the row stamped with the stamp's token —
-    /// skipped when the list generation moved on (a refresh landed or is in
-    /// flight) or no row still waits on that token (collapsed or re-expanded
-    /// under the load). The token is unique per load, so it identifies the row.
-    pub(crate) fn land_change_diff(&mut self, stamp: DiffStamp, diff: Option<crate::changes_diff::FileDiff>, cx: &mut Context<Self>) {
-        if stamp.0 != self.changes_generation {
-            return;
-        }
-        let Some(row) = self.changes.iter_mut().find(|r| r.diff_load == stamp.1) else { return };
-        row.diff_load = 0;
-        row.diff = diff;
-        self.prune_review_comments(cx);
-        cx.notify();
-    }
-
     /// Re-run git collection for the Changes panel: the file list plus the
-    /// branch header and recent commits. Collection shells out to several git
-    /// processes and reads untracked files, so it runs on the background
-    /// executor and publishes the result back when done.
+    /// branch header and recent commits. A worktree chat's list diffs its
+    /// checkout against the resolved diff base (`crate::worktree::diff`);
+    /// anything else shows `dir`'s working tree vs its own HEAD. Collection
+    /// shells out to several git processes and reads untracked files, so it
+    /// runs on the background executor and publishes the result back.
     pub fn refresh_changes(&mut self, cx: &mut Context<Self>) {
         self.changes_generation += 1;
         let generation = self.changes_generation;
         let root = self.project.root().to_path_buf();
+        let chat = &self.chats[self.active];
+        let worktree = chat.worktree;
+        let dir = if worktree { crate::worktree::workdir_for(chat, &root) } else { root.clone() };
+        let picked = chat.diff_base.clone();
         cx.spawn(async move |this, cx| {
             let snapshot = cx
                 .background_executor()
-                .spawn(async move {
-                    let branch = crate::git::branch_status(&root);
-                    ChangesSnapshot {
-                        changes: crate::git::collect(&root),
-                        // `gh pr view` only makes sense in a repo — skip the
-                        // spawn entirely when there's no branch.
-                        pr: branch.as_ref().and_then(|_| crate::git::pr_status(&root, &[])),
-                        branch,
-                        commits: crate::git::log(&root, 20),
-                        stashes: crate::git::stash_list(&root),
-                        conflicts: crate::changes_conflicts::conflicted_files(&root),
-                    }
-                })
+                .spawn(async move { collect_snapshot(&root, &dir, worktree, picked.as_deref()) })
                 .await;
             let _ = this.update(cx, |this, cx| this.land_changes(generation, snapshot, cx));
         })
@@ -259,6 +211,7 @@ impl Workspace {
             return;
         }
         self.changes = snapshot.changes;
+        self.changes_scope = snapshot.scope;
         self.git.branch = snapshot.branch;
         self.git.commits = snapshot.commits;
         self.git.stashes = snapshot.stashes;
@@ -350,6 +303,30 @@ impl Workspace {
         self.run_git_op(GitOp::CreateBranch(name), cx);
     }
 }
+
+/// One `refresh_changes` collection, run on the background executor: the
+/// file list under `dir` (a worktree chat's rows diff against the resolved
+/// base via `crate::worktree::diff`), plus the project-root git state the
+/// header and action block read.
+fn collect_snapshot(root: &std::path::Path, dir: &std::path::Path, worktree: bool, picked: Option<&str>) -> ChangesSnapshot {
+    let base = worktree.then(|| crate::worktree::diff::resolve_diff_base(root, dir, picked)).flatten();
+    let changes = match &base {
+        Some(b) => crate::worktree::diff::worktree_changes(dir, &b.commit).unwrap_or_else(|_| crate::git::collect(dir)),
+        None => crate::git::collect(dir),
+    };
+    let branch = crate::git::branch_status(root);
+    ChangesSnapshot {
+        changes,
+        scope: crate::changes::base::ChangesScope { dir: dir.to_path_buf(), base },
+        // `gh pr view` only makes sense in a repo — skip the spawn entirely
+        // when there's no branch.
+        pr: branch.as_ref().and_then(|_| crate::git::pr_status(root, &[])),
+        branch,
+        commits: crate::git::log(root, 20),
+        stashes: crate::git::stash_list(root),
+        conflicts: crate::changes_conflicts::conflicted_files(root),
+    }
+}
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
 #[path = "changes_amend_tests.rs"]
@@ -360,6 +337,9 @@ mod changes_branch_tests;
 #[cfg(test)]
 #[path = "changes_copy_tests.rs"]
 mod changes_copy_tests;
+#[cfg(test)]
+#[path = "changes_diff_base_tests.rs"]
+mod changes_diff_base_tests;
 #[cfg(test)]
 #[path = "changes_discard_tests.rs"]
 mod changes_discard_tests;
@@ -372,3 +352,4 @@ mod changes_tests;
 #[cfg(test)]
 #[path = "diff_ignore_ws_tests.rs"]
 mod diff_ignore_ws_tests;
+// trivial

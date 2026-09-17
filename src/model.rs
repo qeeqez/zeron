@@ -293,6 +293,10 @@ pub struct Chat {
     /// `workdir` is a git worktree owned by this thread — removed when the
     /// chat is deleted.
     pub worktree: bool,
+    /// The ref a worktree chat's Changes panel diffs against — `None`
+    /// follows the default (the merge-base of the worktree's HEAD and the
+    /// project's HEAD). Persisted; a deleted ref falls back to the default.
+    pub diff_base: Option<String>,
     /// Temporary chat — never written to disk (`persist::save_chats` skips
     /// it) and gone when the chat closes or the app exits. Runtime-only:
     /// nothing ephemeral ever reaches `StoredChat`.
@@ -370,6 +374,7 @@ impl Chat {
             effort: None,
             workdir: String::new(),
             worktree: false,
+            diff_base: None,
             ephemeral: false,
             thread_id: String::new(),
             usage: crate::usage::ChatUsage::default(),

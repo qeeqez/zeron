@@ -169,6 +169,25 @@ pub(crate) fn list_branches(dir: &std::path::Path) -> Vec<Branch> {
     crate::git_parse::parse_branches(&out)
 }
 
+/// One ref a worktree chat's diff base can be pinned to — a local branch or
+/// a tag.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BaseRef {
+    pub name: String,
+    /// `true` for tags — the picker renders them with the tag icon.
+    pub tag: bool,
+}
+
+/// Every local ref the diff-base picker offers: branches first, then tags.
+/// Empty on non-repo dirs.
+pub(crate) fn list_diff_bases(dir: &std::path::Path) -> Vec<BaseRef> {
+    let mut refs: Vec<BaseRef> = list_branches(dir).into_iter().map(|b| BaseRef { name: b.name, tag: false }).collect();
+    if let Some(tags) = git(dir, &["tag", "--list"]) {
+        refs.extend(tags.lines().filter(|t| !t.is_empty()).map(|t| BaseRef { name: t.to_string(), tag: true }));
+    }
+    refs
+}
+
 /// `git checkout <name>` — switch branches. Git refuses when local edits
 /// would be overwritten; that stderr is the error the panel surfaces.
 pub(crate) fn checkout(dir: &std::path::Path, name: &str) -> Result<String, String> {
@@ -334,13 +353,13 @@ pub(crate) use pr::{CheckVerdict, PrChecks, PrState, PrStatus, create_pr, pr_sta
 #[path = "git_file_diff.rs"]
 pub(crate) mod file_diff;
 pub(crate) use file_diff::hunks::{git_stdin, stage_hunk, unstage_hunk};
-pub(crate) use file_diff::{file_diff, git_diff, tracked};
+pub(crate) use file_diff::{file_diff, file_diff_at, git_diff, tracked};
 
 /// Per-file "Discard changes" — split into `git_discard.rs` for the SLOC
 /// cap; re-exported so callers keep using `crate::git::discard_file`.
 #[path = "git_discard.rs"]
 pub(crate) mod discard;
-pub(crate) use discard::discard_file;
+pub(crate) use discard::discard_file_at;
 
 /// Stash list + push/pop/apply/drop — split into `git_stash.rs` for the SLOC
 /// cap; re-exported so callers keep using `crate::git::stash_list` etc.

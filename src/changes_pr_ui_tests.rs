@@ -152,6 +152,7 @@ fn landed_snapshot_publishes_the_pr() {
                 this.changes_generation,
                 crate::changes::ChangesSnapshot {
                     changes: vec![],
+                    scope: crate::changes::ChangesScope::default(),
                     branch: Some(branch()),
                     commits: vec![],
                     stashes: vec![],

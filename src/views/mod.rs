@@ -6,6 +6,7 @@ mod bookmarks_panel;
 pub(crate) mod budget;
 pub(crate) mod cards;
 mod changes;
+mod changes_base;
 mod changes_commits;
 mod changes_conflicts;
 mod changes_git;

@@ -18,10 +18,21 @@ pub(crate) fn tracked(dir: &Path, path: &str) -> bool {
 /// from the worktree bytes. `Err` when git fails, the file can't be read,
 /// or there's no diff to copy.
 pub(crate) fn file_diff(dir: &Path, path: &str, staged: bool) -> Result<String, String> {
+    file_diff_at(dir, path, staged, None)
+}
+
+/// `file_diff` with an explicit base commit — the worktree diff-base mode:
+/// `git diff <base> -- <path>` covers the whole delta, so `staged` is
+/// ignored. Untracked files still get the synthesized new-file patch.
+pub(crate) fn file_diff_at(dir: &Path, path: &str, staged: bool, base: Option<&str>) -> Result<String, String> {
     if !tracked(dir, path) {
         return new_file_diff(dir, path);
     }
-    let args: &[&str] = if staged { &["diff", "--cached", "--", path] } else { &["diff", "--", path] };
+    let args: &[&str] = match base {
+        Some(base) => &["diff", base, "--", path],
+        None if staged => &["diff", "--cached", "--", path],
+        None => &["diff", "--", path],
+    };
     match super::git_env(dir, args, &[])? {
         diff if diff.is_empty() => Err(format!("no changes in {path}")),
         diff => Ok(diff),

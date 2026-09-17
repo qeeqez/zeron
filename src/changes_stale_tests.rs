@@ -25,6 +25,7 @@ fn stale_refresh_result_is_discarded() {
                 stale_gen,
                 crate::changes::ChangesSnapshot {
                     changes: vec![change("stale.rs", ChangeStatus::Added, 5, 0)],
+                    scope: crate::changes::ChangesScope::default(),
                     branch: None,
                     commits: vec![],
                     stashes: vec![],
@@ -38,6 +39,7 @@ fn stale_refresh_result_is_discarded() {
                 this.changes_generation,
                 crate::changes::ChangesSnapshot {
                     changes: vec![change("fresh.rs", ChangeStatus::Added, 5, 0)],
+                    scope: crate::changes::ChangesScope::default(),
                     branch: None,
                     commits: vec![],
                     stashes: vec![],
