@@ -12,6 +12,7 @@ use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, ElementId, Entity, TestAppContext, VisualTestContext};
 
 use crate::backend::{AccessMode, ApprovalDecision};
+use crate::dock_badge;
 use crate::model::{MessageKind, ToolStatus};
 use crate::run_cmd::{CommandOutput, CommandRunner, set_command_runner, shell_for};
 use crate::workspace::Workspace;
@@ -170,6 +171,24 @@ fn nonzero_exit_marks_card_failed() {
     assert_eq!(status, ToolStatus::Failed);
     assert!(output.contains("boom"), "output: {output:?}");
     assert!(output.contains("[exit 3]"), "output: {output:?}");
+}
+
+#[test]
+fn background_run_marks_chat_unread_and_badges_dock() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    FakeRunner::install(CommandOutput {
+        stdout: "done\n".into(),
+        stderr: String::new(),
+        code: Some(0),
+    });
+    cx.update(|_, cx| ws.update(cx, |this, cx| this.run_command_block("echo hi".to_string(), "sh", cx)));
+    // Switch away before the run lands — a finished run on a background
+    // chat flags it unread, and the dock badge mirrors that count.
+    cx.update(|_, cx| ws.update(cx, |this, cx| this.new_chat(cx)));
+    until(&ws, cx, |ws| ws.chats[0].unread);
+    cx.run_until_parked();
+    assert_eq!(dock_badge::last_badge(), Some(1), "a background run's unread chat badges the dock");
 }
 
 #[test]

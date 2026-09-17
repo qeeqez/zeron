@@ -222,6 +222,7 @@ impl Workspace {
         } else {
             chat.unread = true;
         }
+        crate::dock_badge::update(cx);
         cx.notify();
         self.save();
     }
