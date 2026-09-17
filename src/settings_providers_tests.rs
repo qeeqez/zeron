@@ -4,6 +4,8 @@
 //! ordering, and the connection-field → `configure_provider` wiring.
 
 mod env_tests;
+#[path = "provider_health_tests.rs"]
+mod provider_health_tests;
 #[path = "provider_test_tests.rs"]
 mod provider_test_tests;
 

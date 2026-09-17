@@ -38,6 +38,11 @@ pub struct SettingsPanel {
     /// Per-instance "Test connection" probe outcomes, keyed by instance id
     /// — runtime only, never persisted.
     pub(crate) test_state: HashMap<String, crate::views::settings_provider_test::TestState>,
+    /// Per-instance health probe results (status dot + reason), keyed by
+    /// instance id — runtime only, never persisted.
+    pub(crate) provider_health: HashMap<String, crate::providers::provider_detect::ProviderHealth>,
+    /// A health pass is in flight on the background executor.
+    pub(crate) health_pending: bool,
     /// In-flight "Add provider" wizard state — `None` when closed.
     pub(crate) provider_wizard: Option<ProviderWizard>,
     /// Interface font family picker — `SearchableVec<String>` delegate over
@@ -184,6 +189,8 @@ impl SettingsPanel {
             provider_env_inputs: HashMap::new(),
             provider_selection,
             test_state: HashMap::new(),
+            provider_health: HashMap::new(),
+            health_pending: false,
             provider_wizard: None,
             font_select,
             code_font_select,
@@ -213,6 +220,14 @@ impl Render for SettingsPanel {
         // Reconcile per-instance inputs + selection before the view snapshot.
         self.sync_provider_inputs(window, cx);
         self.sync_provider_env_inputs(window, cx);
+        // Providers section: kick a health pass when any instance lacks a
+        // result — first open, or an instance added while it's showing.
+        // Scoped before the `s` borrow: `refresh_provider_health` needs cx.
+        let needs_health_probe = self.section == Section::Providers
+            && ws.read(cx).provider_instances().iter().any(|p| !self.provider_health.contains_key(&p.id));
+        if needs_health_probe {
+            self.refresh_provider_health(cx);
+        }
         let s = ws.read(cx);
         let view = crate::views::settings_sections::SettingsView::snapshot(self, &ws, cx);
         let theme = cx.theme();

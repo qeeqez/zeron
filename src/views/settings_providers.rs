@@ -143,6 +143,7 @@ pub fn providers_section(s: &SettingsView, cx: &App) -> impl IntoElement {
                 .items_center()
                 .child(group_label("Model providers", &s.search, cx))
                 .child(div().flex_1())
+                .child(crate::views::settings_provider_health::refresh_button(s))
                 .child(Button::new("provider-add").label("Add provider").icon(IconName::Plus).small().outline().on_click({
                     let panel = s.panel.clone();
                     move |_, window, cx| panel.update(cx, |this, cx| this.open_provider_wizard(window, cx))
@@ -225,6 +226,7 @@ fn instance_row(p: &ProviderInstance, s: &SettingsView, cx: &App) -> impl IntoEl
         .rounded_md()
         .when(selected, |d| d.bg(cx.theme().accent.opacity(0.15)))
         .child(div().text_color(cx.theme().muted_foreground).child(p.kind.info().icon))
+        .child(crate::views::settings_provider_health::health_dot(p, s, cx))
         .child(
             div()
                 .flex()

@@ -49,6 +49,10 @@ pub struct SettingsView {
     pub provider_selection: Option<String>,
     /// Per-instance "Test connection" probe outcomes, keyed by instance id.
     pub test_state: HashMap<String, crate::views::settings_provider_test::TestState>,
+    /// Per-instance health probe results (status dot + reason).
+    pub provider_health: HashMap<String, crate::providers::provider_detect::ProviderHealth>,
+    /// A health pass is in flight.
+    pub health_pending: bool,
     pub access: AccessMode,
     pub font_select: Entity<SelectState<SearchableVec<String>>>,
     pub code_font_select: Entity<SelectState<SearchableVec<String>>>,
@@ -145,6 +149,8 @@ impl SettingsView {
             provider_env_inputs: panel.provider_env_inputs.clone(),
             provider_selection: panel.provider_selection.clone(),
             test_state: panel.test_state.clone(),
+            provider_health: panel.provider_health.clone(),
+            health_pending: panel.health_pending,
             font_select: panel.font_select.clone(),
             code_font_select: panel.code_font_select.clone(),
             contrast_slider: panel.contrast_slider.clone(),

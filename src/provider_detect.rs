@@ -19,10 +19,85 @@ use crate::workspace::Workspace;
 /// The environment probe behind detection — a `which`-style PATH check
 /// plus a TCP reachability check for daemon kinds.
 pub(crate) trait ProviderProbe: Send + Sync {
+    /// The resolved path when `bin` is an executable file on PATH.
+    fn cli_path(&self, bin: &str) -> Option<String>;
     /// `true` when `bin` resolves to an executable file on PATH.
-    fn on_path(&self, bin: &str) -> bool;
+    fn on_path(&self, bin: &str) -> bool {
+        self.cli_path(bin).is_some()
+    }
     /// `true` when a TCP connect to `port` on localhost succeeds.
     fn daemon_up(&self, port: u16) -> bool;
+}
+
+/// One instance's health: a three-level status plus the one-line reason
+/// the detail panel shows ("claude found at /usr/local/bin/claude").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProviderHealth {
+    pub level: HealthLevel,
+    pub reason: String,
+}
+
+/// The status-dot level: green ready, amber degraded (cli present but not
+/// authed / daemon down), gray not installed or not configured.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HealthLevel {
+    Ready,
+    Degraded,
+    Missing,
+}
+
+impl HealthLevel {
+    /// Element-id suffix for the row's dot — tests assert the level.
+    pub(crate) fn slug(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Degraded => "degraded",
+            Self::Missing => "missing",
+        }
+    }
+}
+
+impl ProviderHealth {
+    fn at(level: HealthLevel, reason: String) -> Self {
+        Self { level, reason }
+    }
+}
+
+/// Map one instance's probe answers to a health status. Pure over the
+/// probe — call it on the background executor. `signed_out` is captured
+/// on the UI thread (auth state lives on entities the probe can't read).
+pub(crate) fn probe_health(p: &crate::providers::ProviderInstance, signed_out: bool, probe: &dyn ProviderProbe) -> ProviderHealth {
+    let info = p.kind.info();
+    if let Some(bin) = info.cli {
+        return match probe.cli_path(bin) {
+            Some(path) if signed_out => ProviderHealth::at(HealthLevel::Degraded, format!("{bin} found at {path} — not signed in")),
+            Some(path) => match info.daemon {
+                Some(port) if !probe.daemon_up(port) => {
+                    ProviderHealth::at(HealthLevel::Degraded, format!("{bin} not listening on :{port}"))
+                },
+                _ => ProviderHealth::at(HealthLevel::Ready, format!("{bin} found at {path}")),
+            },
+            None => match info.daemon {
+                Some(port) if probe.daemon_up(port) => ProviderHealth::at(HealthLevel::Ready, format!("{bin} daemon listening on :{port}")),
+                Some(port) => ProviderHealth::at(HealthLevel::Missing, format!("{bin} not on PATH and not listening on :{port}")),
+                None => ProviderHealth::at(HealthLevel::Missing, format!("{bin} not found on PATH")),
+            },
+        };
+    }
+    if let Some(port) = info.daemon {
+        return match probe.daemon_up(port) {
+            true => ProviderHealth::at(HealthLevel::Ready, format!("daemon listening on :{port}")),
+            false => ProviderHealth::at(HealthLevel::Missing, format!("daemon not listening on :{port}")),
+        };
+    }
+    if matches!(p.kind, ProviderKind::Sim) {
+        return ProviderHealth::at(HealthLevel::Ready, "built in — always ready".to_string());
+    }
+    // http/mcp/acp: nothing installable — configured-or-not is the status.
+    match p.command.trim().is_empty() {
+        false => ProviderHealth::at(HealthLevel::Ready, format!("configured: {}", p.command)),
+        true => ProviderHealth::at(HealthLevel::Missing, "not configured".to_string()),
+    }
 }
 
 /// The real probe: PATH walk + a short `connect_timeout` to localhost.
@@ -31,13 +106,13 @@ struct SystemProbe;
 
 #[cfg(not(test))]
 impl ProviderProbe for SystemProbe {
-    fn on_path(&self, bin: &str) -> bool {
+    fn cli_path(&self, bin: &str) -> Option<String> {
         use std::os::unix::fs::PermissionsExt;
-        std::env::var_os("PATH").is_some_and(|path| {
-            std::env::split_paths(&path).any(|dir| {
-                let candidate = dir.join(bin);
-                candidate.is_file() && candidate.metadata().is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
-            })
+        std::env::var_os("PATH").and_then(|path| {
+            std::env::split_paths(&path)
+                .map(|dir| dir.join(bin))
+                .find(|candidate| candidate.is_file() && candidate.metadata().is_ok_and(|m| m.permissions().mode() & 0o111 != 0))
+                .map(|candidate| candidate.display().to_string())
         })
     }
 
@@ -54,8 +129,8 @@ struct NullProbe;
 
 #[cfg(test)]
 impl ProviderProbe for NullProbe {
-    fn on_path(&self, _bin: &str) -> bool {
-        false
+    fn cli_path(&self, _bin: &str) -> Option<String> {
+        None
     }
 
     fn daemon_up(&self, _port: u16) -> bool {
@@ -89,6 +164,17 @@ pub(crate) fn set_probe(probe: Arc<dyn ProviderProbe>) {
 pub(crate) fn scan_providers() -> Vec<ProviderKind> {
     let probe = PROBE.read().clone();
     ProviderKind::ALL.into_iter().filter(|k| k.detected_by(&*probe)).collect()
+}
+
+/// One health pass over `(instance, signed_out)` pairs — the auth flag is
+/// captured on the UI thread before the spawn. Pure over the installed
+/// probe — call it on the background executor.
+pub(crate) fn scan_health(targets: &[(crate::providers::ProviderInstance, bool)]) -> Vec<(String, ProviderHealth)> {
+    let probe = PROBE.read().clone();
+    targets
+        .iter()
+        .map(|(p, signed_out)| (p.id.clone(), probe_health(p, *signed_out, &*probe)))
+        .collect()
 }
 
 impl Workspace {

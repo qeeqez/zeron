@@ -99,6 +99,13 @@ impl Workspace {
     /// nav rail + content pane, owned by `SettingsPanel`.
     pub fn open_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.settings_open = true;
+        // Kick a provider-health pass so the Providers section's dots are
+        // fresh — deferred: the panel can't read the workspace while this
+        // update borrow is held.
+        let panel = self.settings_panel.downgrade();
+        cx.defer(move |cx| {
+            let _ = panel.update(cx, |panel, cx| panel.refresh_provider_health(cx));
+        });
         cx.notify();
     }
 

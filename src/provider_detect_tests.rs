@@ -40,10 +40,9 @@ struct FakeProbe {
 }
 
 impl ProviderProbe for FakeProbe {
-    fn on_path(&self, bin: &str) -> bool {
-        self.bins.contains(&bin)
+    fn cli_path(&self, bin: &str) -> Option<String> {
+        self.bins.contains(&bin).then(|| format!("/fake/bin/{bin}"))
     }
-
     fn daemon_up(&self, port: u16) -> bool {
         self.ports.contains(&port)
     }

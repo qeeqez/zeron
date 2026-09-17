@@ -92,6 +92,7 @@ pub mod settings_project;
 mod settings_project_tests;
 pub mod settings_provider_detail;
 pub mod settings_provider_env;
+pub mod settings_provider_health;
 pub mod settings_provider_test;
 pub mod settings_provider_wizard;
 mod settings_provider_wizard_steps;

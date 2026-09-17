@@ -58,6 +58,7 @@ pub(crate) fn detail_panel(p: Option<&ProviderInstance>, s: &SettingsView, cx: &
                     ws_rm.update(cx, |this, cx| this.remove_provider(&id_rm, cx));
                 })),
         )
+        .child(crate::views::settings_provider_health::health_line(p, s, cx))
         .when_some(inputs.clone(), |d, inputs| {
             d.child(s.search.wrap(
                 "Display name",
