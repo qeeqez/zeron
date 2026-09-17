@@ -137,6 +137,35 @@ fn trusted_list_persists_and_canonicalizes() {
     assert_eq!(crate::persist::load_settings().trusted_folders.len(), 1);
 }
 
+/// Click `button` inside the trust dialog until the dialog closes — the
+/// dialog animates in over ~250ms of wall-clock time, so a click that
+/// lands mid-slide misses; the dialog's absence is the success signal.
+/// Waits for the dialog to appear first so a not-yet-mounted dialog
+/// doesn't read as "closed".
+fn click_dialog_button_until_closed(button: &'static str, cx: &mut VisualTestContext) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut seen = false;
+    loop {
+        let done = cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            if window.try_find("trust-dialog").is_none() {
+                return seen;
+            }
+            seen = true;
+            if window.find(button).visible() {
+                window.click(button, cx);
+            }
+            false
+        });
+        cx.run_until_parked();
+        if done {
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "{button} click never closed the trust dialog");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
 #[test]
 fn untrusted_open_shows_trust_dialog() {
     let mut app = TestAppContext::single();
@@ -160,8 +189,8 @@ fn untrusted_open_shows_trust_dialog() {
         assert_eq!(this.access, AccessMode::Supervised);
     });
     // "Trust" persists the folder, lifts the restriction and closes.
+    click_dialog_button_until_closed("trust-folder", &mut cx);
     cx.update(|window, cx| {
-        window.click("trust-folder", cx);
         window.draw(cx).clear(cx);
         assert!(window.try_find("trust-dialog").is_none(), "dialog should close on Trust");
         assert!(window.try_find("trust-banner").is_none(), "banner clears once trusted");
@@ -179,9 +208,8 @@ fn dont_trust_button_keeps_restricted_with_banner() {
     let handle = open_project_window(&mut app, &dir);
     let ws = workspace_of(&app, handle);
     let mut cx = VisualTestContext::from_window(handle, &app);
+    click_dialog_button_until_closed("dont-trust-folder", &mut cx);
     cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        window.click("dont-trust-folder", cx);
         window.draw(cx).clear(cx);
         assert!(window.try_find("trust-dialog").is_none(), "dialog should close");
         // The banner stays as the persistent notice + trust-later path.
