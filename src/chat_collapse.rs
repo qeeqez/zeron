@@ -142,7 +142,7 @@ pub(crate) fn collapse_wrap(mc: MsgCtx, body: AnyElement, state: Collapse, ws: &
             .child(collapse_bar(mc, "Show less", IconName::ChevronUp, ws, cx))
             .into_any_element(),
         Collapse::Collapsed => {
-            let clip = px(f32::from(ws.read(cx).font_size) * LINE_HEIGHT * COLLAPSE_LINES as f32);
+            let clip = px(ws.read(cx).font_size * LINE_HEIGHT * COLLAPSE_LINES as f32);
             // The fade ends on the color behind the text: the accent bubble
             // for a user message, the chat surface for an assistant reply.
             let surface = if mc.msg.role == Role::User { cx.theme().accent } else { cx.theme().background };

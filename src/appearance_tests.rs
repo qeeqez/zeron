@@ -83,7 +83,7 @@ fn code_font_and_size_apply_and_persist() {
     });
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
-        assert_eq!(ws.read(cx).code_font_size, 14);
+        assert_eq!(ws.read(cx).code_font_size, 14.);
         assert_eq!(f32::from(cx.global::<Theme>().mono_font_size), 14.);
 
         window.click("code-font-select-dec", cx);
@@ -91,8 +91,8 @@ fn code_font_and_size_apply_and_persist() {
     });
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
-        assert_eq!(ws.read(cx).code_font_size, 12);
-        assert_eq!(crate::persist::load_settings().code_font_size, 12);
+        assert_eq!(ws.read(cx).code_font_size, 12.);
+        assert_eq!(crate::persist::load_settings().code_font_size, 12.);
     });
 }
 
@@ -111,14 +111,15 @@ fn interface_font_and_size_apply_and_persist() {
         assert_eq!(cx.global::<Theme>().font_family.as_ref(), "Test Sans");
         assert_eq!(crate::persist::load_settings().font_family, "Test Sans");
 
-        // Interface size drives theme.font_size (the rem base) too.
+        // Interface size steps in half-points and drives theme.font_size
+        // (the rem base) too.
         window.click("font-select-inc", cx);
     });
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
-        assert_eq!(ws.read(cx).font_size, 15);
-        assert_eq!(f32::from(cx.global::<Theme>().font_size), 15.);
-        assert_eq!(crate::persist::load_settings().font_size, 15);
+        assert_eq!(ws.read(cx).font_size, 14.5);
+        assert_eq!(f32::from(cx.global::<Theme>().font_size), 14.5);
+        assert_eq!(crate::persist::load_settings().font_size, 14.5);
     });
     // Clearing the picker (Confirm(None)) restores the system default.
     cx.update(|_window, cx| {

@@ -183,18 +183,18 @@ pub(crate) fn workspace_actions(root: Div, window: &Window, cx: &mut Context<Wor
         }
     })
     // Text zoom: Cmd-=/Cmd-+ grow, Cmd-- shrinks, Cmd-0 resets the
-    // interface font size (the rem base) — persisted like the
-    // Appearance settings stepper.
+    // interface font size (the rem base) in half-px steps — persisted like
+    // the Appearance settings stepper.
     .on_action({
         let ws = cx.entity();
         move |_: &ZoomIn, window, cx| {
-            ws.update(cx, |this, cx| this.zoom_font(1, window, cx));
+            ws.update(cx, |this, cx| this.zoom_font(crate::appearance::FONT_SIZE_STEP, window, cx));
         }
     })
     .on_action({
         let ws = cx.entity();
         move |_: &ZoomOut, window, cx| {
-            ws.update(cx, |this, cx| this.zoom_font(-1, window, cx));
+            ws.update(cx, |this, cx| this.zoom_font(-crate::appearance::FONT_SIZE_STEP, window, cx));
         }
     })
     .on_action({

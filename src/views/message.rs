@@ -136,7 +136,7 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
             .test_support()
             .px_4()
             .py_2()
-            .text_size(px(f32::from(font_size)))
+            .text_size(px(font_size))
             // Codex: user text sits in a tinted bubble; assistant replies are
             // flat Markdown on the chat surface — no bubble.
             .when(role == Role::User, |d| {

@@ -117,11 +117,13 @@ fn font_row(s: &SettingsView, code: bool) -> AnyElement {
 /// −/+ stepper around the current size; writes the role's font size, persists
 /// and re-applies the theme so the change shows immediately. The size label
 /// carries an id + aria-label so headless tests see zoom-shortcut changes.
-fn size_stepper(id: &'static str, size: u8, ws: Entity<Workspace>, code: bool) -> impl IntoElement {
-    let step = move |delta: i16, window: &mut Window, cx: &mut App| {
+/// Interface text steps in half-points; code in whole px.
+fn size_stepper(id: &'static str, size: f32, ws: Entity<Workspace>, code: bool) -> impl IntoElement {
+    use crate::appearance::FONT_SIZE_STEP;
+    let step = move |sign: f32, window: &mut Window, cx: &mut App| {
         ws.update(cx, |this, cx| {
-            let cur = if code { this.code_font_size } else { this.font_size };
-            this.set_font_size(i16::from(cur) + delta, code, window, cx);
+            let (cur, inc) = if code { (this.code_font_size, 1.) } else { (this.font_size, FONT_SIZE_STEP) };
+            this.set_font_size(cur + sign * inc, code, window, cx);
         });
     };
     let dec = step.clone();
@@ -136,7 +138,7 @@ fn size_stepper(id: &'static str, size: u8, ws: Entity<Workspace>, code: bool) -
                 .test_support()
                 .cursor_pointer()
                 .child(IconName::Minus)
-                .on_click(move |_, window, cx| dec(-1, window, cx)),
+                .on_click(move |_, window, cx| dec(-1., window, cx)),
         )
         .child(
             div()
@@ -151,7 +153,7 @@ fn size_stepper(id: &'static str, size: u8, ws: Entity<Workspace>, code: bool) -
                 .test_support()
                 .cursor_pointer()
                 .child(IconName::Plus)
-                .on_click(move |_, window, cx| step(1, window, cx)),
+                .on_click(move |_, window, cx| step(1., window, cx)),
         )
 }
 

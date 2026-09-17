@@ -265,12 +265,15 @@ pub struct Workspace {
     pub word_wrap: bool,
     /// Preferred editor for "Open in Editor" — `Settings.preferred_editor`.
     pub preferred_editor: crate::open_in::PreferredEditor,
-    pub font_size: u8,
+    /// Interface font size in px — the rem base, so chat text and rem-sized
+    /// UI scale with it. Half-px steps, clamped to [10, 20].
+    pub font_size: f32,
     /// Interface font family; empty = system default.
     pub font_family: String,
     /// Code font family; empty = theme default mono.
     pub code_font_family: String,
-    pub code_font_size: u8,
+    /// Code (mono) font size in px — drives `Theme::mono_font_size`.
+    pub code_font_size: f32,
     /// Chrome contrast percentage, clamped to [50, 200].
     pub contrast: u16,
     /// Sidebar translucency over the blurred window background.

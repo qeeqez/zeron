@@ -8,7 +8,7 @@ use gpui_kit::test::TestWindowExt;
 use gpui_kit::{Entity, TestAppContext, VisualTestContext};
 
 use crate::appearance::{FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN};
-use crate::composer_testutil::open_workspace;
+use crate::composer_testutil::{open_workspace, type_and_send, use_sim};
 use crate::workspace::Workspace;
 
 /// Mount a `Workspace` with the real workspace keymap bound, so
@@ -24,21 +24,22 @@ fn zoom_shortcuts_step_clamp_and_persist() {
     let (ws, cx) = mount(&mut app);
     assert_eq!(ws.read_with(cx, |ws, _| ws.font_size), FONT_SIZE_DEFAULT);
 
-    // Cmd-= and Cmd-+ (Cmd-Shift-= on US layouts) both zoom in.
+    // Cmd-= and Cmd-+ (Cmd-Shift-= on US layouts) both zoom in, half a px
+    // per press.
     cx.update(|window, cx| {
         window.press("cmd-=", cx);
         window.press("cmd-shift-=->+", cx);
     });
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
-        assert_eq!(ws.read(cx).font_size, FONT_SIZE_DEFAULT + 2);
-        assert_eq!(f32::from(cx.global::<Theme>().font_size), f32::from(FONT_SIZE_DEFAULT + 2));
-        assert_eq!(crate::persist::load_settings().font_size, FONT_SIZE_DEFAULT + 2);
+        assert_eq!(ws.read(cx).font_size, FONT_SIZE_DEFAULT + 1.);
+        assert_eq!(f32::from(cx.global::<Theme>().font_size), FONT_SIZE_DEFAULT + 1.);
+        assert_eq!(crate::persist::load_settings().font_size, FONT_SIZE_DEFAULT + 1.);
     });
 
     // Cmd-- steps back down.
     cx.update(|window, cx| window.press("cmd--", cx));
-    cx.update(|_, cx| assert_eq!(ws.read(cx).font_size, FONT_SIZE_DEFAULT + 1));
+    cx.update(|_, cx| assert_eq!(ws.read(cx).font_size, FONT_SIZE_DEFAULT + 0.5));
 
     // Clamps at the max instead of wrapping or growing past it.
     cx.update(|_, cx| ws.update(cx, |ws, _| ws.font_size = FONT_SIZE_MAX));
@@ -61,10 +62,10 @@ fn zoom_shortcuts_step_clamp_and_persist() {
 fn zoom_actions_dispatch_and_reset_restores_default() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
-    cx.update(|_, cx| ws.update(cx, |ws, _| ws.font_size = 18));
+    cx.update(|_, cx| ws.update(cx, |ws, _| ws.font_size = 18.));
     cx.update(|window, cx| window.dispatch_action(Box::new(crate::ZoomIn), cx));
     cx.run_until_parked();
-    cx.update(|_, cx| assert_eq!(ws.read(cx).font_size, 19, "ZoomIn should grow font_size by the step"));
+    cx.update(|_, cx| assert_eq!(ws.read(cx).font_size, 18.5, "ZoomIn should grow font_size by the half-px step"));
     cx.update(|window, cx| window.dispatch_action(Box::new(crate::ZoomReset), cx));
     cx.run_until_parked();
     cx.update(|_, cx| {
@@ -90,15 +91,35 @@ fn appearance_stepper_reflects_zoom() {
     cx.update(|window, cx| window.press("cmd-=", cx));
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
-        assert_eq!(ws.read(cx).font_size, 15);
-        assert_eq!(window.find("font-select-size").label(), Some("15px"), "the stepper should track zoom");
+        assert_eq!(ws.read(cx).font_size, 14.5);
+        assert_eq!(window.find("font-select-size").label(), Some("14.5px"), "the stepper should track zoom");
     });
     // The stepper and the shortcut share one write path — clicking + lands
     // on the same field.
     cx.update(|window, cx| window.click("font-select-inc", cx));
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
-        assert_eq!(ws.read(cx).font_size, 16);
-        assert_eq!(window.find("font-select-size").label(), Some("16px"));
+        assert_eq!(ws.read(cx).font_size, 15.);
+        assert_eq!(window.find("font-select-size").label(), Some("15px"));
     });
+}
+
+#[test]
+fn zoom_scales_rendered_message_text() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    use_sim(&ws, cx);
+    type_and_send(cx, "hello");
+    // The message body carries .text_size(px(font_size)) — its rendered
+    // height must track the setting, not just the theme global.
+    let before = cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        f32::from(window.find(("md-body", 0usize)).bounds().size.height)
+    });
+    cx.update(|window, cx| window.press("cmd-=", cx));
+    let after = cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        f32::from(window.find(("md-body", 0usize)).bounds().size.height)
+    });
+    assert!(after > before, "md-body height {after} should exceed {before} after Cmd-=");
 }

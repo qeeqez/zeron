@@ -8,11 +8,15 @@ use gpui_kit::*;
 
 use crate::workspace::Workspace;
 
-/// Font-size bounds shared by the interface and code steppers.
-pub(crate) const FONT_SIZE_MIN: u8 = 10;
-pub(crate) const FONT_SIZE_MAX: u8 = 24;
+/// Font-size floor shared by the interface and code steppers.
+pub(crate) const FONT_SIZE_MIN: f32 = 10.;
+/// Interface (chat text) size tops out at 20; code can go a little larger.
+pub(crate) const FONT_SIZE_MAX: f32 = 20.;
+pub(crate) const CODE_FONT_SIZE_MAX: f32 = 24.;
 /// Interface font size Cmd-0 restores — the `Settings::default` value.
-pub(crate) const FONT_SIZE_DEFAULT: u8 = 14;
+pub(crate) const FONT_SIZE_DEFAULT: f32 = 14.;
+/// Stepper/zoom increment for interface text — code steps in whole px.
+pub(crate) const FONT_SIZE_STEP: f32 = 0.5;
 /// Contrast bounds: percent of the theme's stock chrome intensity.
 pub(crate) const CONTRAST_MIN: u16 = 50;
 pub(crate) const CONTRAST_MAX: u16 = 200;
@@ -53,11 +57,11 @@ impl Workspace {
             let config = if theme.mode.is_dark() { theme.dark_theme.clone() } else { theme.light_theme.clone() };
             theme.apply_config(&config);
             theme.font_family = if self.font_family.is_empty() { ".SystemUIFont".into() } else { self.font_family.clone().into() };
-            theme.font_size = px(f32::from(self.font_size));
+            theme.font_size = px(self.font_size);
             if !self.code_font_family.is_empty() {
                 theme.mono_font_family = self.code_font_family.clone().into();
             }
-            theme.mono_font_size = px(f32::from(self.code_font_size));
+            theme.mono_font_size = px(self.code_font_size);
             apply_contrast(theme, self.contrast);
         }
         // Push the mutated theme down to the Base layer (scrollbars, text
@@ -148,10 +152,7 @@ fn apply_contrast(theme: &mut Theme, contrast: u16) {
     let contrast = contrast.clamp(CONTRAST_MIN, CONTRAST_MAX);
     let mid = (theme.foreground.l + theme.background.l) / 2.;
     let stock_delta = (theme.foreground.l - theme.background.l).abs();
-    let mut scale = f32::from(contrast) / 100.;
-    if stock_delta > 0. {
-        scale = scale.max(MIN_LEGIBLE_DELTA / stock_delta);
-    }
+    let scale = (f32::from(contrast) / 100.).max(if stock_delta > 0. { MIN_LEGIBLE_DELTA / stock_delta } else { 0. });
     let colors = &mut theme.colors;
     let tokens = &mut theme.tokens;
     macro_rules! scale_color {

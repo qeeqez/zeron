@@ -240,7 +240,7 @@ impl Workspace {
                             .child(
                                 div()
                                     .flex_1()
-                                    .text_size(px(f32::from(self.font_size)))
+                                    .text_size(px(self.font_size))
                                     .child(Textarea::new(&self.composer).appearance(false)),
                             )
                             .child(Button::new("attach").ghost().icon(IconName::Paperclip).on_click(cx.listener(|this, _, _, cx| {

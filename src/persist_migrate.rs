@@ -35,7 +35,7 @@ impl Default for Settings {
             font_size: crate::appearance::FONT_SIZE_DEFAULT,
             font_family: String::new(),
             code_font_family: String::new(),
-            code_font_size: 13,
+            code_font_size: 13.,
             contrast: 100,
             sidebar_frosted: true,
             window_bounds: None,

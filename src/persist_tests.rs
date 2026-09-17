@@ -180,7 +180,7 @@ mod tests {
         // A file with only `model` must not reset the rest.
         let s: crate::persist::Settings = serde_json::from_str(r#"{"model":"gpt-5"}"#).unwrap();
         assert_eq!(s.legacy_model, "gpt-5");
-        assert_eq!(s.font_size, 14);
+        assert_eq!(s.font_size, 14.);
         assert!(s.notify_on_done);
         assert!(s.notify_sound);
         assert!(s.notify_background);
@@ -192,7 +192,8 @@ mod tests {
 
     #[test]
     fn settings_roundtrip() {
-        let s = crate::persist::Settings::default();
+        // A half-px size must survive the disk round-trip exactly.
+        let s = crate::persist::Settings { font_size: 14.5, ..Default::default() };
         let json = serde_json::to_string(&s).unwrap();
         let back: crate::persist::Settings = serde_json::from_str(&json).unwrap();
         assert_eq!(back.selected_model, s.selected_model);

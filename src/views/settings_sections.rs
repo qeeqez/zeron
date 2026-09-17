@@ -26,8 +26,8 @@ pub struct SettingsView {
     pub notify_sound: bool,
     /// "Notify on background replies" switch — `Workspace::notify_background`.
     pub notify_background: bool,
-    pub font_size: u8,
-    pub code_font_size: u8,
+    pub font_size: f32,
+    pub code_font_size: f32,
     pub sidebar_frosted: bool,
     pub contrast: u16,
     pub backend: &'static str,

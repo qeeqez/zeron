@@ -164,7 +164,9 @@ impl Workspace {
             font_size: settings.font_size.clamp(crate::appearance::FONT_SIZE_MIN, crate::appearance::FONT_SIZE_MAX),
             font_family: settings.font_family.clone(),
             code_font_family: settings.code_font_family.clone(),
-            code_font_size: settings.code_font_size.clamp(crate::appearance::FONT_SIZE_MIN, crate::appearance::FONT_SIZE_MAX),
+            code_font_size: settings
+                .code_font_size
+                .clamp(crate::appearance::FONT_SIZE_MIN, crate::appearance::CODE_FONT_SIZE_MAX),
             contrast: settings.contrast.clamp(crate::appearance::CONTRAST_MIN, crate::appearance::CONTRAST_MAX),
             sidebar_frosted: settings.sidebar_frosted,
             theme: settings.theme.clone(),

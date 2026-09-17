@@ -90,14 +90,14 @@ pub struct Settings {
     #[serde(skip_serializing)]
     pub use_codex_cli: Option<bool>,
     /// Interface font size in px — also the rem base, so rem-sized UI text
-    /// scales with it.
-    pub font_size: u8,
+    /// scales with it. Half-px steps in [10, 20].
+    pub font_size: f32,
     /// Interface font family; empty = system default (`.SystemUIFont`).
     pub font_family: String,
     /// Code (monospace) font family; empty = theme default (Menlo on macOS).
     pub code_font_family: String,
     /// Code font size in px — drives `Theme::mono_font_size`.
-    pub code_font_size: u8,
+    pub code_font_size: f32,
     /// Chrome contrast percentage: 50 = muted, 100 = theme default, 200 = max.
     pub contrast: u16,
     /// Sidebar translucency: on = frosted glass over the blurred window

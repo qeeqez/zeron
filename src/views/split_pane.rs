@@ -190,7 +190,7 @@ fn split_text(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, window: &mut
         .id(("split-md-body", ix))
         .px_4()
         .py_2()
-        .text_size(px(f32::from(font_size)))
+        .text_size(px(font_size))
         .when(msg.role == Role::User, |d| d.rounded_lg().bg(cx.theme().accent).text_color(cx.theme().accent_foreground))
         .when(!thumbs.is_empty(), |d| d.child(div().flex().flex_wrap().gap_2().pb_1().children(thumbs)))
         .child(if let Some(state) = &md_state {
