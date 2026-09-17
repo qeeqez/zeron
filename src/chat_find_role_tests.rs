@@ -9,6 +9,7 @@ use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext};
 
 use crate::chat_find::matching_messages;
+use crate::chat_search::find_opts::FindOpts;
 use crate::chat_search::role_filter::RoleFilter;
 use crate::model::{ChatMessage, MessageKind, Role};
 use crate::workspace::Workspace;
@@ -34,11 +35,15 @@ fn matching_messages_narrows_by_role() {
         text(Role::Assistant, "hit from rixl"),
         text(Role::Assistant, "hit again"),
     ];
-    assert_eq!(matching_messages(&messages, "hit", RoleFilter::All), vec![0, 1, 2], "All keeps every match");
-    assert_eq!(matching_messages(&messages, "hit", RoleFilter::User), vec![0], "You keeps only user hits");
-    assert_eq!(matching_messages(&messages, "hit", RoleFilter::Assistant), vec![1, 2], "Assistant keeps only its hits");
+    assert_eq!(matching_messages(&messages, "hit", RoleFilter::All, FindOpts::default()), vec![0, 1, 2], "All keeps every match");
+    assert_eq!(matching_messages(&messages, "hit", RoleFilter::User, FindOpts::default()), vec![0], "You keeps only user hits");
+    assert_eq!(
+        matching_messages(&messages, "hit", RoleFilter::Assistant, FindOpts::default()),
+        vec![1, 2],
+        "Assistant keeps only its hits"
+    );
     assert!(
-        matching_messages(&messages, "hit", RoleFilter::User)
+        matching_messages(&messages, "hit", RoleFilter::User, FindOpts::default())
             .iter()
             .all(|&ix| messages[ix].role == Role::User)
     );

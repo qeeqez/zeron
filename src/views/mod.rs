@@ -20,6 +20,7 @@ pub(crate) mod chat_collapse;
 #[cfg(test)]
 #[path = "../chat_collapse_tests.rs"]
 mod chat_collapse_tests;
+mod chat_find_bar;
 mod chat_info;
 mod chat_menu;
 mod chat_view;

@@ -322,6 +322,10 @@ pub(crate) fn focus_new_chat(composer: &Entity<gpui_kit::component::input::Texta
 }
 
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[path = "find_opts.rs"]
+pub(crate) mod find_opts;
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[path = "role_filter.rs"]
 pub(crate) mod role_filter;
 
