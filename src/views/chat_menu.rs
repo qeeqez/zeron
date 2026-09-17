@@ -40,6 +40,8 @@ pub struct ChatMenuState {
     /// A backend turn is running — gates "Merge into project" (the
     /// worktree's files are still moving).
     pub running: bool,
+    /// No messages yet — disables "Copy transcript" (nothing to copy).
+    pub empty: bool,
 }
 
 /// Pin/rename/export/copy/snapshots/word-wrap — the ⋯ menu on the chat
@@ -55,6 +57,7 @@ pub fn chat_menu(
         ephemeral,
         can_split,
         running,
+        empty,
     } = state;
     let ws_pin = ws.clone();
     let ws_rename = ws.clone();
@@ -113,9 +116,14 @@ pub fn chat_menu(
                     ws_export_html.update(cx, |this, cx| this.export_active_html(cx));
                 }),
         )
-        .item(PopupMenuItem::new("Copy transcript").icon(IconName::Copy).on_click(move |_, _, cx| {
-            ws_copy.update(cx, |this, cx| this.copy_transcript(cx));
-        }))
+        .item(
+            PopupMenuItem::new("Copy transcript")
+                .icon(IconName::Copy)
+                .disabled(empty)
+                .on_click(move |_, window, cx| {
+                    ws_copy.update(cx, |this, cx| this.copy_transcript(window, cx));
+                }),
+        )
         .item(PopupMenuItem::new("Fork chat").icon(IconName::GitFork).on_click(move |_, window, cx| {
             ws_fork.update(cx, |this, cx| {
                 let ix = this.active;

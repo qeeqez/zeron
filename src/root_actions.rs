@@ -135,8 +135,8 @@ pub(crate) fn workspace_actions(root: Div, window: &Window, cx: &mut Context<Wor
     .on_action(|_: &RevealChats, _window, cx| cx.reveal_path(&crate::persist::chats_dir()))
     .on_action({
         let ws = cx.entity();
-        move |_: &CopyTranscript, _window, cx| {
-            ws.update(cx, |this, cx| this.copy_transcript(cx));
+        move |_: &CopyTranscript, window, cx| {
+            ws.update(cx, |this, cx| this.copy_transcript(window, cx));
         }
     })
     .on_action(escape_key(cx.entity()))

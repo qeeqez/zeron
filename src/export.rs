@@ -1,9 +1,11 @@
 //! Chat export: markdown save dialog and clipboard transcript. The HTML
 //! variant lives in `crate::export::html` — split for the SLOC cap.
 
+use gpui_kit::component::WindowExt;
+use gpui_kit::component::notification::Notification;
 use gpui_kit::*;
 
-use crate::model::{MessageKind, Role};
+use crate::model::{ChatMessage, MessageKind, Role};
 use crate::workspace::Workspace;
 
 /// Printable-HTML export — split into `export_html.rs` for the SLOC cap;
@@ -58,29 +60,24 @@ impl Workspace {
         self.export_chat(ix, cx);
     }
 
-    /// Copy the active chat's messages to the clipboard as markdown.
-    pub fn copy_transcript(&mut self, cx: &mut Context<Self>) {
+    /// Copy the active chat's messages to the clipboard as markdown —
+    /// `# <title>`, then `**You**` / `**Assistant**` + body per message.
+    /// Cards collapse to a one-line italic summary so the paste stays a
+    /// readable conversation; the markdown export keeps their full detail.
+    /// A toast confirms — a silent copy leaves the user guessing.
+    pub fn copy_transcript(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let chat = &self.chats[self.active];
-        let text = chat
-            .messages
-            .iter()
-            .map(|m| {
-                let role = if m.role == Role::User { "You" } else { "Rixl" };
-                let body = match &m.kind {
-                    MessageKind::Text(t) => t.to_string(),
-                    MessageKind::Tool(t) => format!("`{} {}`\n```\n{}\n```", t.name, t.detail, t.output),
-                    MessageKind::Diff(d) => format!("`{}` +{} -{}\n```diff\n{}\n```", d.path, d.added, d.removed, d.hunks),
-                    MessageKind::Plan(p) => p.markdown(),
-                    MessageKind::Approval(a) => {
-                        let outcome = a.decision.map_or("pending", |d| d.label());
-                        format!("**{}:** `{}` — {}", a.kind.label(), a.detail, outcome)
-                    },
-                };
-                format!("{role}: {body}")
-            })
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        if chat.messages.is_empty() {
+            window.push_notification(Notification::warning("Nothing to copy — the transcript is empty"), cx);
+            return;
+        }
+        let mut text = format!("# {}\n\n", chat.title);
+        for m in chat.messages.iter() {
+            let role = if m.role == Role::User { "You" } else { "Assistant" };
+            text.push_str(&format!("**{role}**\n\n{}\n\n", transcript_body(m)));
+        }
+        cx.write_to_clipboard(ClipboardItem::new_string(text.trim_end().to_string()));
+        window.push_notification(Notification::success("Transcript copied to clipboard"), cx);
     }
 
     /// The shell command that continues the active chat's backend thread in
@@ -108,6 +105,29 @@ impl Workspace {
     }
 }
 
+/// A message's body in a copied transcript: text verbatim (it's already
+/// markdown, fences and all), every card kind as a one-line italic
+/// summary — the paste reads as a conversation, not a log dump.
+fn transcript_body(m: &ChatMessage) -> String {
+    match &m.kind {
+        MessageKind::Text(t) => t.to_string(),
+        MessageKind::Tool(t) => {
+            let detail = t.detail.lines().next().unwrap_or_default();
+            if detail.is_empty() {
+                format!("*ran tool: {}*", t.name)
+            } else {
+                format!("*ran tool: {} — {detail}*", t.name)
+            }
+        },
+        MessageKind::Diff(d) => format!("*edited `{}` (+{} -{})*", d.path, d.added, d.removed),
+        MessageKind::Plan(p) => format!("*plan: {} step{}*", p.steps.len(), if p.steps.len() == 1 { "" } else { "s" }),
+        MessageKind::Approval(a) => {
+            let outcome = a.decision.map_or("pending", |d| d.label());
+            format!("*{}: `{}` — {outcome}*", a.kind.label(), a.detail)
+        },
+    }
+}
+
 /// Single-quote a path for the shell — `'` inside becomes `'\''`.
 fn shell_quote(path: &str) -> String {
     format!("'{}'", path.replace('\'', "'\\''"))
@@ -119,3 +139,8 @@ pub(crate) fn export_stem(title: &str) -> String {
     let stem: String = title.replace(['/', '\\', ':', '?', '*', '"', '<', '>', '|'], "-").chars().take(80).collect();
     if stem.is_empty() { "chat".into() } else { stem }
 }
+
+// Declared here, not in `main.rs` — that file is at the SLOC cap.
+#[cfg(test)]
+#[path = "export_tests.rs"]
+mod export_tests;
