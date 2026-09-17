@@ -176,7 +176,7 @@ fn bound_thread_survives_save_load_send() {
         ws.update(cx, |this, cx| {
             this.backend = std::sync::Arc::new(SessionBackend { ctxs: ctxs.clone(), sessions: vec![] });
             let chat_id = this.chats[this.active].id;
-            this.apply_event(chat_id, AgentEvent::ThreadBound("tid-9".into()), cx);
+            this.apply_events(chat_id, vec![AgentEvent::ThreadBound("tid-9".into())], cx);
             assert_eq!(this.chats[this.active].thread_id, "tid-9", "the turn bound the thread");
             this.save();
         });

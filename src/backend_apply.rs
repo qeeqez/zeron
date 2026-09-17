@@ -12,9 +12,20 @@ use crate::model::{ChatMessage, MessageKind, Role, ToolCall, ToolStatus};
 use crate::workspace::Workspace;
 
 impl Workspace {
-    /// Apply one backend event to the chat identified by `chat_id`.
+    /// Apply a batch of backend events to the chat identified by
+    /// `chat_id` with one render notify for the lot — a fast backend
+    /// bursts deltas far quicker than one render each can keep up with.
     /// Chat may have been deleted — events for it are dropped.
-    pub(crate) fn apply_event(&mut self, chat_id: u64, ev: AgentEvent, cx: &mut Context<Self>) {
+    pub(crate) fn apply_events(&mut self, chat_id: u64, evs: Vec<AgentEvent>, cx: &mut Context<Self>) {
+        for ev in evs {
+            self.apply_one(chat_id, ev, cx);
+        }
+        cx.notify();
+    }
+
+    /// Per-event mutation for `apply_events`; the caller owns the
+    /// `cx.notify()` so a batch renders once, not once per event.
+    fn apply_one(&mut self, chat_id: u64, ev: AgentEvent, cx: &mut Context<Self>) {
         // Scroller updates only apply to the visible (active) chat, and only
         // when the new message matches an open chat-search query.
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
@@ -199,7 +210,6 @@ impl Workspace {
                 }
             },
         }
-        cx.notify();
     }
 }
 

@@ -20,7 +20,9 @@ fn sandbox_home() {
     unsafe { std::env::set_var("HOME", &dir) };
 }
 
-fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
+/// Shared with `stream_coalesce_tests` — one mount keeps the HOME
+/// sandbox + window setup in one place.
+pub(crate) fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
     sandbox_home();
     cx.update(gpui_kit::init);
     let mut ws = None;

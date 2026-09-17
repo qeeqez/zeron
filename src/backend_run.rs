@@ -102,22 +102,19 @@ fn drive_stream(this: &mut Workspace, chat_id: u64, stream: &mut ReplyStream, cx
     let task = cx.spawn(async move |this, cx| {
         let _cancel = cancel;
 
-        'outer: loop {
-            let e = match rx.try_recv() {
-                Ok(e) => e,
-                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    cx.background_executor().timer(Duration::from_millis(30)).await;
-                    continue;
-                },
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
-            };
-            // Only Done ends the turn — item-level errors are non-terminal
-            // (codex continues), and every other exit path closes the
-            // channel, which surfaces as Disconnected.
-            if matches!(e, AgentEvent::Done) {
-                break 'outer;
+        loop {
+            // Drain everything already queued and apply it in one update:
+            // a fast backend bursts deltas far quicker than one render
+            // each can keep up with, so the UI paints once per batch.
+            let (batch, terminal) = drain_batch(&rx);
+            if !batch.is_empty() {
+                let batch = coalesce(batch);
+                let _ = this.update(cx, |this, cx| this.apply_events(chat_id, batch, cx));
             }
-            let _ = this.update(cx, |this, cx| this.apply_event(chat_id, e, cx));
+            if terminal {
+                break;
+            }
+            cx.background_executor().timer(Duration::from_millis(30)).await;
         }
         let _ = this.update_in(cx, |this, window, cx| {
             this.finish_reply(chat_id, cx);
@@ -147,7 +144,62 @@ fn pump_stream(events: std::sync::mpsc::Receiver<AgentEvent>, tx: std::sync::mps
     }
 }
 
+/// Drain every event the pump has already queued into a batch. `true`
+/// marks a terminal drain: `Done` was consumed or the pump hung up — the
+/// batch still applies before the turn ends.
+fn drain_batch(rx: &std::sync::mpsc::Receiver<AgentEvent>) -> (Vec<AgentEvent>, bool) {
+    let mut batch = Vec::new();
+    loop {
+        match rx.try_recv() {
+            // Only Done ends the turn — item-level errors are non-terminal
+            // (codex continues), and every other exit path closes the
+            // channel, which surfaces as Disconnected. Events queued past
+            // Done are dropped, as before.
+            Ok(AgentEvent::Done) => return (batch, true),
+            Ok(e) => batch.push(e),
+            Err(std::sync::mpsc::TryRecvError::Empty) => return (batch, false),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => return (batch, true),
+        }
+    }
+}
+
+/// Fold a drained batch into fewer applies: consecutive `TextDelta`s
+/// merge into one event, and `ToolCallDelta`s on the same tool index
+/// merge — both are pure appends, so concatenating the payloads equals
+/// applying each in turn. Any other variant passes through and ends a
+/// merge run.
+fn coalesce(events: Vec<AgentEvent>) -> Vec<AgentEvent> {
+    let mut out = Vec::with_capacity(events.len());
+    let mut it = events.into_iter().peekable();
+    while let Some(e) = it.next() {
+        match e {
+            AgentEvent::TextDelta(t) => {
+                let mut s = String::new();
+                while let Some(AgentEvent::TextDelta(n)) = it.next_if(|e| matches!(e, AgentEvent::TextDelta(_))) {
+                    s.push_str(n.as_str());
+                }
+                out.push(AgentEvent::TextDelta(if s.is_empty() { t } else { format!("{t}{s}").into() }));
+            },
+            AgentEvent::ToolCallDelta { ix, output } => {
+                let mut s = String::new();
+                while let Some(AgentEvent::ToolCallDelta { output: o, .. }) =
+                    it.next_if(|e| matches!(e, AgentEvent::ToolCallDelta { ix: n, .. } if *n == ix))
+                {
+                    s.push_str(o.as_str());
+                }
+                let output = if s.is_empty() { output } else { format!("{output}{s}").into() };
+                out.push(AgentEvent::ToolCallDelta { ix, output });
+            },
+            _ => out.push(e),
+        }
+    }
+    out
+}
+
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
 #[path = "stop_all_tests.rs"]
 mod stop_all_tests;
+#[cfg(test)]
+#[path = "stream_coalesce_tests.rs"]
+mod stream_coalesce_tests;
