@@ -50,21 +50,10 @@ fn context_menu_lists_copy_variants() {
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert!(window.find("popup-menu").visible(), "right-click should open the message menu");
-        // The copy variants group at the top of the menu; no fenced blocks
-        // in this message, so Copy Code stays hidden.
         assert_eq!(
             menu_labels(window),
-            [
-                "Bookmark",
-                "Copy",
-                "Copy as Markdown",
-                "Fork here",
-                "Quote",
-                "Regenerate with model",
-                "Retry",
-                "View raw"
-            ],
-            "menu should list the copy variants"
+            ["Bookmark", "Copy", "Copy as Markdown", "Quote", "Regenerate with model", "Retry", "View raw"],
+            "menu should list the copy variants — Fork from here stays hidden on the last message"
         );
         window.within("popup-menu").click(1usize, cx); // Copy as Markdown
     });
@@ -91,7 +80,6 @@ fn context_menu_copy_code_writes_block_contents() {
                 "Copy",
                 "Copy Code",
                 "Copy as Markdown",
-                "Fork here",
                 "Quote",
                 "Regenerate with model",
                 "Retry",

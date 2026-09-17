@@ -1,5 +1,5 @@
 use gpui_kit::assets::IconName;
-use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
+use gpui_kit::component::menu::ContextMenuExt;
 use gpui_kit::component::message::{Message, MessageAlignment, MessageContent, MessageFooter, MessageHeader};
 use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::prelude::*;
@@ -64,7 +64,7 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
     let MsgCtx { ix, msg, .. } = mc;
     let MessageKind::Text(text) = &msg.kind else { unreachable!() };
     let role = msg.role;
-    let (word_wrap, font_size, undoable, edit_input) = {
+    let (word_wrap, font_size, undoable, edit_input, running, last_msg) = {
         let ws = ws.read(cx);
         let chat = &ws.chats[ws.active];
         let input = ws
@@ -81,6 +81,8 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
             ws.font_size,
             input.is_none() && !chat.running && last_user && crate::checkpoints::for_message(chat, ix).is_some(),
             input,
+            chat.running,
+            ix + 1 == chat.messages.len(),
         )
     };
     // Long messages clip behind a fade + "Show more" bar — never the
@@ -175,10 +177,7 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
     message = message.footer(MessageFooter::new().child(super::message_footer::message_footer(mc, ws, md_state.clone(), cx)));
     let ws_menu = ws.clone();
     let ws_revert = ws.clone();
-    // SharedString clones cheap — the menu closure scans it for fenced
-    // blocks only when the menu actually opens.
     let source = text.clone();
-    let bookmarked = msg.bookmarked;
     let group = SharedString::from(format!("msg-{ix}"));
     div()
         .id(("msg", ix))
@@ -209,79 +208,6 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
                 ),
             )
         })
-        .context_menu(move |menu, window, cx| {
-            // Copy variants stay grouped at the top; Copy Code only appears
-            // when the message actually has fenced blocks.
-            let menu = menu
-                .item(msg_item("Copy", IconName::Copy, &ws_menu, move |this, _w, cx| this.copy_message(ix, cx)))
-                .item(msg_item("Copy as Markdown", IconName::FileCode, &ws_menu, move |this, _w, cx| {
-                    this.copy_message_markdown(ix, cx)
-                }))
-                .when(!crate::chat_msg::copy::code_blocks(&source).is_empty(), |menu| {
-                    menu.item(msg_item("Copy Code", IconName::SquareCode, &ws_menu, move |this, _w, cx| {
-                        this.copy_message_code(ix, cx)
-                    }))
-                })
-                .item(msg_item("Quote", IconName::Quote, &ws_menu, move |this, w, cx| this.quote_message(ix, w, cx)))
-                // "Quote selection" appears only while this message's body has
-                // an active selection — the text is captured as the menu opens
-                // because the item's own click would clear it first.
-                .when_some(md_state.as_ref().map(|md| md.read(cx).view.read(cx).selected_text()).filter(|s| !s.trim().is_empty()), |menu, selected| {
-                    menu.item(msg_item("Quote selection", IconName::Quote, &ws_menu, move |this, w, cx| {
-                        this.quote_selection(&selected, w, cx)
-                    }))
-                })
-                .item(msg_item(if bookmarked { "Remove bookmark" } else { "Bookmark" }, IconName::Star, &ws_menu, move |this, _w, cx| {
-                    this.toggle_bookmark(ix, cx)
-                }))
-                .separator()
-                .item(msg_item("Fork here", IconName::GitFork, &ws_menu, move |this, w, cx| {
-                    this.fork_chat(this.active, Some(ix), w, cx)
-                }));
-            // Splitting at the first message leaves nothing behind — the
-            // item only exists where a prefix would remain.
-            let menu = if ix > 0 {
-                menu.item(msg_item("Split chat here", IconName::Scissors, &ws_menu, move |this, w, cx| {
-                    let id = this.chats[this.active].id;
-                    this.split_chat(id, ix, w, cx)
-                }))
-            } else {
-                menu
-            };
-            let menu = if let Some(md) = md_state.clone() {
-                let label = if md.read(cx).raw { "View rendered" } else { "View raw" };
-                menu.item(PopupMenuItem::new(label).icon(IconName::Code).on_click(
-                    super::message_footer::toggle_raw(md, ws_menu.clone(), ix),
-                ))
-            } else if undoable {
-                menu.item(msg_item("Undo turn", IconName::Undo2, &ws_menu, move |this, w, cx| {
-                    this.undo_turn(ix, w, cx)
-                }))
-            } else {
-                menu
-            };
-            let menu = if role == Role::User {
-                menu.item(msg_item("Edit", IconName::Pencil, &ws_menu, move |this, w, cx| this.edit_message(ix, w, cx)))
-            } else {
-                menu
-            };
-            match (role, mc.is_last) {
-                (Role::Assistant, true) => super::retry_menu::retry_items(menu, &ws_menu, window, cx),
-                (Role::Assistant, false) => menu.item(msg_item("Regenerate", IconName::RotateCcw, &ws_menu, move |this, w, cx| {
-                    this.regenerate_from(ix, w, cx)
-                })),
-                _ => menu,
-            }
-        })
+        .context_menu(super::message_menu::msg_menu(&mc, ws_menu, md_state, source, super::message_menu::MenuGates { undoable, running, last_msg }))
         .into_any_element()
-}
-
-/// One context-menu item that runs a `Workspace` method on click.
-fn msg_item(
-    label: &'static str, icon: IconName, ws: &Entity<Workspace>, f: impl Fn(&mut Workspace, &mut Window, &mut Context<Workspace>) + 'static,
-) -> PopupMenuItem {
-    let ws = ws.clone();
-    PopupMenuItem::new(label).icon(icon).on_click(move |_, window, cx| {
-        ws.update(cx, |this, cx| f(this, window, cx));
-    })
 }

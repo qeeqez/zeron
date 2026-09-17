@@ -19,7 +19,7 @@ use crate::workspace::Workspace;
 struct ForkOpts {
     /// Fork point: copy messages through this index; `None` = the end.
     at: Option<usize>,
-    /// Appended to the source title — " (fork)" or " · <provider>".
+    /// Appended to the source title — " · fork" or " · <provider>".
     suffix: String,
     /// Provider/model stamps for the fork — `None` keeps the source's.
     bind: Option<(String, String)>,
@@ -34,7 +34,7 @@ impl ForkOpts {
     fn at(at: Option<usize>) -> Self {
         Self {
             at,
-            suffix: " (fork)".to_string(),
+            suffix: " · fork".to_string(),
             bind: None,
             allow_empty: false,
         }
@@ -43,14 +43,15 @@ impl ForkOpts {
 
 impl Workspace {
     /// Branch chat `chat_ix` at message `msg_ix`: a new chat titled
-    /// "<title> (fork)" opens holding the messages up to and including
+    /// "<title> · fork" opens holding the messages up to and including
     /// `msg_ix`. The original is untouched — unlike `commit_edit`, nothing
     /// is truncated or resent. `None` forks at the end of the transcript.
     /// The fork carries the thread's provider/model/access stamps so its
     /// follow-up turn runs on the same configuration; a worktree thread's
     /// fork gets its own worktree (sharing the original's would break when
-    /// either chat is deleted). The backend thread id is NOT copied — the
-    /// fork starts a fresh backend thread, like `duplicate_chat`.
+    /// either chat is deleted). The backend thread id is NOT copied — a
+    /// backend thread can't be partially rewound, so the fork always
+    /// starts a fresh backend thread, like `duplicate_chat`.
     pub fn fork_chat(&mut self, chat_ix: usize, msg_ix: Option<usize>, window: &mut Window, cx: &mut Context<Self>) {
         self.fork_inner(chat_ix, ForkOpts::at(msg_ix), window, cx);
     }

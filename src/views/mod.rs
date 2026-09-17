@@ -53,6 +53,7 @@ mod mermaid_tests;
 mod message;
 mod message_edit;
 mod message_footer;
+mod message_menu;
 #[cfg(test)]
 mod message_menu_tests;
 #[cfg(test)]
