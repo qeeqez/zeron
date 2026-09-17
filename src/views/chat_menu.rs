@@ -59,6 +59,7 @@ pub fn chat_menu(
     let ws_pin = ws.clone();
     let ws_rename = ws.clone();
     let ws_export = ws.clone();
+    let ws_export_html = ws.clone();
     let ws_copy = ws.clone();
     let ws_wrap = ws.clone();
     let ws_snap = ws.clone();
@@ -104,6 +105,14 @@ pub fn chat_menu(
         .item(PopupMenuItem::new("Export").icon(IconName::Share).disabled(ephemeral).on_click(move |_, _, cx| {
             ws_export.update(cx, |this, cx| this.export_active(cx));
         }))
+        .item(
+            PopupMenuItem::new("Export HTML…")
+                .icon(IconName::FileCode)
+                .disabled(ephemeral)
+                .on_click(move |_, _, cx| {
+                    ws_export_html.update(cx, |this, cx| this.export_active_html(cx));
+                }),
+        )
         .item(PopupMenuItem::new("Copy transcript").icon(IconName::Copy).on_click(move |_, _, cx| {
             ws_copy.update(cx, |this, cx| this.copy_transcript(cx));
         }))

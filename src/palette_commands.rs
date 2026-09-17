@@ -67,6 +67,12 @@ pub(crate) fn command_specs() -> Vec<CommandSpec> {
             effect: Effect::Run(|this, _window, cx| this.export_active(cx)),
         },
         CommandSpec {
+            label: "Export HTML…",
+            icon: IconName::FileCode,
+            keywords: &["html", "save", "print"],
+            effect: Effect::Run(|this, _window, cx| this.export_active_html(cx)),
+        },
+        CommandSpec {
             label: "Toggle Sidebar",
             icon: IconName::PanelLeft,
             keywords: &[],

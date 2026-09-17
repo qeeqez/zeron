@@ -1,9 +1,15 @@
-//! Chat export: markdown save dialog and clipboard transcript.
+//! Chat export: markdown save dialog and clipboard transcript. The HTML
+//! variant lives in `crate::export::html` — split for the SLOC cap.
 
 use gpui_kit::*;
 
 use crate::model::{MessageKind, Role};
 use crate::workspace::Workspace;
+
+/// Printable-HTML export — split into `export_html.rs` for the SLOC cap;
+/// reached as `crate::export::html`.
+#[path = "export_html.rs"]
+pub(crate) mod html;
 
 impl Workspace {
     /// Export chat `ix` as markdown via the native save dialog.
@@ -32,8 +38,7 @@ impl Workspace {
             };
             out.push_str(&format!("## {role}\n\n{body}\n\n"));
         }
-        let stem: String = chat.title.replace(['/', '\\', ':', '?', '*', '"', '<', '>', '|'], "-").chars().take(80).collect();
-        let name = format!("{}.md", if stem.is_empty() { "chat" } else { &stem });
+        let name = format!("{}.md", export_stem(&chat.title));
         let home = std::env::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
         let rx = cx.prompt_for_new_path(&home, Some(&name));
         let ws = cx.entity();
@@ -106,4 +111,11 @@ impl Workspace {
 /// Single-quote a path for the shell — `'` inside becomes `'\''`.
 fn shell_quote(path: &str) -> String {
     format!("'{}'", path.replace('\'', "'\\''"))
+}
+
+/// Filesystem-safe filename stem from a chat title — shared by the markdown
+/// and HTML exports so both suggest the same base name.
+pub(crate) fn export_stem(title: &str) -> String {
+    let stem: String = title.replace(['/', '\\', ':', '?', '*', '"', '<', '>', '|'], "-").chars().take(80).collect();
+    if stem.is_empty() { "chat".into() } else { stem }
 }

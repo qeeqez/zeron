@@ -42,6 +42,7 @@ pub(super) fn chat_row_menu(
     let ws_rename = ws.clone();
     let ws_dup = ws.clone();
     let ws_export = ws.clone();
+    let ws_export_html = ws.clone();
     let ws_del = ws.clone();
     let ws_arch = ws.clone();
     let ws_window = ws.clone();
@@ -93,6 +94,20 @@ pub(super) fn chat_row_menu(
             f: |this, ix, _w, cx| this.export_chat(ix, cx),
         });
     }))
+    .item(
+        PopupMenuItem::new("Export HTML…")
+            .icon(IconName::FileCode)
+            .disabled(ephemeral)
+            .on_click(move |_, w, cx| {
+                with_chat_ix(ChatIxArgs {
+                    ws: &ws_export_html,
+                    id,
+                    window: w,
+                    cx,
+                    f: |this, ix, _w, cx| this.export_chat_html(ix, cx),
+                });
+            }),
+    )
     .item(PopupMenuItem::new("Delete").icon(IconName::Delete).disabled(only_chat).on_click(move |_, w, cx| {
         with_chat_ix(ChatIxArgs {
             ws: &ws_del,
