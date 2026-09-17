@@ -88,30 +88,40 @@ fn push_to(this: &mut Workspace, s: &str) {
 /// window borrow) so the dismiss animation can park before the next chip
 /// click — a still-closing popover would toggle shut instead of opening.
 fn click_menu_item(vcx: &mut VisualTestContext, chip: &str, label: &str) {
-    // The popover's enter animation runs off the wall clock (150ms) and
-    // its items only register once the surface mounts — wait it out like
-    // the component's own tests do (several times the duration).
-    vcx.run_until_parked();
-    std::thread::sleep(std::time::Duration::from_millis(700));
-    vcx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        let popover = format!("popover:dropdown-menu:Name(\"{chip}\")");
-        let item = snapshots(window)
-            .iter()
-            .find(|s| s.label() == Some(label) && s.path().iter().any(|id| *id == popover.clone().into()))
-            .unwrap_or_else(|| {
-                let labels: Vec<_> = snapshots(window)
-                    .iter()
-                    .filter(|s| s.path().iter().any(|id| *id == popover.clone().into()))
-                    .map(|s| s.label().unwrap_or("?").to_string())
-                    .collect();
-                panic!("menu should offer {label} — offers: {labels:?}")
-            })
-            .clone();
-        let leaf = item.path().last().unwrap().clone();
-        window.within(gpui_kit::ElementId::Name(popover.into())).click(leaf, cx);
-    });
-    vcx.run_until_parked();
+    // The popover element wraps its always-mounted trigger, so its id sits
+    // in the tree whether the menu is open or not — the menu is open iff
+    // the item is in the snapshot (PopupMenu builds items synchronously
+    // the frame it opens; there is no exit animation). Item absent for a
+    // while therefore means the chip click was swallowed, so re-click it.
+    // The grace window keeps the poll from toggling a just-opening menu
+    // shut. Find-and-click stay inside ONE update: a snapshot's leaf path
+    // goes stale across updates, so splitting them drops the click.
+    let popover = format!("popover:dropdown-menu:Name(\"{chip}\")");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    let mut absent_since = std::time::Instant::now();
+    loop {
+        vcx.run_until_parked();
+        let clicked = vcx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            let leaf = snapshots(window)
+                .iter()
+                .find(|s| s.label() == Some(label) && s.path().iter().any(|id| *id == popover.clone().into()))
+                .and_then(|s| s.path().last().cloned());
+            let Some(leaf) = leaf else { return false };
+            window.within(gpui_kit::ElementId::Name(popover.clone().into())).click(leaf, cx);
+            true
+        });
+        if clicked {
+            vcx.run_until_parked();
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "menu should offer {label}");
+        if absent_since.elapsed() > std::time::Duration::from_secs(1) {
+            absent_since = std::time::Instant::now();
+            vcx.update(|window, cx| window.click(chip.to_string(), cx));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
 }
 
 #[test]
