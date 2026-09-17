@@ -18,6 +18,7 @@ fn claude_turn(mode: &str, access: AccessMode) -> ClaudeTurn {
         mode: mode.into(),
         access,
         cwd: std::path::PathBuf::from("/tmp/thread-wt"),
+        resume: None,
         instructions: None,
         env: Vec::new(),
         slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),

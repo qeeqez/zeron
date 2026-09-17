@@ -30,14 +30,15 @@ pub(crate) struct ThreadOpts<'a> {
     pub instructions: Option<&'a str>,
 }
 
-/// `thread/start`: one ephemeral thread per turn (no history is kept, so a
-/// fresh thread per send matches the old `codex exec` behavior). `cwd` is
-/// the thread's working directory (project root or its worktree).
+/// `thread/start`: one persistent thread per chat — the chat binds the
+/// returned id (`AgentEvent::ThreadBound`) so later sends `thread/resume`
+/// it, in-session and across restarts. `cwd` is the thread's working
+/// directory (project root or its worktree).
 pub(crate) fn thread_start_req(id: i64, cwd: &std::path::Path, opts: &ThreadOpts<'_>) -> Value {
     let mut params = json!({
         "approvalPolicy": opts.approval,
         "sandbox": opts.sandbox,
-        "ephemeral": true,
+        "ephemeral": false,
         "cwd": cwd.to_string_lossy(),
         "model": opts.model,
     });
@@ -130,8 +131,7 @@ pub(crate) fn thread_compact_start_req(id: i64, thread_id: &str) -> Value {
 }
 
 /// Parse one `thread/list` result into `(sessions, next_cursor)`. Ephemeral
-/// threads (our own per-turn threads) are dropped — they hold no history
-/// worth reopening.
+/// threads are dropped — they hold no history worth reopening.
 pub(crate) fn parse_thread_page(result: &Value) -> (Vec<super::SessionInfo>, Option<Value>) {
     let sessions = result["data"]
         .as_array()
@@ -345,7 +345,7 @@ mod tests {
         assert_eq!(req["method"], json!("thread/start"));
         assert_eq!(req["params"]["sandbox"], json!("workspace-write"));
         assert_eq!(req["params"]["approvalPolicy"], json!("on-failure"));
-        assert_eq!(req["params"]["ephemeral"], json!(true));
+        assert_eq!(req["params"]["ephemeral"], json!(false), "chat threads persist so later sends can resume them");
         // The thread's working directory goes on the wire — a worktree
         // thread's server must see the worktree, not the process cwd.
         assert_eq!(req["params"]["cwd"], json!("/tmp/thread-wt"));

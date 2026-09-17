@@ -18,29 +18,34 @@ const PLAN_ID: &str = "__claude_plan__";
 
 /// Per-turn decoder: tracks which blocks streamed so the `assistant`
 /// snapshot doesn't re-emit them, and which tool cards are still open.
+/// `pub(super)` fields serve the stream half in `claude_parse_stream`.
 pub(crate) struct ClaudeDecoder {
     /// tool_use ids that produced a `ToolCallStart` card already.
-    started: std::collections::HashSet<String>,
+    pub(super) started: std::collections::HashSet<String>,
     /// tool_use ids whose card is still open — closed by `tool_result` or,
     /// as a fallback, by `result` so an interrupted turn can't spin forever.
-    pending: std::collections::HashSet<String>,
+    pub(super) pending: std::collections::HashSet<String>,
     /// Content-block indices (this message) whose text arrived via deltas.
-    text_streamed: std::collections::HashSet<i64>,
+    pub(super) text_streamed: std::collections::HashSet<i64>,
     /// Live stream blocks by content index — `content_block_stop` needs the
     /// card ix for thinking/tool blocks.
-    blocks: std::collections::HashMap<i64, Block>,
+    pub(super) blocks: std::collections::HashMap<i64, Block>,
     /// tool_use ids of `TodoWrite` calls — their `tool_result` carries no
     /// card output, so `user` skips them.
-    todos: std::collections::HashSet<String>,
+    pub(super) todos: std::collections::HashSet<String>,
     /// Latest token counts — `message_start`/`message_delta` carry partial
     /// usage, `result` carries the final totals.
     last_usage: (u64, u64),
+    /// The session id once seen — every stream frame carries it; the first
+    /// sighting emits `ThreadBound` so the chat resumes this session on
+    /// later sends.
+    session_id: Option<String>,
 }
 
 /// What a live `content_block` turned out to be — only thinking blocks
 /// need their card ix remembered for `content_block_stop`; tool cards
 /// close via `pending` ids when `tool_result` arrives.
-enum Block {
+pub(super) enum Block {
     Text,
     Thinking(usize),
     Tool,
@@ -62,21 +67,28 @@ impl ClaudeDecoder {
             blocks: std::collections::HashMap::new(),
             todos: std::collections::HashSet::new(),
             last_usage: (0, 0),
+            session_id: None,
         }
     }
 
     /// Decode one stdout line. Malformed JSON and unknown types are
     /// ignored — the stream carries bookkeeping (`system`, `rate_limit`)
-    /// we don't render.
+    /// we don't render. The first frame carrying `session_id` binds the
+    /// chat's thread so later sends resume this session.
     pub fn line(&mut self, line: &str) -> ClaudeDecoded {
         let Ok(msg) = serde_json::from_str::<Value>(line) else {
             return ClaudeDecoded { events: vec![], turn_over: false };
         };
-        let events = match msg["type"].as_str() {
+        let bound = self.session_binding(&msg);
+        let mut events = match msg["type"].as_str() {
             Some("stream_event") => self.stream_event(&msg["event"]),
             Some("assistant") => self.assistant(&msg["message"]),
             Some("user") => self.user(&msg["message"]),
-            Some("result") => return ClaudeDecoded { events: self.result(&msg), turn_over: true },
+            Some("result") => {
+                let mut out = self.result(&msg);
+                out.extend(bound);
+                return ClaudeDecoded { events: out, turn_over: true };
+            },
             // `rate_limit_event` frames carry quota status — "rejected"
             // raises the banner, "allowed" clears it.
             Some("rate_limit_event") => crate::rate_limit::RateLimit::from_claude(&msg["rate_limit_info"])
@@ -84,94 +96,20 @@ impl ClaudeDecoder {
                 .unwrap_or_default(),
             _ => vec![],
         };
+        events.extend(bound);
         ClaudeDecoded { events, turn_over: false }
     }
 
-    /// Raw API stream event (`--include-partial-messages`). Indices are
-    /// per-message; `message_start` resets the per-message trackers.
-    fn stream_event(&mut self, ev: &Value) -> Vec<AgentEvent> {
-        match ev["type"].as_str() {
-            Some("message_start") => self.message_start(&ev["message"]),
-            Some("content_block_start") => self.block_start(ev["index"].as_i64().unwrap_or(0), &ev["content_block"]),
-            Some("content_block_delta") => self.block_delta(ev["index"].as_i64().unwrap_or(0), &ev["delta"]),
-            Some("content_block_stop") => self.block_stop(ev["index"].as_i64().unwrap_or(0)),
-            Some("message_delta") => self.usage_events(&ev["usage"]),
-            _ => vec![],
+    /// The first frame carrying `session_id` binds the chat's thread so
+    /// later sends resume this session — every frame repeats the id, so
+    /// only a new sighting emits `ThreadBound`.
+    fn session_binding(&mut self, msg: &Value) -> Option<AgentEvent> {
+        let sid = msg["session_id"].as_str().filter(|s| !s.is_empty())?;
+        if self.session_id.as_deref() == Some(sid) {
+            return None;
         }
-    }
-
-    fn message_start(&mut self, message: &Value) -> Vec<AgentEvent> {
-        self.blocks.clear();
-        self.text_streamed.clear();
-        self.usage_events(&message["usage"])
-    }
-
-    /// `content_block_start`: open the right card for the block kind.
-    /// Text blocks get a fresh bubble; tool_use opens a running tool card.
-    fn block_start(&mut self, ix: i64, block: &Value) -> Vec<AgentEvent> {
-        match block["type"].as_str() {
-            Some("text") => {
-                self.blocks.insert(ix, Block::Text);
-                vec![AgentEvent::TextStart]
-            },
-            Some("thinking") => {
-                let card = item_ix(&serde_json::json!({"id": format!("thinking-{ix}")}));
-                self.blocks.insert(ix, Block::Thinking(card));
-                vec![AgentEvent::ToolCallStart { ix: card, name: "thinking".into(), detail: "".into() }]
-            },
-            Some("tool_use") => {
-                let id = block["id"].as_str().unwrap_or("").to_string();
-                self.blocks.insert(ix, Block::Tool);
-                // `TodoWrite` renders as the plan checklist, not a tool
-                // card — the input only exists at the `assistant` snapshot.
-                if block["name"].as_str() == Some("TodoWrite") {
-                    self.todos.insert(id);
-                    return vec![];
-                }
-                let card = item_ix(&serde_json::json!({"id": id}));
-                self.started.insert(id.clone());
-                self.pending.insert(id);
-                let name = block["name"].as_str().unwrap_or("tool");
-                vec![AgentEvent::ToolCallStart { ix: card, name: name.into(), detail: "".into() }]
-            },
-            _ => vec![],
-        }
-    }
-
-    /// `content_block_delta`: text deltas append to the bubble; tool input
-    /// streams as partial JSON we don't render (the `assistant` snapshot
-    /// summarizes it); thinking deltas append to the thinking card.
-    fn block_delta(&mut self, ix: i64, delta: &Value) -> Vec<AgentEvent> {
-        match delta["type"].as_str() {
-            Some("text_delta") => {
-                let text = delta["text"].as_str().unwrap_or("");
-                if text.is_empty() {
-                    vec![]
-                } else {
-                    self.text_streamed.insert(ix);
-                    vec![AgentEvent::TextDelta(text.into())]
-                }
-            },
-            Some("thinking_delta") => {
-                let text = delta["thinking"].as_str().unwrap_or("");
-                match (self.blocks.get(&ix), text.is_empty()) {
-                    (Some(Block::Thinking(card)), false) => {
-                        vec![AgentEvent::ToolCallDelta { ix: *card, output: text.into() }]
-                    },
-                    _ => vec![],
-                }
-            },
-            _ => vec![],
-        }
-    }
-
-    /// `content_block_stop`: thinking cards close here; tool_use cards stay
-    /// open until `tool_result` arrives in the next `user` message.
-    fn block_stop(&mut self, ix: i64) -> Vec<AgentEvent> {
-        match self.blocks.remove(&ix) {
-            Some(Block::Thinking(card)) => vec![AgentEvent::ToolCallEnd { ix: card, ok: true }],
-            _ => vec![],
-        }
+        self.session_id = Some(sid.to_string());
+        Some(AgentEvent::ThreadBound(sid.into()))
     }
 
     /// Full assistant message after the model response. Blocks already
@@ -296,7 +234,7 @@ impl ClaudeDecoder {
 
     /// Emit `Usage` when the payload carries token counts. Input totals
     /// fold in cache creation/read tokens — they're billed input.
-    fn usage_events(&mut self, usage: &Value) -> Vec<AgentEvent> {
+    pub(super) fn usage_events(&mut self, usage: &Value) -> Vec<AgentEvent> {
         let input = usage["input_tokens"].as_u64().unwrap_or(0)
             + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0)
             + usage["cache_read_input_tokens"].as_u64().unwrap_or(0);

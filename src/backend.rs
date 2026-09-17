@@ -10,6 +10,7 @@ mod appserver;
 mod claude;
 mod claude_auth;
 mod claude_parse;
+mod claude_parse_stream;
 mod codex;
 mod codex_turn;
 mod compact;
@@ -38,7 +39,13 @@ mod appserver_tests;
 #[cfg(test)]
 mod appserver_turn_tests;
 #[cfg(test)]
+mod claude_command_tests;
+#[cfg(test)]
 mod claude_tests;
+#[cfg(test)]
+mod codex_auth_tests;
+#[cfg(test)]
+mod codex_steer_tests;
 #[cfg(test)]
 mod codex_tests;
 #[cfg(test)]
@@ -176,7 +183,9 @@ pub struct TurnContext {
     /// Filesystem access for Agent-mode turns.
     pub access: AccessMode,
     /// Backend thread to continue instead of starting a fresh one — set on
-    /// chats created by resuming a past session (`thread/resume` on codex).
+    /// every chat once its first turn binds the id the backend reported
+    /// (`AgentEvent::ThreadBound`), and on chats created by resuming a past
+    /// session (`thread/resume` on codex).
     /// `None` = the backend starts a new thread for this turn.
     pub thread_id: Option<String>,
     /// Reasoning effort for the turn — `None` lets the backend apply the
@@ -279,6 +288,11 @@ pub enum AgentEvent {
     /// snapshot folded from an error message. Drives the chat's
     /// rate-limit banner and the usage popover's quota rows.
     RateLimit(crate::rate_limit::RateLimit),
+    /// The backend's thread/session id for this turn — emitted once the
+    /// handshake learns it (codex's `thread/start`/`thread/resume` reply,
+    /// claude's `session_id` frames) so the chat binds it and later sends
+    /// resume the same thread instead of starting fresh.
+    ThreadBound(SharedString),
     /// The run finished normally.
     Done,
     /// The run failed; `message` is human-readable.

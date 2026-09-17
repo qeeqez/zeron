@@ -291,9 +291,10 @@ pub struct Chat {
     /// it) and gone when the chat closes or the app exits. Runtime-only:
     /// nothing ephemeral ever reaches `StoredChat`.
     pub ephemeral: bool,
-    /// Backend thread this chat continues — set when the chat was created
-    /// by resuming a past codex session. Empty = each send starts a fresh
-    /// thread.
+    /// Backend thread this chat continues — bound by the first turn's
+    /// `AgentEvent::ThreadBound` (or set when the chat was created by
+    /// resuming a past session). Empty = the next send starts a fresh
+    /// thread and binds whatever id it gets back.
     pub thread_id: String,
     /// Token/context usage folded from the turn's `AgentEvent::Usage`
     /// stream — drives the composer meter. Runtime state, not persisted.

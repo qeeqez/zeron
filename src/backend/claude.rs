@@ -4,8 +4,8 @@
 //! safely hold arbitrary text), stdout streams NDJSON events decoded by
 //! `claude_parse`. `--include-partial-messages` adds raw API stream events
 //! so text renders token-by-token; `--verbose` is required for stream-json.
-//! `--no-session-persistence` keeps one-shot turns out of the user's
-//! `claude` session history — we never resume.
+//! Sessions persist so a chat's later sends `--resume` the same session —
+//! the binding survives restarts via the chat's `thread_id`.
 
 use std::io::Write;
 
@@ -58,6 +58,7 @@ impl AgentBackend for ClaudeCliBackend {
             mode: mode.to_string(),
             access: ctx.access,
             cwd: ctx.cwd.clone(),
+            resume: ctx.thread_id.clone(),
             instructions: ctx.instructions.clone(),
             env: self.env.clone(),
             slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
@@ -91,6 +92,9 @@ pub(super) struct ClaudeTurn {
     /// The thread's working directory — the project root, or its git
     /// worktree when the thread runs in one.
     pub(super) cwd: std::path::PathBuf,
+    /// Resume this claude session instead of starting a fresh one — the
+    /// chat's bound `thread_id` (the session id the last turn reported).
+    pub(super) resume: Option<String>,
     /// Merged custom instructions — appended to claude's system prompt via
     /// `--append-system-prompt`.
     pub(super) instructions: Option<String>,
@@ -131,13 +135,15 @@ pub(super) fn build_command(turn: &ClaudeTurn) -> std::process::Command {
         .arg("stream-json")
         .arg("--verbose")
         .arg("--include-partial-messages")
-        .arg("--no-session-persistence")
         .args(permission_args(turn))
         .current_dir(&turn.cwd)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     super::apply_env(&mut cmd, &turn.env);
+    if let Some(session) = turn.resume.as_deref().filter(|s| !s.is_empty()) {
+        cmd.arg("--resume").arg(session);
+    }
     if let Some(instructions) = turn.instructions.as_deref().filter(|i| !i.trim().is_empty()) {
         cmd.arg("--append-system-prompt").arg(instructions);
     }

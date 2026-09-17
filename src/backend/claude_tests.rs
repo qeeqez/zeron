@@ -140,6 +140,24 @@ fn result_closes_tool_cards_left_open() {
 }
 
 #[test]
+fn session_id_binds_the_thread_once() {
+    let mut d = ClaudeDecoder::new();
+    let init = events(&mut d, r#"{"type":"system","subtype":"init","session_id":"sess-1"}"#);
+    assert!(init.iter().any(|e| matches!(e, AgentEvent::ThreadBound(id) if id == "sess-1")), "events were: {init:?}");
+    // Every frame repeats the id — only the first sighting binds.
+    let again = events(&mut d, r#"{"type":"system","subtype":"hook","session_id":"sess-1"}"#);
+    assert!(!again.iter().any(|e| matches!(e, AgentEvent::ThreadBound(_))), "events were: {again:?}");
+}
+
+#[test]
+fn result_session_id_binds_when_init_was_missed() {
+    let mut d = ClaudeDecoder::new();
+    let dec = d.line(r#"{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"sess-9"}"#);
+    assert!(dec.turn_over);
+    assert!(dec.events.iter().any(|e| matches!(e, AgentEvent::ThreadBound(id) if id == "sess-9")), "events were: {:?}", dec.events);
+}
+
+#[test]
 fn todo_write_becomes_plan_card() {
     let mut d = ClaudeDecoder::new();
     // Streamed tool_use opens no card — TodoWrite renders as the checklist.
@@ -193,62 +211,8 @@ fn claude_models_have_no_default_entry() {
     assert!(models.iter().any(|m| m.id == "sonnet"));
 }
 
-// ── Permission mapping + spawn command (moved out of claude.rs for SLOC) ──
-
-mod command_tests {
-    use crate::backend::AccessMode;
-    use crate::backend::claude::{ClaudeTurn, build_command, permission_args};
-
-    fn turn(mode: &str, access: AccessMode) -> ClaudeTurn {
-        ClaudeTurn {
-            prompt: "hi".into(),
-            model: "sonnet".into(),
-            mode: mode.into(),
-            access,
-            cwd: std::path::PathBuf::from("/tmp/thread-wt"),
-            instructions: None,
-            env: Vec::new(),
-            slot: std::sync::Arc::new(parking_lot::Mutex::new(None)),
-            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        }
-    }
-
-    #[test]
-    fn agent_maps_access_to_permission_flags() {
-        let cases = [
-            (AccessMode::Supervised, vec!["--permission-mode", "default"]),
-            (AccessMode::AutoAcceptEdits, vec!["--permission-mode", "acceptEdits"]),
-            (AccessMode::Auto, vec!["--permission-mode", "acceptEdits"]),
-            (AccessMode::FullAccess, vec!["--dangerously-skip-permissions"]),
-        ];
-        for (access, want) in cases {
-            assert_eq!(permission_args(&turn("Agent", access)), want);
-        }
-    }
-
-    #[test]
-    fn command_spawns_in_the_thread_workdir() {
-        let cmd = build_command(&turn("Agent", AccessMode::Auto));
-        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/tmp/thread-wt")));
-    }
-
-    #[test]
-    fn instance_env_lands_on_the_spawned_command() {
-        let mut t = turn("Agent", AccessMode::Auto);
-        t.env = vec![("ANTHROPIC_BASE_URL".to_string(), "https://proxy".to_string())];
-        let envs: Vec<_> = build_command(&t).get_envs().map(|(k, v)| (k.to_os_string(), v.map(|v| v.to_os_string()))).collect();
-        assert!(envs.contains(&(std::ffi::OsString::from("ANTHROPIC_BASE_URL"), Some(std::ffi::OsString::from("https://proxy")))));
-    }
-
-    #[test]
-    fn plan_and_ask_stay_read_only() {
-        for mode in ["Plan", "Ask"] {
-            for access in AccessMode::ALL {
-                assert_eq!(permission_args(&turn(mode, access)), vec!["--permission-mode", "plan"]);
-            }
-        }
-    }
-}
+// Permission mapping + spawn command tests live in
+// `claude_command_tests.rs` — this file is at the SLOC cap.
 
 // ── Auth: `claude auth status` parsing and the login pump ──
 

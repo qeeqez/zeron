@@ -176,6 +176,15 @@ impl Workspace {
                 }
             },
             AgentEvent::RateLimit(rl) => chat.usage.record_rate_limit(rl),
+            AgentEvent::ThreadBound(id) => {
+                // The backend's thread id — later sends resume it, and the
+                // binding must reach disk now so a quit mid-turn still
+                // resumes on the next launch.
+                if chat.thread_id != id.as_str() {
+                    chat.thread_id = id.to_string();
+                    self.save();
+                }
+            },
             AgentEvent::Done => {},
             AgentEvent::Error(msg) => {
                 // A throttling error also raises the rate-limit banner —

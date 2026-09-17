@@ -79,7 +79,7 @@ pub(super) fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEv
             && msg.get("method").is_none()
             && msg.get("id").is_some()
         {
-            match advance_phase(&mut phase, turn, &msg, &mut stdin) {
+            match advance_phase(&mut phase, turn, &msg, &mut stdin, tx) {
                 Ok(true) => {},
                 Ok(false) => continue,
                 Err(e) => {
@@ -143,9 +143,12 @@ pub(super) fn spawn_codex(turn: &CodexTurn, tx: &std::sync::mpsc::Sender<AgentEv
 }
 
 /// Handle a response to one of our handshake requests: send the next
-/// request in the sequence and record the thread/turn ids `turn/steer`
-/// needs. Returns Ok(true) when the line was consumed.
-pub(super) fn advance_phase(phase: &mut Phase, turn: &CodexTurn, msg: &Value, stdin: &mut dyn std::io::Write) -> Result<bool, String> {
+/// request in the sequence, record the thread/turn ids `turn/steer`
+/// needs, and report the thread id so the chat binds it for later sends.
+/// Returns Ok(true) when the line was consumed.
+pub(super) fn advance_phase(
+    phase: &mut Phase, turn: &CodexTurn, msg: &Value, stdin: &mut dyn std::io::Write, tx: &std::sync::mpsc::Sender<AgentEvent>,
+) -> Result<bool, String> {
     let id = msg["id"].as_i64().unwrap_or(-1);
     if let Some(err) = msg.get("error") {
         // Steer replies (ids ≥ 4) are advisory: a rejected steer must not
@@ -159,7 +162,7 @@ pub(super) fn advance_phase(phase: &mut Phase, turn: &CodexTurn, msg: &Value, st
     match (std::mem::replace(phase, Phase::Run), id) {
         (Phase::Init, 1) => {
             // `initialized` notification, then open the turn's thread —
-            // resume a bound session's thread, else start an ephemeral one.
+            // resume the chat's bound thread, else start a fresh one.
             let open = match &turn.resume {
                 Some(tid) => thread_resume_req(2, tid, Some(&turn.thread_opts())),
                 None => thread_start_req(2, &turn.cwd, &turn.thread_opts()),
@@ -173,6 +176,9 @@ pub(super) fn advance_phase(phase: &mut Phase, turn: &CodexTurn, msg: &Value, st
         (Phase::Thread, 2) => {
             let tid = msg["result"]["thread"]["id"].as_str().ok_or("codex: no thread id")?.to_string();
             turn.slot.ids.lock().0 = Some(tid.clone());
+            // The chat binds this id — later sends resume the thread, and
+            // the binding persists so a relaunched app keeps continuing it.
+            tx.send(AgentEvent::ThreadBound(tid.clone().into())).ok();
             writeln!(stdin, "{}", turn_start_req(3, &tid, &turn.prompt, turn.effort.as_deref(), &turn.images))
                 .map_err(|e| format!("codex stdin: {e}"))?;
             *phase = Phase::Turn;

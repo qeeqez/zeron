@@ -177,7 +177,8 @@ fn apply_task_event(agent: &mut Agent, ev: &AgentEvent) -> Option<AgentStatus> {
                 .push(format!("[{}s] approval denied (no UI): {} {detail}", agent.elapsed_secs, kind.label()).into());
             None
         },
-        AgentEvent::TextStart | AgentEvent::TextDelta(_) => None,
+        // Bookkeeping, not activity — the workspace binds the id.
+        AgentEvent::ThreadBound(_) | AgentEvent::TextStart | AgentEvent::TextDelta(_) => None,
         // The plan checklist announces real progress — the row's counters
         // track it and the step label shows the in-flight step.
         AgentEvent::Plan { steps, .. } => {

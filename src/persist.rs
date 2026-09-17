@@ -54,8 +54,8 @@ pub(crate) struct StoredChat {
     /// files written before the diff-base picker existed.
     #[serde(default)]
     pub(crate) diff_base: Option<String>,
-    /// Backend thread the chat continues (resumed sessions); missing in
-    /// files written before resume existed.
+    /// Backend thread the chat continues — bound on the first turn's
+    /// `ThreadBound` event or when the chat resumed a past session.
     #[serde(default)]
     pub(crate) thread_id: String,
     /// Per-turn workdir checkpoints — missing in files written before

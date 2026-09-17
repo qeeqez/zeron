@@ -163,3 +163,40 @@ fn opening_a_bound_session_selects_its_existing_chat() {
         });
     });
 }
+
+#[test]
+fn bound_thread_survives_save_load_send() {
+    // The resume chain end to end: a turn binds the backend's thread id,
+    // the binding persists, and a relaunched workspace's next send carries
+    // it on the TurnContext so the backend resumes instead of forking.
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app, "cycle");
+    let ctxs = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
+    cx.update(|_, cx| {
+        ws.update(cx, |this, cx| {
+            this.backend = std::sync::Arc::new(SessionBackend { ctxs: ctxs.clone(), sessions: vec![] });
+            let chat_id = this.chats[this.active].id;
+            this.apply_event(chat_id, AgentEvent::ThreadBound("tid-9".into()), cx);
+            assert_eq!(this.chats[this.active].thread_id, "tid-9", "the turn bound the thread");
+            this.save();
+        });
+    });
+    // Relaunch: reload the chats dir into a fresh chat set.
+    let dir = cx.update(|_, cx| ws.read(cx).project.chats_dir());
+    let mut next_id = 100;
+    let loaded = crate::persist::load_chats(&dir, &mut next_id, true);
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].thread_id, "tid-9", "the binding round-trips through disk");
+    cx.update(|window, cx| {
+        ws.update(cx, |this, cx| {
+            this.chats = loaded;
+            this.active = 0;
+            this.model = "m".into();
+            this.composer.update(cx, |c, cx| c.set_value("continue", window, cx));
+            this.send(window, cx);
+        });
+    });
+    let ctxs = ctxs.lock();
+    assert_eq!(ctxs.len(), 1);
+    assert_eq!(ctxs[0].thread_id.as_deref(), Some("tid-9"), "the reloaded chat resumes its thread");
+}

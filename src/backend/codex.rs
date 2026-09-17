@@ -88,7 +88,7 @@ impl AgentBackend for CodexCliBackend {
     }
 
     /// `thread/compact/start` on the chat's bound thread — `None` for
-    /// unbound chats, whose ephemeral threads hold nothing to fold.
+    /// unbound chats, which have no server-side history to fold yet.
     fn compact(&self, ctx: &super::TurnContext) -> Option<ReplyStream> {
         super::compact::compact_thread(ctx, &self.env)
     }
@@ -108,8 +108,8 @@ pub(super) struct CodexTurn {
     pub(super) cwd: std::path::PathBuf,
     /// Image attachments — sent as `localImage` inputs on `turn/start`.
     pub(super) images: Vec<std::path::PathBuf>,
-    /// Resume this codex thread instead of starting an ephemeral one — set
-    /// on chats bound to a past session.
+    /// Resume this codex thread instead of starting a fresh one — the
+    /// chat's bound `thread_id` (set by the last turn's `ThreadBound`).
     pub(super) resume: Option<String>,
     /// Reasoning effort for `turn/start` — `None` lets the server apply
     pub(super) effort: Option<String>,
