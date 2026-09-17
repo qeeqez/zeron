@@ -12,12 +12,17 @@ use super::{ChatUsage, TurnUsage};
 /// One chat's contribution to [`UsageTotals::gather`]: the display title,
 /// the model its tokens are priced under (callers apply their fallback —
 /// the workspace substitutes the current selection for legacy chats), the
-/// folded usage, and the chat's persisted messages for the daily buckets.
-/// Pass an empty `messages` for backends whose usage stamps aren't token
-/// counts (acp files written before the occupancy-stamp fix).
+/// provider's display label, the folded usage, and the chat's persisted
+/// messages for the daily buckets. Pass an empty `messages` for backends
+/// whose usage stamps aren't token counts (acp files written before the
+/// occupancy-stamp fix).
 pub struct ChatUsageEntry<'a> {
     pub title: &'a str,
     pub model: &'a str,
+    /// The provider instance's user-facing name — the breakdown's row
+    /// label; callers resolve the id to a name (deleted instances fall
+    /// back to the id, empty to "unknown").
+    pub provider: &'a str,
     pub usage: &'a ChatUsage,
     pub messages: &'a [crate::model::ChatMessage],
 }
@@ -35,11 +40,12 @@ pub struct DayTotal {
     pub cost: Option<f64>,
 }
 
-/// One row of the per-model table: the folded token split and the summed
-/// estimate — `None` when the model's pricing is unknown.
+/// One row of a breakdown table — per-model and per-provider share the
+/// shape: the folded token split and the summed estimate, `None` when the
+/// row's pricing is unknown.
 #[derive(Clone, Debug)]
-pub struct ModelTotal {
-    pub model: String,
+pub struct BreakdownRow {
+    pub label: String,
     pub tokens: TurnUsage,
     pub cost: Option<f64>,
 }
@@ -54,14 +60,14 @@ pub struct ChatTotal {
     pub cost: Option<f64>,
 }
 
-/// Workspace-wide usage folded across every chat — the usage dashboard's
+/// Workspace-wide usage folded across every chat — the usage panel's
 /// data. `total_input` counts cache tokens on the input side (they're
 /// billed like input); `total_cost` sums only the priced chats, so
-/// `cost_partial` marks it a lower bound. `by_model` sorts by tokens
-/// descending; `by_chat` by cost descending (unpriced chats last, tokens
-/// break ties) and skips chats with no recorded usage. `by_day` holds
-/// exactly [`CHART_DAYS`] slots, oldest first, ending at `today` — empty
-/// days stay zero so the chart renders them as gaps.
+/// `cost_partial` marks it a lower bound. `by_model` and `by_provider`
+/// sort by tokens descending; `by_chat` by cost descending (unpriced
+/// chats last, tokens break ties) and skips chats with no recorded usage.
+/// `by_day` holds exactly [`CHART_DAYS`] slots, oldest first, ending at
+/// `today` — empty days stay zero so the chart renders them as gaps.
 #[derive(Clone, Debug, Default)]
 pub struct UsageTotals {
     pub total_input: u64,
@@ -70,7 +76,8 @@ pub struct UsageTotals {
     /// Some chat has tokens but no known pricing — `total_cost` is a
     /// lower bound.
     pub cost_partial: bool,
-    pub by_model: Vec<ModelTotal>,
+    pub by_provider: Vec<BreakdownRow>,
+    pub by_model: Vec<BreakdownRow>,
     pub by_chat: Vec<ChatTotal>,
     pub by_day: Vec<DayTotal>,
 }
@@ -106,17 +113,13 @@ impl UsageTotals {
                 None => totals.cost_partial = true,
             }
             let model = if entry.model.is_empty() { "unknown" } else { entry.model };
-            let row = match totals.by_model.iter_mut().find(|m| m.model == model) {
-                Some(m) => m,
-                None => {
-                    totals.by_model.push(ModelTotal {
-                        model: model.to_string(),
-                        tokens: TurnUsage::default(),
-                        cost: None,
-                    });
-                    totals.by_model.last_mut().expect("just pushed")
-                },
-            };
+            let row = breakdown_row(&mut totals.by_model, model);
+            row.tokens.accrue(tokens);
+            if let Some(c) = cost {
+                row.cost = Some(row.cost.unwrap_or(0.) + c);
+            }
+            let provider = if entry.provider.is_empty() { "unknown" } else { entry.provider };
+            let row = breakdown_row(&mut totals.by_provider, provider);
             row.tokens.accrue(tokens);
             if let Some(c) = cost {
                 row.cost = Some(row.cost.unwrap_or(0.) + c);
@@ -125,12 +128,29 @@ impl UsageTotals {
         }
         totals
             .by_model
-            .sort_by(|a, b| b.tokens.total().cmp(&a.tokens.total()).then_with(|| a.model.cmp(&b.model)));
+            .sort_by(|a, b| b.tokens.total().cmp(&a.tokens.total()).then_with(|| a.label.cmp(&b.label)));
+        totals
+            .by_provider
+            .sort_by(|a, b| b.tokens.total().cmp(&a.tokens.total()).then_with(|| a.label.cmp(&b.label)));
         totals
             .by_chat
             .sort_by(|a, b| b.cost.unwrap_or(0.).total_cmp(&a.cost.unwrap_or(0.)).then_with(|| b.tokens.cmp(&a.tokens)));
         totals
     }
+}
+
+/// The `label` row in `rows`, creating it when absent — the breakdown
+/// tables' find-or-push.
+fn breakdown_row<'a>(rows: &'a mut Vec<BreakdownRow>, label: &str) -> &'a mut BreakdownRow {
+    if let Some(ix) = rows.iter().position(|r| r.label == label) {
+        return &mut rows[ix];
+    }
+    rows.push(BreakdownRow {
+        label: label.to_string(),
+        tokens: TurnUsage::default(),
+        cost: None,
+    });
+    rows.last_mut().expect("just pushed")
 }
 
 /// Fold one chat's persisted message usage into the daily buckets. Each
@@ -157,156 +177,5 @@ fn bucket_days(by_day: &mut [DayTotal], entry: &ChatUsageEntry<'_>, today: chron
 }
 
 #[cfg(test)]
-mod tests {
-    use chrono::TimeZone;
-
-    use super::{CHART_DAYS, ChatUsage, ChatUsageEntry, TurnUsage, UsageTotals};
-    use crate::model::{ChatMessage, MessageKind, Role, Usage};
-    use crate::usage::UsageReport;
-
-    fn entry<'a>(title: &'a str, model: &'a str, usage: &'a ChatUsage, messages: &'a [ChatMessage]) -> ChatUsageEntry<'a> {
-        ChatUsageEntry { title, model, usage, messages }
-    }
-
-    /// The fixed "today" the bucketing tests anchor on.
-    fn today() -> chrono::NaiveDate {
-        chrono::NaiveDate::from_ymd_opt(2026, 9, 16).unwrap()
-    }
-
-    /// Noon local time on `day` — midday avoids any DST-gap ambiguity.
-    fn at(day: chrono::NaiveDate) -> std::time::SystemTime {
-        chrono::Local.from_local_datetime(&day.and_hms_opt(12, 0, 0).unwrap()).unwrap().into()
-    }
-
-    /// An assistant message stamped with a turn's token usage.
-    fn msg(day: chrono::NaiveDate, input: u64, output: u64) -> ChatMessage {
-        ChatMessage {
-            role: Role::Assistant,
-            kind: MessageKind::Text("r".into()),
-            rating: None,
-            at: at(day),
-            usage: Some(Usage { input, output }),
-            attachments: vec![],
-            bookmarked: false,
-            pinned: false,
-            alternatives: vec![],
-        }
-    }
-
-    #[test]
-    fn gather_sums_two_chats_and_groups_by_model() {
-        let mut a = ChatUsage::default();
-        a.record(UsageReport { input: 100, output: 40, cached: 60, ..UsageReport::default() });
-        let mut b = ChatUsage::default();
-        b.record(UsageReport::tokens(50, 10));
-        let mut c = ChatUsage::default();
-        c.record(UsageReport::tokens(10, 10));
-
-        let t = UsageTotals::gather(
-            &[entry("one", "gpt-5", &a, &[]), entry("two", "gpt-5", &b, &[]), entry("three", "sim-x", &c, &[])],
-            today(),
-        );
-        // Cache tokens count on the input side.
-        assert_eq!(t.total_input, 100 + 60 + 50 + 10);
-        assert_eq!(t.total_output, 40 + 10 + 10);
-        assert!(t.cost_partial, "sim-x has no pricing — the sum is a lower bound");
-        assert!(t.total_cost > 0., "the priced chats still contribute");
-
-        assert_eq!(t.by_model.len(), 2, "the two gpt-5 chats fold into one row");
-        let gpt5 = &t.by_model[0];
-        assert_eq!(gpt5.model, "gpt-5");
-        assert_eq!(gpt5.tokens, TurnUsage { input: 150, output: 50, cached: 60 });
-        assert_eq!(gpt5.cost, Some(t.total_cost), "only gpt-5 is priced");
-        assert_eq!(t.by_model[1].model, "sim-x");
-        assert_eq!(t.by_model[1].cost, None);
-
-        // Priced chats rank ahead of the unpriced one.
-        assert_eq!(t.by_chat.len(), 3);
-        assert_eq!(t.by_chat[2].title, "three");
-        assert_eq!(t.by_chat[2].cost, None);
-    }
-
-    #[test]
-    fn gather_empty_and_unused_chats_yield_zeros() {
-        let t = UsageTotals::gather(&[], today());
-        assert_eq!(t.total_input, 0);
-        assert_eq!(t.total_output, 0);
-        assert_eq!(t.total_cost, 0.);
-        assert!(!t.cost_partial);
-        assert!(t.by_model.is_empty());
-        assert!(t.by_chat.is_empty());
-        assert_eq!(t.by_day.len(), CHART_DAYS, "the chart always spans the window");
-        assert!(t.by_day.iter().all(|d| d.tokens == 0 && d.cost.is_none()));
-        assert_eq!(t.by_day[CHART_DAYS - 1].day, today(), "the last slot is today");
-
-        // A chat that never reported usage contributes nothing.
-        let idle = ChatUsage::default();
-        let t = UsageTotals::gather(&[entry("idle", "gpt-5", &idle, &[])], today());
-        assert_eq!(t.total_input, 0);
-        assert!(t.by_model.is_empty());
-        assert!(t.by_chat.is_empty());
-        assert!(t.by_day.iter().all(|d| d.tokens == 0));
-    }
-
-    #[test]
-    fn gather_groups_empty_model_as_unknown() {
-        let mut u = ChatUsage::default();
-        u.record(UsageReport::tokens(10, 5));
-        let t = UsageTotals::gather(&[entry("legacy", "", &u, &[])], today());
-        assert_eq!(t.by_model.len(), 1);
-        assert_eq!(t.by_model[0].model, "unknown");
-        assert_eq!(t.by_model[0].cost, None, "no model id prices nothing");
-        assert!(t.cost_partial);
-    }
-
-    #[test]
-    fn gather_buckets_message_usage_by_local_day() {
-        let today = today();
-        let two_back = today - chrono::Duration::days(2);
-        // Runtime usage is empty — the chart reads the persisted stamps.
-        let u = ChatUsage::default();
-        let msgs = vec![msg(today, 100, 40), msg(two_back, 50, 10), msg(two_back, 20, 5)];
-
-        let t = UsageTotals::gather(&[entry("c", "gpt-5", &u, &msgs)], today);
-        assert_eq!(t.by_day.len(), CHART_DAYS);
-        assert_eq!(t.by_day[CHART_DAYS - 1].day, today);
-        assert_eq!(t.by_day[CHART_DAYS - 1].tokens, 140);
-        assert_eq!(t.by_day[CHART_DAYS - 3].day, two_back);
-        assert_eq!(t.by_day[CHART_DAYS - 3].tokens, 85, "same-day events sum");
-        assert!(t.by_day[CHART_DAYS - 2].tokens == 0, "the gap day stays empty");
-        // gpt-5 is priced — bucketed days carry a cost estimate.
-        assert!(t.by_day[CHART_DAYS - 1].cost.unwrap() > 0.);
-    }
-
-    #[test]
-    fn gather_drops_events_outside_the_window() {
-        let today = today();
-        let u = ChatUsage::default();
-        let msgs = vec![
-            msg(today - chrono::Duration::days(CHART_DAYS as i64), 999, 0), // one day too old
-            msg(today - chrono::Duration::days(CHART_DAYS as i64 - 1), 100, 0), // oldest kept
-            msg(today + chrono::Duration::days(1), 50, 0),                  // future → today
-        ];
-
-        let t = UsageTotals::gather(&[entry("c", "sim-x", &u, &msgs)], today);
-        assert_eq!(t.by_day[0].tokens, 100, "the oldest slot keeps day -13");
-        assert_eq!(t.by_day[CHART_DAYS - 1].tokens, 50, "future dates clamp onto today");
-        assert_eq!(t.by_day.iter().map(|d| d.tokens).sum::<u64>(), 150, "the out-of-window event is dropped");
-        assert!(t.by_day.iter().all(|d| d.cost.is_none()), "sim-x prices nothing");
-    }
-
-    #[test]
-    fn gather_buckets_alternatives_and_skips_unstamped() {
-        let today = today();
-        let u = ChatUsage::default();
-        // A regenerated reply: the live message plus one older alternative,
-        // each stamped with its own turn's usage — both spent tokens.
-        let mut m = msg(today, 100, 40);
-        m.alternatives.push(msg(today, 80, 30));
-        let mut bare = msg(today, 0, 0);
-        bare.usage = None;
-
-        let t = UsageTotals::gather(&[entry("c", "gpt-5", &u, &[m, bare])], today);
-        assert_eq!(t.by_day[CHART_DAYS - 1].tokens, 250, "alternatives count, unstamped messages don't");
-    }
-}
+#[path = "usage_totals_tests.rs"]
+mod tests;

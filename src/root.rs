@@ -52,6 +52,7 @@ impl Render for Workspace {
                     .when(self.plan_panel.open, |d| d.child(self.render_plan_panel(window, cx)))
                     .when(self.scheduled_panel_open, |d| d.child(self.render_scheduled_panel(window, cx)))
                     .when(self.bookmarks_panel.open, |d| d.child(self.render_bookmarks_panel(window, cx)))
+                    .when(self.usage_panel_open, |d| d.child(self.render_usage_panel(window, cx)))
                     .when(self.snapshots.open, |d| d.child(self.render_snapshots_panel(window, cx))),
             )
             // Bottom terminal panel — full width below the sidebar + chat
@@ -80,11 +81,8 @@ impl Render for Workspace {
             // View Logs — same centered-modal shape as the cheat sheet,
             // layered above it so Esc dismisses logs first.
             .when(self.logs_open, |d| d.child(crate::views::logs::logs_overlay(self, cx)))
-            // Usage dashboard — same centered-modal shape, layered above
-            // logs so Esc dismisses it first.
-            .when(self.usage_dashboard_open, |d| d.child(crate::views::usage_dashboard::usage_dashboard_overlay(self, cx)))
-            // File History / Blame — same centered-modal shape, layered above
-            // the usage dashboard so Esc dismisses it first.
+            // File History / Blame — a centered modal over a dimmed
+            // backdrop, layered above logs so Esc dismisses it first.
             .when_some(self.file_inspect.as_ref().map(|_| ()), |d, _| {
                 d.child(crate::views::file_inspect::file_inspect_overlay(self, cx))
             })

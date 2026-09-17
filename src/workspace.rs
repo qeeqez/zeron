@@ -243,9 +243,10 @@ pub struct Workspace {
     pub logs_open: bool,
     /// The logs panel's minimum-level filter (see `crate::logs::LogFilter`).
     pub logs_filter: crate::logs::LogFilter,
-    /// Usage dashboard overlay — a centered panel aggregating tokens and
-    /// cost across every chat (see `crate::views::usage_dashboard`).
-    pub usage_dashboard_open: bool,
+    /// Usage panel open/closed — persisted as `Settings.usage_panel_open`;
+    /// aggregates tokens and cost across every chat (see
+    /// `crate::views::usage_panel`).
+    pub usage_panel_open: bool,
     /// File-inspect overlay — the open "File History"/"Blame" panel for one
     /// project file; `None` is closed (see `crate::views::file_inspect`).
     pub file_inspect: Option<crate::views::file_inspect::FileInspect>,

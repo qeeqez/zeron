@@ -1,7 +1,7 @@
-//! The usage dashboard's daily bar chart: one column per day over the last
+//! The usage panel's daily bar chart: one column per day over the last
 //! `CHART_DAYS` days, height proportional to that day's usage — estimated
-//! cost while any day priced, tokens otherwise (mirroring the model table's
-//! share-bar rule). Today's bar wears the accent color; empty days render
+//! cost while any day priced, tokens otherwise (mirroring the breakdown
+//! rows' rule). Today's bar wears the accent color; empty days render
 //! as gaps. Pure divs — no chart crate. Each bar's aria label and tooltip
 //! carry the day's total.
 
@@ -29,10 +29,10 @@ pub(crate) fn usage_chart(days: &[DayTotal], cx: &App) -> impl IntoElement {
         .fold(0., f64::max);
     let bars: Vec<AnyElement> = days.iter().map(|d| bar(d, peak, cost_mode, cx)).collect();
     v_flex()
-        .id("usage-dashboard-chart")
+        .id("usage-chart")
         .test_support()
         .gap_1()
-        .child(crate::views::usage_dashboard::section_title("Last 14 days", cx))
+        .child(crate::views::usage_panel::section_title("Last 14 days", cx))
         .child(h_flex().h(px(72.)).items_stretch().gap_1().children(bars))
 }
 

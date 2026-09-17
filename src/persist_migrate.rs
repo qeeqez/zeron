@@ -46,6 +46,7 @@ impl Default for Settings {
             plan_panel_open: false,
             scheduled_panel_open: false,
             bookmarks_panel_open: false,
+            usage_panel_open: false,
             active_chat: 0,
             theme: "system".into(),
             mcp_servers: Vec::new(),

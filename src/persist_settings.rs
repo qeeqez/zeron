@@ -118,6 +118,8 @@ pub struct Settings {
     pub scheduled_panel_open: bool,
     /// Bookmarks panel open/closed — restored on launch.
     pub bookmarks_panel_open: bool,
+    /// Usage panel open/closed — restored on launch.
+    pub usage_panel_open: bool,
     /// Legacy field: per-project now (`projects/<id>/state.json`). Read for
     /// migration, never written back.
     #[serde(skip_serializing)]

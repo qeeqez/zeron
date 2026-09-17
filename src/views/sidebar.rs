@@ -148,18 +148,19 @@ impl Workspace {
             groups.push(messages);
         }
 
-        // Plan + Scheduled + Bookmarks panel rows — their suffixes are the
-        // live indicators (plan progress, enabled-automation count, total
-        // star count).
+        // Plan + Scheduled + Bookmarks + Usage panel rows — their
+        // suffixes are the live indicators (plan progress, enabled-
+        // automation count, total star count, session spend).
         let plan_row = super::plan_panel::plan_nav_row(self, cx);
         let scheduled_row = super::scheduled_panel::scheduled_nav_row(self, cx);
         let bookmarks_row = super::bookmarks_panel::bookmarks_nav_row(self, cx);
+        let usage_row = super::usage_panel::usage_nav_row(self, cx);
 
         let mut actions = group::ChatGroup::new("").child(new_chat).child(search_all);
         if let Some(resume) = resume {
             actions = actions.child(resume);
         }
-        let actions = actions.child(plan_row).child(scheduled_row).child(bookmarks_row);
+        let actions = actions.child(plan_row).child(scheduled_row).child(bookmarks_row).child(usage_row);
 
         // Bulk-op bar: appears above the footer while chats are
         // Cmd-click-selected. Chat-list scoped — hidden on the Files tab.

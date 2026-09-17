@@ -66,7 +66,7 @@ impl Workspace {
     pub fn continue_chat_with(&mut self, chat_ix: usize, provider_id: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(src) = self.chats.get(chat_ix) else { return };
         // Legacy chats (empty stamp) ride the live selection — same rule
-        // `chat_info`/`usage_dashboard` apply.
+        // `chat_info`/`usage_panel` apply.
         let current = if src.provider.is_empty() { self.selected_provider.as_str() } else { src.provider.as_str() };
         let Some(p) = self.providers.iter().find(|p| p.id == provider_id && p.enabled) else { return };
         if p.id == current {

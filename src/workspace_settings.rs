@@ -136,6 +136,7 @@ impl Workspace {
             plan_panel_open: self.plan_panel.open,
             scheduled_panel_open: self.scheduled_panel_open,
             bookmarks_panel_open: self.bookmarks_panel.open,
+            usage_panel_open: self.usage_panel_open,
             theme,
             ..Default::default()
         });

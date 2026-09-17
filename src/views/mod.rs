@@ -119,7 +119,7 @@ mod terminal_tabs;
 mod tool_group_tests;
 pub(crate) mod trust;
 pub(crate) mod usage_chart;
-pub(crate) mod usage_dashboard;
+pub(crate) mod usage_panel;
 mod usage_popover;
 
 pub use composer_helpers::{apply_pick, attachment_chips, mention_item, queued_item};

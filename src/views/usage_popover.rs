@@ -95,7 +95,7 @@ fn usage_breakdown(ws: &Entity<Workspace>, cx: &mut Context<gpui_kit::base::Popo
     body.popover_style(cx).p_3().bottom_1().into_any_element()
 }
 
-/// The footer row: dismisses the popover and opens the usage dashboard.
+/// The footer row: dismisses the popover and opens the usage panel.
 fn view_all_row(ws: &Entity<Workspace>, popover: &Entity<gpui_kit::base::PopoverState>, cx: &App) -> impl IntoElement {
     let ws = ws.clone();
     let popover = popover.clone();
@@ -116,7 +116,7 @@ fn view_all_row(ws: &Entity<Workspace>, popover: &Entity<gpui_kit::base::Popover
         .child(IconName::ArrowRight)
         .on_click(move |_, window, cx| {
             popover.update(cx, |state, cx| state.dismiss(window, cx));
-            ws.update(cx, |this, cx| this.toggle_usage_dashboard(window, cx));
+            ws.update(cx, |this, cx| this.toggle_usage_panel(window, cx));
         })
 }
 
