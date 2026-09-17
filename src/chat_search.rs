@@ -26,24 +26,21 @@ pub(crate) fn msg_matches(m: &ChatMessage, query: &str) -> bool {
     haystacks(m).iter().any(|h| h.to_lowercase().contains(query))
 }
 
-/// A one-line excerpt of the first field containing `query` (lowercase),
-/// centered on the match — the result row's snippet in global search.
-pub(crate) fn match_snippet(m: &ChatMessage, query: &str) -> String {
-    let Some(hay) = haystacks(m).into_iter().find(|h| h.to_lowercase().contains(query)) else {
+/// A one-line excerpt of the first field matching `needle` under `opts`,
+/// centered on the hit — the result row's snippet in global search. The
+/// hit's byte range comes from `FindOpts::first_match`, so the window
+/// lands on the text that actually matched: under Match Case a folded
+/// offset can't center the excerpt on a differently-cased word.
+pub(crate) fn match_snippet(m: &ChatMessage, needle: &str, opts: find_opts::FindOpts) -> String {
+    let Some((hay, hit)) = haystacks(m).into_iter().find_map(|h| opts.first_match(h, needle).map(|r| (h, r))) else {
         return String::new();
     };
-    let start = hay.to_lowercase().find(query).unwrap_or(0);
-    // Snap to char boundaries — lowercasing can shift byte offsets.
-    let mut start = start.min(hay.len());
-    while start > 0 && !hay.is_char_boundary(start) {
-        start -= 1;
-    }
     const CTX: usize = 40;
-    let mut from = start.saturating_sub(CTX);
+    let mut from = hit.start.saturating_sub(CTX);
     while from > 0 && !hay.is_char_boundary(from) {
         from -= 1;
     }
-    let mut to = (start + query.len() + CTX).min(hay.len());
+    let mut to = (hit.end + CTX).min(hay.len());
     while to < hay.len() && !hay.is_char_boundary(to) {
         to += 1;
     }

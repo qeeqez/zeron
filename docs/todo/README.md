@@ -22,13 +22,13 @@ Completed areas live in `docs/done/`: `agents.md`, `sidebar.md`, `chat-ui.md`, `
 
 ## Gaps vs Codex desktop (lane candidates)
 
-- Global search + terminal find bar: no match-case / whole-word toggles (the chat find bar has them; `find_opts.rs::FindOpts` is shared-ready).
 - Toast notifications have click-to-open only — no action buttons (blocked on gpui-kit `Notification` API support).
 - No drag-to-tear-off for chats — "Open in New Window" exists, drag-detach into an existing window does not.
 - Parallel-load test flakes: `filter_chips_narrow_live_results`, `role_chip_narrows_live_results`, `check_for_updates_action_reports_available` share process-wide env/static state — need per-test isolation.
 
 ## Done recently (from this list)
 
+- ~~Global search + terminal find bar: no match-case / whole-word toggles~~ — both surfaces now carry the chips (`FindOpts` on `SearchFilters` + the terminal's `FindBar`); `match_snippet`/`find_in_lines` span-match through `FindOpts::match_ranges` so highlights land on real hits.
 - ~~MCP transport~~ — `ProviderKind::Mcp` + `McpBackend` (`backend/mcp*.rs`).
 - ~~Diff review inline comments~~ — `review.rs`, `model_review.rs`, `views/diff.rs`.
 - ~~Multi-window~~ — `chat_window.rs` opens a chat in its own window.

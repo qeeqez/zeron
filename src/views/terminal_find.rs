@@ -17,6 +17,7 @@ use gpui_kit::*;
 
 use crate::chat_find::step_ix;
 use crate::terminal::links::{TermLink, detect_links, find_in_lines};
+use crate::views::chat_find_bar::{FindChip, FindScope, find_toggle};
 use crate::workspace::Workspace;
 
 /// Build the find input and wire its events: edits re-target the first
@@ -43,7 +44,9 @@ impl Workspace {
             return Vec::new();
         }
         let query = self.terminal.find.input.read(cx).value().to_string();
-        self.terminal.active_session().map_or_else(Vec::new, |s| find_in_lines(&s.contents(), &query))
+        self.terminal
+            .active_session()
+            .map_or_else(Vec::new, |s| find_in_lines(&s.contents(), &query, self.terminal.find.opts))
     }
 
     /// Cmd-F while the panel is focused: toggle the bar. Opening focuses
@@ -98,6 +101,33 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Re-target the first surviving match after a Match Case / Whole
+    /// Word flip — the same reset a query edit performs, minus the
+    /// `last_query` bookkeeping that guards it.
+    fn term_find_retarget(&mut self, cx: &mut Context<Self>) {
+        self.terminal.find.match_ix = 0;
+        let matches = self.term_find_matches(cx);
+        if let Some(first) = matches.first() {
+            self.scroll_to_term_match(first, cx);
+        }
+        cx.notify();
+    }
+
+    /// The Match Case chip: flip exact-case matching and re-run the
+    /// current needle immediately, re-targeting the first surviving hit.
+    /// Like the chat bar's chips, the flags stay set for the session.
+    pub(crate) fn term_find_match_case_toggle(&mut self, cx: &mut Context<Self>) {
+        self.terminal.find.opts.case_sensitive = !self.terminal.find.opts.case_sensitive;
+        self.term_find_retarget(cx);
+    }
+
+    /// The Whole Word chip: flip word-boundary matching and re-run the
+    /// current needle immediately, re-targeting the first surviving hit.
+    pub(crate) fn term_find_whole_word_toggle(&mut self, cx: &mut Context<Self>) {
+        self.terminal.find.opts.whole_word = !self.terminal.find.opts.whole_word;
+        self.term_find_retarget(cx);
+    }
+
     /// Esc while the bar is open closes it (query cleared, highlights
     /// gone); otherwise the key falls through to the workspace's own Esc
     /// cascade.
@@ -117,8 +147,9 @@ impl Workspace {
         self.terminal.scroll.set_offset(point(px(0.), px(-(m.line as f32) * line_h)));
     }
 
-    /// The find bar: query input, `n / total` readout, prev/next and
-    /// close — a slimmer copy of the chat find bar's chrome.
+    /// The find bar: query input, the Match Case / Whole Word toggle
+    /// chips, `n / total` readout, prev/next and close — a slimmer copy
+    /// of the chat find bar's chrome.
     pub(crate) fn terminal_find_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let total = self.term_find_matches(cx).len();
         let current = if total == 0 { 0 } else { self.terminal.find.match_ix.min(total - 1) + 1 };
@@ -134,6 +165,8 @@ impl Workspace {
             .border_color(cx.theme().border)
             .child(IconName::Search)
             .child(div().flex_1().child(Input::new(&self.terminal.find.input).appearance(true)))
+            .child(find_toggle(FindChip::Case, FindScope::Term, self.terminal.find.opts, cx))
+            .child(find_toggle(FindChip::Word, FindScope::Term, self.terminal.find.opts, cx))
             .child(
                 div()
                     .id("terminal-find-count")
@@ -199,3 +232,7 @@ impl Workspace {
 #[cfg(test)]
 #[path = "../terminal_search_tests.rs"]
 mod terminal_search_tests;
+
+#[cfg(test)]
+#[path = "../terminal_find_toggle_tests.rs"]
+mod terminal_find_toggle_tests;

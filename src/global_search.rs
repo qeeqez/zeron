@@ -15,6 +15,7 @@ use std::time::SystemTime;
 use gpui_kit::component::{IndexPath, WindowExt};
 use gpui_kit::*;
 
+use crate::chat_search::find_opts::FindOpts;
 use crate::chat_search::role_filter::RoleFilter;
 use crate::model::{Chat, ChatMessage, Role};
 use crate::workspace::Workspace;
@@ -146,6 +147,9 @@ pub(crate) struct SearchFilters {
     pub provider: Option<String>,
     /// Drop hits whose message's role differs — `All` keeps both sides.
     pub role: RoleFilter,
+    /// The Match Case / Whole Word chips — the same `FindOpts` the find
+    /// bars carry, narrowing the text match itself.
+    pub opts: FindOpts,
 }
 
 /// `(index, path)` pairs for every `N.json` chat file in `dir`, sorted —
@@ -176,10 +180,10 @@ pub(crate) fn read_stored(path: &Path) -> Option<crate::persist::StoredChat> {
 /// query matches nothing — the dialog shows its hint instead of flooding
 /// the list with every message ever written. `filters` narrows the text
 /// matches: provider/model drop whole chats, the date bound drops
-/// individual messages.
+/// individual messages, `opts` applies the Match Case / Whole Word chips.
 pub(crate) fn search(docs: &[SearchDoc], query: &str, filters: &SearchFilters) -> Vec<SearchHit> {
-    let query = query.trim().to_lowercase();
-    if query.is_empty() {
+    let needle = query.trim();
+    if needle.is_empty() {
         return Vec::new();
     }
     let from = filters.date_from.or_else(|| filters.date.cutoff());
@@ -194,7 +198,7 @@ pub(crate) fn search(docs: &[SearchDoc], query: &str, filters: &SearchFilters) -
             if taken >= PER_CHAT {
                 break;
             }
-            if !filters.role.matches(m.role) || !crate::chat_search::msg_matches(m, &query) {
+            if !filters.role.matches(m.role) || !filters.opts.msg_matches(m, needle) {
                 continue;
             }
             if from.is_some_and(|f| m.at < f) || filters.date_to.is_some_and(|t| m.at > t) {
@@ -206,7 +210,7 @@ pub(crate) fn search(docs: &[SearchDoc], query: &str, filters: &SearchFilters) -
                 file_ix: doc.file_ix,
                 msg_ix,
                 title: doc.title.clone(),
-                snippet: crate::chat_search::match_snippet(m, &query).into(),
+                snippet: crate::chat_search::match_snippet(m, needle, filters.opts).into(),
                 context: crate::chat_search::context_line(&doc.messages, msg_ix),
                 provider: doc.provider.clone(),
                 model: doc.model.clone(),
@@ -313,6 +317,11 @@ pub(crate) mod sidebar_search;
 #[cfg(test)]
 #[path = "global_search_context_tests.rs"]
 mod global_search_context_tests;
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "global_search_opts_tests.rs"]
+mod global_search_opts_tests;
 
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]

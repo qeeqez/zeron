@@ -240,8 +240,9 @@ impl Workspace {
         if target.is_some_and(|m| !self.find.role.matches(m.role)) {
             self.find.role = RoleFilter::All;
         }
-        // Global search always matches case-insensitively — a Match Case /
-        // Whole Word pair strict enough to hide the confirmed hit resets.
+        // A Match Case / Whole Word pair strict enough to hide the
+        // confirmed hit resets — the jump must land on it. The search
+        // dialog's own chips aren't inherited: the bar widens only.
         if target.is_some_and(|m| !self.find.opts.msg_matches(m, query)) {
             self.find.opts = FindOpts::default();
         }

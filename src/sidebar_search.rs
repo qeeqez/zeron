@@ -64,7 +64,7 @@ fn chat_hit(chat_id: Option<u64>, file_ix: usize, title: SharedString, messages:
         file_ix,
         msg_ix,
         title,
-        snippet: crate::chat_search::match_snippet(&messages[msg_ix], query).into(),
+        snippet: crate::chat_search::match_snippet(&messages[msg_ix], query, crate::chat_search::find_opts::FindOpts::default()).into(),
         count,
         at: messages[msg_ix].at,
     })

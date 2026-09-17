@@ -10,6 +10,7 @@ use std::sync::mpsc::Sender;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{Entity, TestAppContext, VisualTestContext};
 
+use crate::chat_search::find_opts::FindOpts;
 use crate::composer_testutil::{open_workspace, until};
 use crate::terminal::links::{detect_links, find_in_lines};
 use crate::terminal::{Pty, PtyEvent, TermSession};
@@ -41,7 +42,7 @@ fn push_session(ws: &Entity<Workspace>, cx: &mut VisualTestContext, output: &[u8
 #[test]
 fn find_reports_line_and_byte_range() {
     let contents = "alpha beta\nbeta BETA gamma\nno hit";
-    let matches = find_in_lines(contents, "beta");
+    let matches = find_in_lines(contents, "beta", FindOpts::default());
     assert_eq!(matches.len(), 3);
     assert_eq!(matches[0].line, 0);
     assert_eq!(&contents[matches[0].range.clone()], "beta");
@@ -49,8 +50,8 @@ fn find_reports_line_and_byte_range() {
     assert_eq!(&contents[matches[1].range.clone()], "beta");
     assert_eq!(matches[2].line, 1);
     assert_eq!(&contents[matches[2].range.clone()], "BETA", "case-insensitive");
-    assert!(find_in_lines(contents, "").is_empty(), "empty query matches nothing");
-    assert!(find_in_lines(contents, "zzz").is_empty());
+    assert!(find_in_lines(contents, "", FindOpts::default()).is_empty(), "empty query matches nothing");
+    assert!(find_in_lines(contents, "zzz", FindOpts::default()).is_empty());
 }
 
 #[test]

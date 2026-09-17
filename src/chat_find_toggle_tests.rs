@@ -92,6 +92,28 @@ fn toggles_combine_and_apply_to_every_haystack() {
     assert_eq!(matching_messages(&messages, "Shell", RoleFilter::All, CASE), vec![0]);
 }
 
+#[test]
+fn match_ranges_report_slice_valid_spans() {
+    // Spans slice the haystack itself — what terminal highlights and
+    // snippet windows paint — so they must be byte-exact under the flags.
+    let hay = "a Hit and a hit";
+    let folded = FindOpts::default().match_ranges(hay, "hit");
+    assert_eq!(folded.len(), 2);
+    assert_eq!(&hay[folded[0].clone()], "Hit");
+    assert_eq!(&hay[folded[1].clone()], "hit");
+    let cased = CASE.match_ranges(hay, "hit");
+    assert_eq!(cased.len(), 1);
+    assert_eq!(&hay[cased[0].clone()], "hit", "case-sensitive skips 'Hit'");
+    let worded = WORD.match_ranges("hitter hit", "hit");
+    assert_eq!(worded.len(), 1, "'hitter' is word-flanked");
+    assert_eq!(&"hitter hit"[worded[0].clone()], "hit");
+    let both = BOTH.match_ranges("Hit hit HIT", "hit");
+    assert_eq!(both, vec![4..7], "only the exact-case whole word survives");
+    assert!(BOTH.match_ranges("Hit HIT", "hit").is_empty());
+    assert!(FindOpts::default().match_ranges("hay", "").is_empty(), "empty needle matches nothing");
+    assert_eq!(FindOpts::default().first_match("xYy", "y"), Some(1..2), "the span, not just the bool");
+}
+
 /// Mount a `Workspace` in a headless window with `HOME` redirected to a temp
 /// dir so settings/chats reads+writes stay off the real profile.
 fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {

@@ -21,6 +21,7 @@ use gpui_kit::*;
 
 use crate::chat_search::role_filter::RoleFilter;
 use crate::global_search::{DateRange, SearchDoc, SearchFilters, SearchHit, search};
+use crate::views::chat_find_bar::{FindChip, FindScope, toggle_chip};
 use crate::workspace::Workspace;
 
 /// One filter chip: an xsmall ghost button whose label is the current
@@ -101,11 +102,22 @@ fn provider_menu(
     })
 }
 
+/// A Match Case / Whole Word chip for the filter row — the same shell the
+/// find bars use (`views::chat_find_bar::toggle_chip`), but the click
+/// writes `filters` directly: the dialog builds while the workspace entity
+/// is leased, so no `Workspace` listener can run. The workspace's observe
+/// on the entity re-renders, narrowing the list live.
+fn opt_toggle(chip: FindChip, filters: &Entity<SearchFilters>, cx: &App) -> impl IntoElement {
+    let on = chip.on(filters.read(cx).opts);
+    let filters = filters.clone();
+    toggle_chip(chip, FindScope::Search, on, cx).on_click(move |_, _, cx| filters.update(cx, |f, _| chip.flip(&mut f.opts)))
+}
+
 /// The filter row above the search field: Date/Model/Provider chips whose
 /// menus write the filters entity — the workspace observes it and
 /// re-renders, so results narrow live. Model/Provider options are the
 /// distinct stamps across `docs`; a chat with an empty stamp simply never
-/// offers that value.
+/// offers that value. The Match Case / Whole Word toggles end the row.
 fn filter_row(filters: &Entity<SearchFilters>, docs: &[SearchDoc], cx: &mut App) -> AnyElement {
     let models: Rc<Vec<String>> = Rc::new(
         docs.iter()
@@ -145,6 +157,8 @@ fn filter_row(filters: &Entity<SearchFilters>, docs: &[SearchDoc], cx: &mut App)
             provider_menu(f_provider.clone(), providers.clone(), menu, window, cx)
         }))
         .child(chip("search-filter-role", IconName::User, role_label, move |menu, window, cx| role_menu(f_role.clone(), menu, window, cx)))
+        .child(opt_toggle(FindChip::Case, filters, cx))
+        .child(opt_toggle(FindChip::Word, filters, cx))
         .into_any_element()
 }
 

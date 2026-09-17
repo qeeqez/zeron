@@ -15,21 +15,38 @@ use gpui_kit::*;
 use crate::chat_search::find_opts::FindOpts;
 use crate::workspace::Workspace;
 
-/// The bar's two flag chips — each knows its element id, icon, a11y label,
-/// which `FindOpts` flag it reads and the `Workspace` method a click calls.
+/// The bar's two flag chips — each knows its icon, a11y label and which
+/// `FindOpts` flag it drives. Shared with the terminal find bar and the
+/// global-search filter row, which reuse the same styling.
 #[derive(Clone, Copy)]
-enum FindChip {
+pub(crate) enum FindChip {
     /// Match Case — the "Aa" icon, `case_sensitive`.
     Case,
     /// Whole Word — `whole_word`.
     Word,
 }
 
+/// Which surface a chip sits on — picks the element id and, for the
+/// workspace find bars, the toggle methods a click calls. `Search` is the
+/// global-search filter row: the dialog renders while the workspace is
+/// leased, so its click writes the filters entity instead of calling a
+/// `Workspace` method.
+#[derive(Clone, Copy)]
+pub(crate) enum FindScope {
+    Chat,
+    Term,
+    Search,
+}
+
 impl FindChip {
-    fn id(self) -> &'static str {
-        match self {
-            Self::Case => "find-match-case",
-            Self::Word => "find-whole-word",
+    fn id(self, scope: FindScope) -> &'static str {
+        match (scope, self) {
+            (FindScope::Chat, Self::Case) => "find-match-case",
+            (FindScope::Chat, Self::Word) => "find-whole-word",
+            (FindScope::Term, Self::Case) => "term-find-match-case",
+            (FindScope::Term, Self::Word) => "term-find-whole-word",
+            (FindScope::Search, Self::Case) => "search-match-case",
+            (FindScope::Search, Self::Word) => "search-whole-word",
         }
     }
 
@@ -47,30 +64,44 @@ impl FindChip {
         }
     }
 
-    fn on(self, opts: FindOpts) -> bool {
+    /// The flag this chip reads.
+    pub(crate) fn on(self, opts: FindOpts) -> bool {
         match self {
             Self::Case => opts.case_sensitive,
             Self::Word => opts.whole_word,
         }
     }
 
-    fn toggle(self, ws: &mut Workspace, cx: &mut Context<Workspace>) {
+    /// Flip the flag this chip drives — used where a `Workspace` listener
+    /// can't reach (the global-search row writes the filters entity).
+    pub(crate) fn flip(self, opts: &mut FindOpts) {
         match self {
-            Self::Case => ws.find_match_case_toggle(cx),
-            Self::Word => ws.find_whole_word_toggle(cx),
+            Self::Case => opts.case_sensitive = !opts.case_sensitive,
+            Self::Word => opts.whole_word = !opts.whole_word,
+        }
+    }
+
+    fn toggle(self, ws: &mut Workspace, scope: FindScope, cx: &mut Context<Workspace>) {
+        match (scope, self) {
+            (FindScope::Chat, Self::Case) => ws.find_match_case_toggle(cx),
+            (FindScope::Chat, Self::Word) => ws.find_whole_word_toggle(cx),
+            (FindScope::Term, Self::Case) => ws.term_find_match_case_toggle(cx),
+            (FindScope::Term, Self::Word) => ws.term_find_whole_word_toggle(cx),
+            (FindScope::Search, _) => {},
         }
     }
 }
 
-/// One find toggle chip: a small bordered icon button that carries the
+/// The toggle chip's shell: a small bordered icon button carrying the
 /// accent fill while on — the same look as the changes panel's
 /// ignore-whitespace chip. Checkbox role + `aria_toggled` expose the state
-/// to tests and assistive tech.
-fn find_toggle(chip: FindChip, opts: FindOpts, cx: &mut Context<Workspace>) -> impl IntoElement {
+/// to tests and assistive tech. The caller attaches the click handler —
+/// a workspace listener in the find bars, a filters-entity update in the
+/// global-search row.
+pub(crate) fn toggle_chip(chip: FindChip, scope: FindScope, on: bool, cx: &App) -> gpui_kit::base::ObservedElement<Stateful<Div>> {
     let theme = cx.theme();
-    let on = chip.on(opts);
-    let mut el = div()
-        .id(chip.id())
+    let el = div()
+        .id(chip.id(scope))
         .test_support()
         .role(gpui_kit::Role::CheckBox)
         .aria_toggled(if on { Toggled::True } else { Toggled::False })
@@ -82,12 +113,17 @@ fn find_toggle(chip: FindChip, opts: FindOpts, cx: &mut Context<Workspace>) -> i
         .border_1()
         .border_color(theme.border)
         .child(chip.icon());
-    el = if on {
+    if on {
         el.bg(theme.accent).text_color(theme.accent_foreground)
     } else {
         el.text_color(theme.muted_foreground)
-    };
-    el.on_click(cx.listener(move |this, _, _, cx| chip.toggle(this, cx)))
+    }
+}
+
+/// A find toggle chip wired to a workspace bar — `scope` picks the ids
+/// and the `Workspace` toggle method the click calls.
+pub(crate) fn find_toggle(chip: FindChip, scope: FindScope, opts: FindOpts, cx: &mut Context<Workspace>) -> impl IntoElement {
+    toggle_chip(chip, scope, chip.on(opts), cx).on_click(cx.listener(move |this, _, _, cx| chip.toggle(this, scope, cx)))
 }
 
 impl Workspace {
@@ -111,8 +147,8 @@ impl Workspace {
             .border_color(cx.theme().border)
             .child(IconName::Search)
             .child(div().flex_1().child(Input::new(&self.find.input).appearance(true)))
-            .child(find_toggle(FindChip::Case, self.find.opts, cx))
-            .child(find_toggle(FindChip::Word, self.find.opts, cx))
+            .child(find_toggle(FindChip::Case, FindScope::Chat, self.find.opts, cx))
+            .child(find_toggle(FindChip::Word, FindScope::Chat, self.find.opts, cx))
             .child(
                 Button::new("find-role")
                     .ghost()

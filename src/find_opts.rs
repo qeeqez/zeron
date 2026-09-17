@@ -3,6 +3,7 @@
 //! pre-toggle behavior: a case-insensitive substring match.
 
 use std::borrow::Cow;
+use std::ops::Range;
 
 use crate::model::ChatMessage;
 
@@ -45,6 +46,65 @@ impl FindOpts {
     pub(crate) fn msg_matches(self, m: &ChatMessage, needle: &str) -> bool {
         crate::chat_search::haystacks(m).iter().any(|h| self.text_matches(h, needle))
     }
+
+    /// Byte range of `needle`'s first hit in `hay` under the flags — `None`
+    /// on a miss. Comparison is char-wise (each side's lowercase form), so
+    /// the range slices `hay` directly even when a fold changes byte counts
+    /// (İ → i̇): the spans a highlight or snippet window paints are always
+    /// the text that actually matched. `text_matches`' whole-string fold
+    /// may differ on multi-char expansions — spans stay self-consistent.
+    pub(crate) fn first_match(self, hay: &str, needle: &str) -> Option<Range<usize>> {
+        self.find_at(hay, needle, 0)
+    }
+
+    /// Every non-overlapping `needle` hit in `hay` — `find_at` stepped past
+    /// each span, so hits never share bytes. An empty needle matches
+    /// nothing (and would never advance the scan).
+    pub(crate) fn match_ranges(self, hay: &str, needle: &str) -> Vec<Range<usize>> {
+        let mut ranges = Vec::new();
+        let mut from = 0;
+        while !needle.is_empty() {
+            let Some(r) = self.find_at(hay, needle, from) else { break };
+            from = r.end;
+            ranges.push(r);
+        }
+        ranges
+    }
+
+    /// `first_match` at or after byte offset `from`.
+    fn find_at(self, hay: &str, needle: &str, from: usize) -> Option<Range<usize>> {
+        hay.char_indices().skip_while(|(ix, _)| *ix < from).find_map(|(ix, _)| {
+            let range = ix..ix + self.match_prefix(&hay[ix..], needle)?;
+            (!self.whole_word || word_bounded(hay, &range)).then_some(range)
+        })
+    }
+
+    /// Bytes of `hay`'s leading run that equal `needle` under the flags —
+    /// `None` on a miss. Char-wise so the returned length indexes `hay`
+    /// itself; a multi-char lowercase (e.g. İ → i̇) still lines up.
+    fn match_prefix(self, hay: &str, needle: &str) -> Option<usize> {
+        let mut len = 0;
+        let mut hs = hay.chars();
+        for q in needle.chars() {
+            match hs.next() {
+                Some(h) if self.char_eq(h, q) => len += h.len_utf8(),
+                _ => return None,
+            }
+        }
+        Some(len)
+    }
+
+    /// Char compare under the flags — exact when case-sensitive, each
+    /// char's lowercase form otherwise.
+    fn char_eq(self, h: char, q: char) -> bool {
+        if self.case_sensitive { h == q } else { h.to_lowercase().eq(q.to_lowercase()) }
+    }
+}
+
+/// Both flanks of `range` in `hay` are non-word chars or `hay`'s edges —
+/// the whole-word rule applied to one candidate hit.
+fn word_bounded(hay: &str, range: &Range<usize>) -> bool {
+    !hay[..range.start].chars().next_back().is_some_and(word_char) && !hay[range.end..].chars().next().is_some_and(word_char)
 }
 
 /// Word chars for whole-word boundaries — the `\w` rule: letters, digits

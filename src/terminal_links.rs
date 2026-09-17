@@ -8,6 +8,8 @@
 use std::ops::Range;
 use std::path::{Component, Path};
 
+use crate::chat_search::find_opts::FindOpts;
+
 /// One search hit in the rendered contents: the logical line index plus the
 /// byte range of the match inside the whole contents string.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,48 +28,25 @@ pub(crate) struct TermLink {
     pub is_url: bool,
 }
 
-/// Case-insensitive search over `contents` split into logical lines. Empty
-/// queries match nothing; matches never overlap and never span a newline.
-pub(crate) fn find_in_lines(contents: &str, query: &str) -> Vec<TermMatch> {
+/// Search `contents` split into logical lines under `opts` (the find
+/// bar's Match Case / Whole Word chips — `FindOpts::default()` is the
+/// classic case-insensitive substring scan). Empty queries match
+/// nothing; matches never overlap and never span a newline.
+pub(crate) fn find_in_lines(contents: &str, query: &str, opts: FindOpts) -> Vec<TermMatch> {
     if query.is_empty() {
         return Vec::new();
     }
     let mut matches = Vec::new();
     let mut base = 0;
     for (line_ix, line) in contents.split('\n').enumerate() {
-        let mut start = 0;
-        while let Some(hit) = match_at(line, start, query) {
-            matches.push(TermMatch { line: line_ix, range: base + hit.start..base + hit.end });
-            // `hit` is never empty (query isn't), so `end` strictly advances.
-            start = hit.end;
-        }
+        matches.extend(
+            opts.match_ranges(line, query)
+                .into_iter()
+                .map(|r| TermMatch { line: line_ix, range: base + r.start..base + r.end }),
+        );
         base += line.len() + 1;
     }
     matches
-}
-
-/// First occurrence of `query` at or after `start` in `hay`, compared
-/// char-by-char on lowercase so byte offsets stay valid for highlighting.
-fn match_at(hay: &str, start: usize, query: &str) -> Option<Range<usize>> {
-    hay.char_indices()
-        .skip_while(|(ix, _)| *ix < start)
-        .take_while(|(ix, _)| hay.len() - ix >= query.len())
-        .find_map(|(ix, _)| match_prefix(&hay[ix..], query).map(|len| ix..ix + len))
-}
-
-/// Bytes of `hay`'s leading run that case-insensitively equals `query` —
-/// `None` when the prefix doesn't match. Char-wise so a multi-char
-/// lowercase (e.g. İ → i̇) still lines up.
-fn match_prefix(hay: &str, query: &str) -> Option<usize> {
-    let mut len = 0;
-    let mut hs = hay.chars();
-    for q in query.chars() {
-        match hs.next() {
-            Some(h) if h.to_lowercase().eq(q.to_lowercase()) => len += h.len_utf8(),
-            _ => return None,
-        }
-    }
-    Some(len)
 }
 
 /// Scan the logical lines in `visible` for `http(s)://` URLs and file paths
