@@ -295,9 +295,12 @@ pub fn load_prompts(dir: &std::path::Path) -> crate::prompts::PromptStore {
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[path = "persist_automations.rs"]
 mod persist_automations;
+#[path = "persist_templates.rs"]
+mod persist_templates;
 
 pub use crate::persist_settings::{DefaultModel, Settings, load_settings, save_settings};
 
 pub use crate::persist_model_cache::{load_model_cache, save_model_cache};
 
 pub use persist_automations::{load_automations, save_automations};
+pub use persist_templates::{load_templates, save_templates};

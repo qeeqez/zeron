@@ -7,6 +7,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::slash::SLASH_COMMANDS;
+use crate::views::templates::templates_menu;
 use crate::views::{
     EffortPickerSpec, ModelPickerSpec, PickerProvider, PickerSpec, SavedPromptsSpec, SlashSpec, attachment_chips, effort_picker,
     mention_item, model_picker, picker, queued_item, saved_prompts_popover, slash_item, usage_popover,
@@ -116,6 +117,9 @@ impl Workspace {
             can_save: !empty,
             ws: ws.clone(),
         });
+        // The ⋯ menu: template access beside the ★ prompts popover — "Save
+        // as template…" is armed by a non-empty composer.
+        let composer_menu = templates_menu(&ws, !empty);
         let composer_text = self.composer.read(cx).value().to_string();
         // The mention menu tracks the LAST `@` token: it must sit at a word
         // boundary ("user@host" stays quiet) and its query may not contain
@@ -257,6 +261,7 @@ impl Workspace {
                             .child(mode_picker)
                             .when_some(effort, |d, e| d.child(e))
                             .child(prompts_popover)
+                            .child(composer_menu)
                             .child(div().flex_1())
                             .child(
                                 div()

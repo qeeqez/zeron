@@ -153,6 +153,9 @@ pub struct Workspace {
     /// Shared text field for the saved-prompt dialogs — "Save prompt" seeds
     /// it empty, "Rename prompt" with the current name.
     pub prompt_input: Entity<InputState>,
+    /// Shared text field for the "Save as template" dialog — seeded empty
+    /// on open.
+    pub template_input: Entity<InputState>,
     /// Shared text field for the "Split chat…" dialog — the 1-based message
     /// number the split starts the new chat at.
     pub split_input: Entity<InputState>,
@@ -196,6 +199,10 @@ pub struct Workspace {
     /// Named reusable prompts — the composer ★ popover lists them and
     /// `/save` adds to them; persisted per project as `prompts.json`.
     pub prompts: crate::prompts::PromptStore,
+    /// Named prompt templates — `/templates` opens the picker and the
+    /// composer ⋯ menu saves the draft; persisted per project as
+    /// `templates.json`.
+    pub templates: crate::prompts::TemplateStore,
     /// Agents-panel task input — Enter spawns a standalone backend turn.
     pub task_input: Entity<InputState>,
     pub chat_search_open: bool,

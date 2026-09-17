@@ -17,7 +17,7 @@ use crate::workspace::Workspace;
 
 /// `(name, icon, description)` — the composer's `/` menu and `/help` both
 /// render this table, so a command ships with its help text or not at all.
-pub(crate) const SLASH_COMMANDS: [(&str, IconName, &str); 10] = [
+pub(crate) const SLASH_COMMANDS: [(&str, IconName, &str); 11] = [
     ("clear", IconName::Eraser, "Clear this chat's messages"),
     ("compact", IconName::ListCollapse, "Compact the conversation context"),
     ("export", IconName::FileDown, "Export this chat as Markdown"),
@@ -28,6 +28,7 @@ pub(crate) const SLASH_COMMANDS: [(&str, IconName, &str); 10] = [
     ("rename", IconName::PenLine, "Rename this chat"),
     ("save", IconName::Save, "Save a prompt (`/save <name> [text]`)"),
     ("status", IconName::Info, "Show provider, model, access and workspace"),
+    ("templates", IconName::LayoutTemplate, "Pick a prompt template into the composer"),
 ];
 
 /// `/init` prompt — the first line doubles as the chat title.
@@ -146,6 +147,7 @@ impl Workspace {
             "rename" => self.rename_active(window, cx),
             "save" => self.save_prompt_command(arg, cx),
             "status" => self.status_note(cx),
+            "templates" => self.open_template_picker(window, cx),
             _ => {
                 let known = SLASH_COMMANDS.iter().map(|(c, ..)| format!("`/{c}`")).collect::<Vec<_>>().join(" ");
                 self.push_note(format!("Unknown command `/{cmd}` — try `/help`. Commands: {known}"), cx);

@@ -110,6 +110,7 @@ impl Workspace {
             rename_mode: RenameMode::Inline,
             folder_input: cx.new(|cx| InputState::new(window, cx).placeholder("Folder name")),
             prompt_input: cx.new(|cx| InputState::new(window, cx).placeholder("Prompt name")),
+            template_input: cx.new(|cx| InputState::new(window, cx).placeholder("Template name")),
             split_input: cx.new(|cx| InputState::new(window, cx).placeholder("Message number")),
             chat_instructions_input: cx.new(|cx| {
                 TextareaState::new(window, cx)
@@ -162,6 +163,7 @@ impl Workspace {
             theme_persisted: settings.theme.clone(),
             project_files: Vec::new(),
             prompts: crate::persist::load_prompts(project.dir()),
+            templates: crate::persist::load_templates(project.dir()),
             project,
             sessions: Vec::new(),
             sessions_loading: false,

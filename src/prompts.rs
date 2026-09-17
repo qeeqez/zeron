@@ -12,6 +12,12 @@ use gpui_kit::*;
 use crate::model::{MessageKind, Role};
 use crate::workspace::Workspace;
 
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+// Templates are the prompts family's second store, so `prompts` parents it.
+#[path = "templates.rs"]
+pub(crate) mod templates;
+pub(crate) use templates::{Template, TemplateStore};
+
 /// One saved prompt: a name the user picks plus the text a pick loads into
 /// the composer.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
