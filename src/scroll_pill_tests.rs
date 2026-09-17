@@ -3,10 +3,15 @@
 //! appended while scrolled up, and its click returns to the live edge and
 //! marks the chat read. Declared as `crate::chat_search::scroll_pill_tests`
 //! via `#[path]` so `main.rs` stays under the SLOC cap.
+//!
+//! Detach is sticky: scrolling up pauses tail-follow and nothing re-engages
+//! it but the user — wheeling back to the bottom, clicking the pill, or a
+//! `reset` (chat switch, send, search). A turn ending does not reattach;
+//! the transcript stays where the user left it across turns.
 
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, ElementId, Entity, TestAppContext, VisualTestContext};
+use gpui_kit::{AppContext, ElementId, Entity, ScrollDelta, TestAppContext, VisualTestContext, point, px};
 
 use crate::model::{ChatMessage, MessageKind, Role};
 use crate::workspace::Workspace;
@@ -93,6 +98,30 @@ fn settle(cx: &mut VisualTestContext) {
     });
 }
 
+/// The topmost fully visible message row's index — the view's scroll anchor.
+/// Rows clipped at the viewport edge aren't `visible`, so they can't be
+/// wheel targets either.
+fn top_row_ix(window: &gpui_kit::Window) -> usize {
+    gpui_kit::base::test_support::snapshots(window)
+        .iter()
+        .filter(|s| s.visible())
+        .filter_map(|s| match s.path().last() {
+            Some(ElementId::NamedInteger(name, ix)) if name.as_ref() == "msg" => Some((*ix as usize, s.bounds().origin.y)),
+            _ => None,
+        })
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        .map(|(ix, _)| ix)
+        .expect("a message row is rendered")
+}
+
+/// Wheel-scroll the transcript — the real user path through the scroller's
+/// scroll mask, unlike `scroll_to_item`/`scroll_to_end`.
+fn wheel(row: usize, delta_y: f32, cx: &mut VisualTestContext) {
+    cx.update(|window, cx| {
+        window.scroll(("msg", row), ScrollDelta::Pixels(point(px(0.), px(delta_y))), cx);
+    });
+}
+
 #[gpui_kit::test]
 fn pill_hidden_at_bottom(cx: &mut TestAppContext) {
     let (ws, cx) = mount(cx);
@@ -168,4 +197,57 @@ fn pill_hides_when_scrolled_back(cx: &mut TestAppContext) {
         assert!(window.try_find(pill()).is_none(), "returning to the tail hides the pill");
     });
     ws.read_with(cx, |ws, _| assert_eq!(ws.pill_anchor, None, "anchor cleared at the tail"));
+}
+
+#[gpui_kit::test]
+fn scroll_up_detaches_follow(cx: &mut TestAppContext) {
+    let (ws, cx) = mount(cx);
+    seed(&ws, cx, 40);
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    wheel(39, 300., cx);
+    settle(cx);
+    ws.read_with(cx, |ws, cx| {
+        let s = ws.scroller.read(cx);
+        assert!(!s.is_following_tail(), "wheeling up detaches tail-follow");
+        assert!(s.is_scrolled_up());
+    });
+    let top_before = cx.update(|window, _cx| top_row_ix(window));
+    push(&ws, cx, "streamed while scrolled up");
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert_eq!(top_row_ix(window), top_before, "new content must not move the detached view");
+        assert_eq!(window.find(pill()).label(), Some("1 new"), "the pill counts the arrival");
+    });
+    ws.read_with(cx, |ws, cx| assert!(!ws.scroller.read(cx).is_following_tail()));
+}
+
+#[gpui_kit::test]
+fn wheel_to_bottom_reattaches(cx: &mut TestAppContext) {
+    let (ws, cx) = mount(cx);
+    seed(&ws, cx, 40);
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    scroll_to_top(&ws, cx);
+    settle(cx);
+    push(&ws, cx, "fresh");
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.find(pill()).visible(), "detached with new content shows the pill");
+    });
+    // Wheel down on the topmost row — the pill floats over the bottom rows,
+    // so a wheel dispatched there would hit the pill's hitbox, not the
+    // scroller's mask. The mask clamps deltas short of the list's bottom
+    // padding, so the gesture that reaches the edge is the one whose event
+    // bubbles to the list — repeat like a real overscroll.
+    for _ in 0..3 {
+        let top = cx.update(|window, _cx| top_row_ix(window));
+        wheel(top, -5000., cx);
+    }
+    settle(cx);
+    ws.read_with(cx, |ws, cx| {
+        assert!(ws.scroller.read(cx).is_following_tail(), "wheeling to the bottom reattaches follow");
+        assert_eq!(ws.pill_anchor, None);
+    });
+    cx.update(|window, _cx| {
+        assert!(window.try_find(pill()).is_none(), "reattach hides the pill");
+    });
 }

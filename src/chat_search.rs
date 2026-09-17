@@ -168,6 +168,11 @@ impl Workspace {
 /// tail clears it. `MessageScrollerState` exposes `is_scrolled_up` but no
 /// visible range, so "new" counts arrivals since the scroll-away, not rows
 /// below the fold.
+///
+/// Detach is sticky across turns: scrolling up pauses tail-follow and only
+/// the user re-engages it — wheeling back to the bottom, clicking the pill,
+/// or a `reset` (chat switch, send, search). A turn ending does not snap
+/// the view back; the transcript stays where the user left it.
 pub(crate) fn update_pill_anchor(scroller: &Entity<MessageScrollerState>, anchor: &mut Option<usize>, visible_count: usize, cx: &App) {
     if scroller.read(cx).is_scrolled_up() {
         if anchor.is_none() {
