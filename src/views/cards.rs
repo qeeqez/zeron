@@ -151,7 +151,7 @@ pub(crate) fn card_frame(cx: &App) -> Div {
     div().flex().flex_col().rounded_md().border_1().border_color(cx.theme().border).bg(cx.theme().muted)
 }
 
-fn card_header(id: impl Into<ElementId>) -> Stateful<Div> {
+pub(crate) fn card_header(id: impl Into<ElementId>) -> Stateful<Div> {
     div().id(id).flex().items_center().gap_2().px_3().py_2().cursor_pointer().text_sm()
 }
 
@@ -167,7 +167,7 @@ pub(crate) fn detail_block(text: &SharedString, cx: &App) -> Div {
         .child(text.clone())
 }
 
-fn chevron(expanded: bool) -> IconName {
+pub(crate) fn chevron(expanded: bool) -> IconName {
     if expanded { IconName::ChevronDown } else { IconName::ChevronRight }
 }
 

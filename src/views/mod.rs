@@ -108,6 +108,8 @@ pub(crate) mod sidebar;
 mod sidebar_row;
 mod snapshot_files;
 pub(crate) mod snapshots;
+mod split_cards;
+mod split_pane;
 mod templates;
 pub(crate) mod terminal;
 mod terminal_blocks;

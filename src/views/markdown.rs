@@ -86,7 +86,7 @@ pub(super) fn assistant_markdown(
 /// resolve against the workspace root). Anything else — `mailto:`,
 /// `javascript:`, bare `#anchors` — is inert. Mirrors the default handler's
 /// click filter: left/middle mouse, keyboard, or a non-long-press touch.
-fn open_link(url: &SharedString, event: &ClickEvent, ws: &Entity<Workspace>, cx: &mut App) {
+pub(super) fn open_link(url: &SharedString, event: &ClickEvent, ws: &Entity<Workspace>, cx: &mut App) {
     let activate = match event {
         ClickEvent::Mouse(click) => matches!(click.up.button, MouseButton::Left | MouseButton::Middle),
         ClickEvent::Keyboard(_) => true,

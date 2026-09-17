@@ -13,8 +13,12 @@ impl Workspace {
         // order is oldest-first, so eviction hits the oldest first.
         const MAX_CHATS: usize = 50;
         if self.chats.len() > MAX_CHATS {
+            // The split pane's index shifts with evictions — re-resolve it
+            // by id; an evicted secondary clears the pane.
+            let secondary_id = self.secondary.and_then(|s| self.chats.get(s)).map(|c| c.id);
             let dropped = evict_overflow(&mut self.chats, MAX_CHATS, self.project.root(), self.active);
             self.active = self.active.saturating_sub(dropped).min(self.chats.len().saturating_sub(1));
+            self.secondary = secondary_id.and_then(|id| self.chat_index(id)).filter(|&s| s != self.active);
         }
         // Setup-script runs nobody claimed (forked worktrees) land their
         // note here — before `save_chats` so the message persists in the

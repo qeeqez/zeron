@@ -58,6 +58,9 @@ impl Workspace {
                 self.new_chat(cx);
             }
         }
+        // Archiving the split-pane chat clears the pane — including when
+        // the active fixup just swapped it in.
+        self.clear_secondary_if(|c| !c.archived);
         cx.notify();
         self.save();
     }

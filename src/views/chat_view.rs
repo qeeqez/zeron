@@ -178,6 +178,7 @@ impl Workspace {
             .flex()
             .flex_col()
             .flex_1()
+            .min_w_0()
             .h_full()
             .bg(cx.theme().background)
             // FindInChat lives here rather than on the workspace root so the

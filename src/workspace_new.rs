@@ -41,6 +41,7 @@ impl Workspace {
         let mut this = Self {
             chats: Vec::new(),
             active: 0,
+            secondary: None,
             sidebar_collapsed: settings.sidebar_collapsed,
             sidebar_tab: crate::views::sidebar::SidebarTab::Chats,
             explorer: crate::views::explorer::ExplorerState::default(),
@@ -80,6 +81,7 @@ impl Workspace {
             sidebar_hits_extra: 0,
             sidebar_search_gen: 0,
             scroller: inputs.scroller,
+            secondary_scroller: cx.new(|cx| gpui_kit::component::message_scroller::MessageScrollerState::new(0, cx)),
             model: providers.iter().find(|p| p.id == selected_provider).map_or_else(SharedString::default, |p| {
                 crate::model_catalog::resolve_model(
                     model_catalog.get(&p.id).map_or(&[], Vec::as_slice),

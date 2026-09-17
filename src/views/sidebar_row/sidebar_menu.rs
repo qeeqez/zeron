@@ -22,6 +22,9 @@ pub(super) struct RowFlags {
     /// Temporary chats get a ghost glyph and can't be exported or opened
     /// in a new window — nothing about them reaches disk.
     pub ephemeral: bool,
+    /// Already on screen — the active chat or the split pane's. "Open in
+    /// Split" disables on these: opening would be a no-op.
+    pub on_screen: bool,
 }
 
 /// What the menu needs to know about its row — the stable chat id plus the
@@ -36,7 +39,7 @@ pub(super) fn chat_row_menu(
     ws: &Entity<Workspace>, row: RowMenu, menu: PopupMenu, window: &mut Window, cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
     let RowMenu { id, flags } = row;
-    let RowFlags { pinned, archived, only_chat, ephemeral, .. } = flags;
+    let RowFlags { pinned, archived, only_chat, ephemeral, on_screen, .. } = flags;
     let pin_label = if pinned { "Unpin" } else { "Pin" };
     let ws_pin = ws.clone();
     let ws_rename = ws.clone();
@@ -46,6 +49,7 @@ pub(super) fn chat_row_menu(
     let ws_del = ws.clone();
     let ws_arch = ws.clone();
     let ws_window = ws.clone();
+    let ws_split = ws.clone();
     menu.item(PopupMenuItem::new(pin_label).icon(IconName::Star).on_click(move |_, w, cx| {
         with_chat_ix(ChatIxArgs {
             ws: &ws_pin,
@@ -83,6 +87,18 @@ pub(super) fn chat_row_menu(
             .disabled(ephemeral)
             .on_click(move |_, _w, cx| {
                 ws_window.update(cx, |this, cx| this.open_chat_in_new_window(id, cx));
+            }),
+    )
+    .item(
+        PopupMenuItem::new("Open in Split")
+            .icon(IconName::SquareSplitHorizontal)
+            .disabled(on_screen)
+            .on_click(move |_, _w, cx| {
+                ws_split.update(cx, |this, cx| {
+                    if let Some(ix) = this.chat_index(id) {
+                        this.open_split(ix, cx);
+                    }
+                });
             }),
     )
     .item(PopupMenuItem::new("Export").icon(IconName::Share).disabled(ephemeral).on_click(move |_, w, cx| {

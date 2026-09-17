@@ -70,6 +70,7 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
         only_chat: ws.chats.len() <= 1 && !chat.ephemeral,
         worktree: chat.worktree,
         ephemeral: chat.ephemeral,
+        on_screen: ix == ws.active || ws.secondary == Some(ix),
     };
     // Only an inline rename mounts the editor — a dialog rename shares
     // `ws.rename`, and its outside-click would commit behind the dialog.

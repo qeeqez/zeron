@@ -3,6 +3,7 @@ mod colors;
 mod folders;
 pub(crate) mod instructions;
 mod select;
+mod split;
 
 use std::rc::Rc;
 
@@ -77,7 +78,16 @@ impl Workspace {
         // Save current draft, restore target's.
         self.chats[self.active].draft = self.composer.read(cx).value().to_string();
         self.stamp_thread();
+        let prev_active = self.active;
         self.active = index;
+        // Selecting the split-pane chat swaps the panes — the old active
+        // takes over the secondary slot so both stay on screen. Any other
+        // selection leaves the pane alone; a stale/archived one clears.
+        self.secondary = match self.secondary {
+            Some(s) if s == index => Some(prev_active),
+            Some(s) if s < self.chats.len() && !self.chats[s].archived => Some(s),
+            _ => None,
+        };
         // The incoming thread's own provider/model/access replace the
         // workspace selection — legacy chats (no stamp) keep it.
         self.restore_thread_selection(cx);
@@ -226,6 +236,7 @@ impl Workspace {
                 self.new_chat(cx);
             }
         }
+        self.clear_secondary_if(|c| !c.archived);
         cx.notify();
         self.save();
     }

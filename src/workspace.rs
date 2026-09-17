@@ -11,6 +11,12 @@ pub use crate::chat_ops::RenameMode;
 pub struct Workspace {
     pub chats: Vec<Chat>,
     pub active: usize,
+    /// Second chat shown beside the active one at half width — a read-only
+    /// transcript with its own scroller (see `views::split_pane`). Session-
+    /// only: the pane is a view onto a chat, not state worth persisting.
+    /// Invariant: `secondary != Some(active)` — selecting the split chat
+    /// swaps the panes instead (`select_chat`).
+    pub secondary: Option<usize>,
     pub sidebar_collapsed: bool,
     pub agents: Vec<Agent>,
     /// Which list the sidebar shows — chats or the file explorer.
@@ -99,6 +105,9 @@ pub struct Workspace {
     /// generation is discarded.
     pub sidebar_search_gen: u64,
     pub scroller: Entity<MessageScrollerState>,
+    /// The split pane's transcript scroller — independent of `scroller` so
+    /// the read-only pane keeps its own scroll position and tail-follow.
+    pub secondary_scroller: Entity<MessageScrollerState>,
     pub model: SharedString,
     /// Selected provider instance id — an entry in `providers`. The
     /// backend is rebuilt from it on change; persisted as

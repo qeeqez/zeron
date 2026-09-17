@@ -66,11 +66,13 @@ impl Workspace {
         // Deleting the last (temporary) chat leaves the workspace empty —
         // open a fresh normal chat so there's always something selected.
         if self.chats.is_empty() {
+            self.secondary = None;
             self.composer.update(cx, |s, cx| s.set_value("", window, cx));
             self.new_chat(cx);
             crate::dock_badge::update(cx);
             return;
         }
+        self.secondary_after_remove(index);
         if self.active >= self.chats.len() {
             self.active = self.chats.len() - 1;
         } else if index < self.active {
@@ -121,8 +123,8 @@ impl Workspace {
         self.chats.clear();
         self.note_kept_worktrees(&kept);
         self.search_match_ix = 0;
-        self.renaming = None;
         self.selected_chats.clear();
+        self.secondary = None;
         self.new_chat(cx);
         crate::dock_badge::update(cx);
     }
