@@ -150,6 +150,7 @@ impl Workspace {
             image_view: None,
             notify_on_done: settings.notify_on_done,
             notify_sound: settings.notify_sound,
+            notify_background: settings.notify_background,
             backend,
             word_wrap: settings.word_wrap,
             preferred_editor: crate::open_in::PreferredEditor::from_name(&settings.preferred_editor),

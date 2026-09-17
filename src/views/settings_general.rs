@@ -89,6 +89,15 @@ pub(crate) fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
             },
             &s.search,
         ))
+        .child(toggle_row(
+            ("toggle-notify-background", "Notify on background replies"),
+            s.notify_background,
+            ws.clone(),
+            |this, next, _w, _cx| {
+                this.notify_background = next;
+            },
+            &s.search,
+        ))
         .child(group_label("Agent access", &s.search, cx))
         .child(div().flex().items_center().gap_2().text_xs().children(AccessMode::ALL.into_iter().map(|mode| {
             let btn = Button::new(SharedString::from(mode.name())).label(mode.label()).on_click({

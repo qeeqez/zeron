@@ -228,7 +228,11 @@ fn settings_switches_toggle_workspace_flags() {
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert!(window.find("settings-section-general").visible());
-        for (id, on) in [("toggle-notify", ws.read(cx).notify_on_done), ("toggle-wrap", ws.read(cx).word_wrap)] {
+        for (id, on) in [
+            ("toggle-notify", ws.read(cx).notify_on_done),
+            ("toggle-notify-background", ws.read(cx).notify_background),
+            ("toggle-wrap", ws.read(cx).word_wrap),
+        ] {
             let toggle = window.find(id);
             assert_eq!(toggle.role(), Some(Role::Switch), "{id} must render a Switch");
             assert_eq!(toggle.checked(), Some(on), "{id} must mirror the workspace flag");

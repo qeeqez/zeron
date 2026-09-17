@@ -233,6 +233,9 @@ pub struct Workspace {
     pub notify_on_done: bool,
     /// System bell when a turn finishes — independent of `notify_on_done`.
     pub notify_sound: bool,
+    /// OS notification for replies the user isn't watching — a background
+    /// chat finishing, or any turn while the window is unfocused.
+    pub notify_background: bool,
     pub word_wrap: bool,
     /// Preferred editor for "Open in Editor" — `Settings.preferred_editor`.
     pub preferred_editor: crate::open_in::PreferredEditor,

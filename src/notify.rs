@@ -6,7 +6,7 @@ use crate::model::{Chat, MessageKind, Role};
 use crate::workspace::Workspace;
 
 /// What a finished reply surfaces: an in-app toast always, plus a system
-/// notification and dock bounce while the window is unfocused.
+/// notification and dock bounce while the reply isn't on screen.
 #[derive(Debug, PartialEq)]
 pub(crate) struct DoneNotice {
     /// Chat title — the toast/system headline.
@@ -14,7 +14,8 @@ pub(crate) struct DoneNotice {
     /// A preview of the reply's first line, or the failure's first line.
     body: String,
     failed: bool,
-    /// Post to the OS notification center — only while unfocused.
+    /// Post to the OS notification center — only while the user isn't
+    /// watching the chat (background chat or unfocused window).
     system: bool,
 }
 
@@ -38,12 +39,15 @@ struct ReplyDone;
 
 impl Workspace {
     /// System bell (gated by `notify_sound`), an in-app toast, plus — when
-    /// the window is inactive — a system notification and dock bounce. The
-    /// toast/system surfaces need `notify_on_done`; the sound is its own
-    /// toggle so a reply can chime without a popup. Clicking either surface
-    /// activates the window and opens the chat. The platform layer is a
-    /// safe no-op where notifications are unsupported or the app isn't
-    /// bundled, so this never panics.
+    /// the user isn't watching the chat — a system notification and dock
+    /// bounce. "Not watching" means the finished chat isn't the active one
+    /// or the window is unfocused; the OS surface also needs
+    /// `notify_background`, and the toast/system surfaces need
+    /// `notify_on_done`. The sound is its own toggle so a reply can chime
+    /// without a popup. Clicking either surface activates the window and
+    /// opens the chat. The platform layer is a safe no-op where
+    /// notifications are unsupported or the app isn't bundled, so this
+    /// never panics.
     pub(crate) fn notify_done(&mut self, chat_id: u64, window: &mut Window, cx: &mut Context<Self>) {
         if self.notify_sound {
             play_done_sound(window);
@@ -51,8 +55,9 @@ impl Workspace {
         if !self.notify_on_done {
             return;
         }
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
-        let notice = Self::done_notice(chat, window.is_window_active());
+        let notice = Self::done_notice(chat, is_active && window.is_window_active(), self.notify_background);
         let ws = cx.entity().downgrade();
         let note = if notice.failed { Notification::error(notice.body) } else { Notification::success(notice.body) }
             .title(notice.title)
@@ -80,10 +85,11 @@ impl Workspace {
         cx.notify();
     }
 
-    /// The notice for a finished reply — `system` stays false while the
-    /// window is focused, so a reply the user is already watching never
-    /// pings the OS notification center.
-    fn done_notice(chat: &Chat, window_active: bool) -> DoneNotice {
+    /// The notice for a finished reply. `watched` is "the user can see the
+    /// reply land" — the chat is active AND the window focused — so
+    /// `system` stays false only then; `allow_system` is the
+    /// `notify_background` toggle, off = never ping the OS.
+    fn done_notice(chat: &Chat, watched: bool, allow_system: bool) -> DoneNotice {
         let body = if chat.failed_flag {
             Self::error_detail(chat).map_or_else(|| "Reply failed".to_string(), |line| format!("Reply failed — {line}"))
         } else {
@@ -93,18 +99,18 @@ impl Workspace {
             title: chat.title.clone(),
             body,
             failed: chat.failed_flag,
-            system: !window_active,
+            system: allow_system && !watched,
         }
     }
 
-    /// First non-empty line of the last assistant text, capped at 80 chars —
-    /// the notification body doubles as a reply preview so the user can tell
-    /// what finished without opening the chat.
+    /// First non-empty line of the last assistant text, capped at 100
+    /// chars — the notification body doubles as a reply preview so the
+    /// user can tell what finished without opening the chat.
     pub(crate) fn reply_preview(chat: &Chat) -> Option<String> {
         let line = Self::last_assistant_text(chat)?.lines().find(|l| !l.trim().is_empty())?.trim();
-        let mut preview: String = line.chars().take(81).collect();
-        if preview.chars().count() > 80 {
-            preview.truncate(preview.char_indices().nth(80).map_or(preview.len(), |(i, _)| i));
+        let mut preview: String = line.chars().take(101).collect();
+        if preview.chars().count() > 100 {
+            preview.truncate(preview.char_indices().nth(100).map_or(preview.len(), |(i, _)| i));
             preview.push('…');
         }
         Some(preview)
@@ -155,8 +161,8 @@ mod tests {
     }
 
     #[test]
-    fn success_notice_is_in_app_only_when_focused() {
-        let notice = Workspace::done_notice(&chat("Build fix"), true);
+    fn success_notice_is_in_app_only_when_watched() {
+        let notice = Workspace::done_notice(&chat("Build fix"), true, true);
         assert_eq!(
             notice,
             DoneNotice {
@@ -169,8 +175,11 @@ mod tests {
     }
 
     #[test]
-    fn success_notice_goes_system_when_unfocused() {
-        let notice = Workspace::done_notice(&chat("Build fix"), false);
+    fn success_notice_goes_system_when_unwatched() {
+        // Unwatched covers both cases the caller ORs in: a background chat
+        // finishing while focused, and any chat while the window is
+        // unfocused.
+        let notice = Workspace::done_notice(&chat("Build fix"), false, true);
         assert_eq!(
             notice,
             DoneNotice {
@@ -183,11 +192,17 @@ mod tests {
     }
 
     #[test]
+    fn background_toggle_off_keeps_notice_in_app() {
+        let notice = Workspace::done_notice(&chat("Build fix"), false, false);
+        assert!(!notice.system, "notify_background off must never post to the OS");
+    }
+
+    #[test]
     fn failed_notice_strips_error_markdown() {
         let mut chat = chat("Build fix");
         chat.failed_flag = true;
         assistant_text(&mut chat, "**Error:** codex exited 1\nmore detail");
-        let notice = Workspace::done_notice(&chat, false);
+        let notice = Workspace::done_notice(&chat, false, true);
         assert!(notice.failed);
         assert_eq!(notice.body, "Reply failed — codex exited 1");
     }
@@ -196,7 +211,7 @@ mod tests {
     fn failed_notice_falls_back_without_error_text() {
         let mut chat = chat("Build fix");
         chat.failed_flag = true;
-        let notice = Workspace::done_notice(&chat, false);
+        let notice = Workspace::done_notice(&chat, false, true);
         assert_eq!(notice.body, "Reply failed");
     }
 
@@ -204,16 +219,16 @@ mod tests {
     fn success_notice_previews_the_reply() {
         let mut chat = chat("Build fix");
         assistant_text(&mut chat, "Fixed the borrow error\nand two more lines");
-        let notice = Workspace::done_notice(&chat, false);
+        let notice = Workspace::done_notice(&chat, false, true);
         assert_eq!(notice.body, "Fixed the borrow error");
     }
 
     #[test]
     fn preview_skips_blank_lines_and_truncates() {
         let mut chat = chat("Build fix");
-        assistant_text(&mut chat, &format!("\n  \n{}", "x".repeat(120)));
-        let notice = Workspace::done_notice(&chat, false);
-        assert_eq!(notice.body.chars().count(), 81, "80 chars + ellipsis");
+        assistant_text(&mut chat, &format!("\n  \n{}", "x".repeat(140)));
+        let notice = Workspace::done_notice(&chat, false, true);
+        assert_eq!(notice.body.chars().count(), 101, "100 chars + ellipsis");
         assert!(notice.body.ends_with('…'));
     }
 }

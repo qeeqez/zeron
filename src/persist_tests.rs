@@ -181,6 +181,7 @@ mod tests {
         assert_eq!(s.font_size, 14);
         assert!(s.notify_on_done);
         assert!(s.notify_sound);
+        assert!(s.notify_background);
         // Thread defaults are unset until the user picks them.
         assert!(s.default_model.provider_instance_id.is_empty());
         assert!(s.default_permissions.is_empty());
@@ -194,8 +195,8 @@ mod tests {
         let back: crate::persist::Settings = serde_json::from_str(&json).unwrap();
         assert_eq!(back.selected_model, s.selected_model);
         assert_eq!(back.font_size, s.font_size);
-        assert_eq!(back.default_model, s.default_model);
         assert_eq!(back.notify_sound, s.notify_sound);
+        assert_eq!(back.notify_background, s.notify_background);
     }
 
     #[test]

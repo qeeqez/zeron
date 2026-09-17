@@ -20,6 +20,7 @@ impl Default for Settings {
             default_workspace: String::new(),
             notify_on_done: true,
             notify_sound: true,
+            notify_background: true,
             word_wrap: true,
             diff_mode: "unified".into(),
             diff_ignore_ws: false,

@@ -49,6 +49,10 @@ pub struct Settings {
     /// System bell on turn completion — a separate toggle from the
     /// toast/system notification, so the sound can play without a popup.
     pub notify_sound: bool,
+    /// macOS notification when a reply lands off-screen — a background
+    /// chat's turn finishing, or any turn while the window is unfocused.
+    /// Off = replies only ever get the in-app toast.
+    pub notify_background: bool,
     pub word_wrap: bool,
     /// Changes-panel diff layout — a `DiffMode::name` ("unified" | "split").
     pub diff_mode: String,

@@ -45,6 +45,7 @@ pub(crate) fn row_labels(section: Section) -> &'static [&'static str] {
             "Notifications",
             "Notify on reply complete",
             "Notification sound",
+            "Notify on background replies",
             "Agent access",
             "Messages",
             "Word wrap",

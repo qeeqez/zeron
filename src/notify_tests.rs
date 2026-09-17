@@ -84,8 +84,10 @@ impl AgentBackend for FailBackend {
 }
 
 /// Type into the composer and send; the backend replies on timers, so the
-/// test clock is advanced until the turn ends.
-fn send_reply(workspace: &Entity<Workspace>, backend: std::sync::Arc<dyn AgentBackend>, cx: &mut VisualTestContext) {
+/// test clock is advanced until the turn ends. `switch` moves focus to a
+/// fresh chat before the reply lands — the turn then finishes in the
+/// background.
+fn send_reply(workspace: &Entity<Workspace>, backend: std::sync::Arc<dyn AgentBackend>, switch: bool, cx: &mut VisualTestContext) {
     cx.update(|window, cx| {
         workspace.update(cx, |ws, cx| {
             ws.backend = backend;
@@ -94,8 +96,16 @@ fn send_reply(workspace: &Entity<Workspace>, backend: std::sync::Arc<dyn AgentBa
                 composer.set_value("hi", window, cx);
             });
             ws.send(window, cx);
+            if switch {
+                ws.new_chat(cx);
+            }
         });
     });
+    pump_until_done(workspace, cx);
+}
+
+/// Advance the test clock until chat 0's running flag clears.
+fn pump_until_done(workspace: &Entity<Workspace>, cx: &mut VisualTestContext) {
     for _ in 0..32 {
         cx.executor().advance_clock(std::time::Duration::from_secs(1));
         cx.run_until_parked();
@@ -120,7 +130,7 @@ fn notifies_when_reply_finishes_unfocused(cx: &mut TestAppContext) {
     // Test windows open inactive; deactivate explicitly so the assertion
     // doesn't depend on platform defaults.
     cx.deactivate_window();
-    send_reply(&workspace, std::sync::Arc::new(OkBackend), cx);
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), false, cx);
     let notes = cx.delivered_system_notifications();
     assert_eq!(notes.len(), 1, "expected one reply-complete notification, got {notes:?}");
     assert_eq!(notes[0].title, "hi", "system notification headline is the chat title");
@@ -133,16 +143,43 @@ fn silent_when_reply_finishes_focused(cx: &mut TestAppContext) {
     let (workspace, cx) = open_workspace(cx);
     cx.update(|window, _| window.activate_window());
     cx.run_until_parked();
-    send_reply(&workspace, std::sync::Arc::new(OkBackend), cx);
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), false, cx);
     assert!(cx.delivered_system_notifications().is_empty(), "focused window must not post a system notification");
     assert_eq!(toast_count(cx), 1, "the in-app toast still shows while focused");
+}
+
+#[gpui_kit::test]
+fn notifies_when_background_chat_finishes_focused(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    cx.update(|window, _| window.activate_window());
+    cx.run_until_parked();
+    // `switch` moves focus to a fresh chat before the reply lands — chat 0
+    // finishes in the background while the user watches chat 1.
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), true, cx);
+    let notes = cx.delivered_system_notifications();
+    assert_eq!(notes.len(), 1, "a background chat's reply should ping the OS even while focused, got {notes:?}");
+    assert_eq!(notes[0].title, "hi");
+    assert!(notes[0].body.contains("done"), "body should preview the reply, got {:?}", notes[0].body);
+    assert_eq!(toast_count(cx), 1, "the in-app toast still accompanies it");
+}
+
+#[gpui_kit::test]
+fn no_system_notification_when_background_toggle_off(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    cx.update(|_window, cx| {
+        workspace.update(cx, |ws, _cx| ws.notify_background = false);
+    });
+    cx.deactivate_window();
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), false, cx);
+    assert!(cx.delivered_system_notifications().is_empty(), "notify_background off must never post a system notification");
+    assert_eq!(toast_count(cx), 1, "the in-app toast is unaffected");
 }
 
 #[gpui_kit::test]
 fn failed_reply_notifies_error_not_success(cx: &mut TestAppContext) {
     let (workspace, cx) = open_workspace(cx);
     cx.deactivate_window();
-    send_reply(&workspace, std::sync::Arc::new(FailBackend), cx);
+    send_reply(&workspace, std::sync::Arc::new(FailBackend), false, cx);
     let notes = cx.delivered_system_notifications();
     assert_eq!(notes.len(), 1, "expected one failure notification, got {notes:?}");
     assert_eq!(notes[0].title, "hi");
@@ -159,7 +196,7 @@ fn failed_reply_notifies_error_not_success(cx: &mut TestAppContext) {
 fn clicking_system_notification_opens_the_chat(cx: &mut TestAppContext) {
     let (workspace, cx) = open_workspace(cx);
     cx.deactivate_window();
-    send_reply(&workspace, std::sync::Arc::new(OkBackend), cx);
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), false, cx);
     // A second chat takes focus; the notification must lead back to chat 0.
     cx.update(|_window, cx| workspace.update(cx, |ws, cx| ws.new_chat(cx)));
     assert_eq!(workspace.read_with(cx, |ws, _| ws.active), 1);
@@ -177,7 +214,7 @@ fn clicking_system_notification_opens_the_chat(cx: &mut TestAppContext) {
 fn notification_click_closes_settings_overlay(cx: &mut TestAppContext) {
     let (workspace, cx) = open_workspace(cx);
     cx.deactivate_window();
-    send_reply(&workspace, std::sync::Arc::new(OkBackend), cx);
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), false, cx);
     // Settings open over the chat; the notification click must dismiss it,
     // not leave the overlay covering the chat it just switched to.
     cx.update(|window, cx| workspace.update(cx, |ws, cx| ws.open_settings(window, cx)));
@@ -199,7 +236,7 @@ fn clicking_toast_opens_the_chat(cx: &mut TestAppContext) {
     let (workspace, cx) = open_workspace(cx);
     cx.update(|window, _| window.activate_window());
     cx.run_until_parked();
-    send_reply(&workspace, std::sync::Arc::new(OkBackend), cx);
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), false, cx);
     cx.update(|_window, cx| workspace.update(cx, |ws, cx| ws.new_chat(cx)));
     assert_eq!(workspace.read_with(cx, |ws, _| ws.active), 1);
 
@@ -222,7 +259,7 @@ fn plays_sound_when_reply_finishes(cx: &mut TestAppContext) {
     // `notify_sound` defaults on; the test platform's bell is silent, so the
     // observable signal is the SOUND_PLAYS counter.
     let before = crate::notify::SOUND_PLAYS.load(std::sync::atomic::Ordering::Relaxed);
-    send_reply(&workspace, std::sync::Arc::new(OkBackend), cx);
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), false, cx);
     let plays = crate::notify::SOUND_PLAYS.load(std::sync::atomic::Ordering::Relaxed) - before;
     assert_eq!(plays, 1, "a finished turn should chime once");
 }
@@ -234,7 +271,7 @@ fn no_sound_when_disabled(cx: &mut TestAppContext) {
         workspace.update(cx, |ws, _cx| ws.notify_sound = false);
     });
     let before = crate::notify::SOUND_PLAYS.load(std::sync::atomic::Ordering::Relaxed);
-    send_reply(&workspace, std::sync::Arc::new(OkBackend), cx);
+    send_reply(&workspace, std::sync::Arc::new(OkBackend), false, cx);
     assert_eq!(crate::notify::SOUND_PLAYS.load(std::sync::atomic::Ordering::Relaxed), before, "notify_sound off must silence the chime");
 }
 
@@ -254,5 +291,24 @@ fn sound_switch_persists(cx: &mut TestAppContext) {
         assert!(!workspace.read(cx).notify_sound, "switch click should clear the flag");
         assert!(!crate::persist::load_settings().notify_sound, "switch click should persist");
         assert_eq!(window.find("toggle-notify-sound").checked(), Some(false));
+    });
+}
+
+#[gpui_kit::test]
+fn background_switch_persists(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    cx.update(|window, cx| workspace.update(cx, |ws, cx| ws.open_settings(window, cx)));
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.find("settings-section-general").visible());
+        let toggle = window.find("toggle-notify-background");
+        assert_eq!(toggle.checked(), Some(true), "switch should mirror the default-on flag");
+        window.click("toggle-notify-background", cx);
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(!workspace.read(cx).notify_background, "switch click should clear the flag");
+        assert!(!crate::persist::load_settings().notify_background, "switch click should persist");
+        assert_eq!(window.find("toggle-notify-background").checked(), Some(false));
     });
 }

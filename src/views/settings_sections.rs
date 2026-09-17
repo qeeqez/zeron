@@ -24,6 +24,8 @@ pub struct SettingsView {
     pub notify: bool,
     /// "Notification sound" switch — `Workspace::notify_sound`.
     pub notify_sound: bool,
+    /// "Notify on background replies" switch — `Workspace::notify_background`.
+    pub notify_background: bool,
     pub font_size: u8,
     pub code_font_size: u8,
     pub sidebar_frosted: bool,
@@ -116,6 +118,7 @@ impl SettingsView {
         Self {
             notify: s.notify_on_done,
             notify_sound: s.notify_sound,
+            notify_background: s.notify_background,
             font_size: s.font_size,
             code_font_size: s.code_font_size,
             sidebar_frosted: s.sidebar_frosted,
