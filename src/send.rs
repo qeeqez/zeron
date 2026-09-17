@@ -52,8 +52,10 @@ impl Workspace {
         }
         self.record_prompt(text);
         self.clear_recall();
-        self.send_or_queue(text, window, cx);
+        // Clear before dispatch: the send's own save (queue persist or the
+        // turn's message write) then persists the emptied draft too.
         self.clear_composer(window, cx);
+        self.send_or_queue(text, window, cx);
     }
 
     /// Send `text` as the active chat's next message, or queue it behind a
@@ -87,7 +89,10 @@ impl Workspace {
         self.send_text(Queued::new(text.to_string(), attachments), window, cx);
     }
 
+    /// Empty the composer and the active chat's persisted draft — the text
+    /// was consumed (sent, queued, or run as a command).
     pub(crate) fn clear_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.chats[self.active].draft.clear();
         self.composer.update(cx, |state, cx| {
             state.set_value("", window, cx);
         });

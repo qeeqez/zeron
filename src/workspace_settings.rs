@@ -7,6 +7,8 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     pub(crate) fn save(&mut self) {
+        // Any pending debounced draft save is covered by this write.
+        self.draft_save_ticks = None;
         // Retention: drop oldest non-pinned chats beyond the cap. Storage
         // order is oldest-first, so eviction hits the oldest first.
         const MAX_CHATS: usize = 50;
@@ -22,6 +24,19 @@ impl Workspace {
         }
         crate::persist::save_chats(&self.project.chats_dir(), &self.chats);
         self.save_project_state();
+    }
+
+    /// The 1s ticker's debounced draft save: ~5s after the last keystroke,
+    /// and again every ~5s while typing continues. Switching chats,
+    /// sending, and quitting save through their own paths; `save` resets
+    /// the counter so a flush never double-writes.
+    pub(crate) fn flush_draft_save(&mut self) {
+        let Some(ticks) = self.draft_save_ticks else { return };
+        if ticks >= 4 {
+            self.save();
+        } else {
+            self.draft_save_ticks = Some(ticks + 1);
+        }
     }
 
     /// Persist the project's `state.json` — active chat, setup script and

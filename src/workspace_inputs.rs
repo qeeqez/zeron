@@ -56,6 +56,15 @@ impl WorkspaceInputs {
             // `set_value` suppresses Change, so this only fires on real edits.
             InputEvent::Change => {
                 this.clear_recall();
+                // Write the draft through to the chat so the debounced save
+                // (and the switch/quit stashes) persist it. A queued-message
+                // edit borrows the composer — its text isn't the draft.
+                if let Some(chat) = this.chats.get_mut(this.active)
+                    && !this.send_queue.editing_for(chat.id)
+                {
+                    chat.draft = this.composer.read(cx).value().to_string();
+                    this.draft_save_ticks.get_or_insert(0);
+                }
                 cx.notify();
             },
             _ => {},

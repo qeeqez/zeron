@@ -223,6 +223,26 @@ mod tests {
     }
 
     #[test]
+    fn draft_roundtrips_through_disk() {
+        let dir = temp_chats_dir("draft");
+        let mut chat = Chat::new(0, "drafty");
+        chat.draft = "half-written reply".into();
+        save_chats(&dir, &[chat]);
+
+        let mut next_id = 0;
+        let loaded = load_chats(&dir, &mut next_id, true);
+        assert_eq!(loaded[0].draft, "half-written reply");
+    }
+
+    #[test]
+    fn empty_draft_is_not_serialized() {
+        let dir = temp_chats_dir("draft-empty");
+        save_chats(&dir, &[Chat::new(0, "plain")]);
+        let json = std::fs::read_to_string(dir.join("0.json")).unwrap();
+        assert!(!json.contains("\"draft\""), "empty drafts keep the key out of the file: {json}");
+    }
+
+    #[test]
     fn legacy_chat_file_loads_with_empty_thread_fields() {
         let dir = temp_chats_dir("legacy-fields");
         std::fs::write(dir.join("0.json"), r#"{"v":1,"title":"old","messages":[]}"#).unwrap();

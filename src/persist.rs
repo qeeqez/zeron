@@ -19,7 +19,9 @@ pub(crate) struct StoredChat {
     pub(crate) folder: String,
     #[serde(default)]
     pub(crate) archived: bool,
-    #[serde(default)]
+    /// Unsent composer text — skipped when empty so cleared drafts don't
+    /// leave a `"draft": ""` key behind.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub(crate) draft: String,
     /// The title was auto-generated — missing in files written before
     /// chat titles existed; false lets an old chat still earn one.

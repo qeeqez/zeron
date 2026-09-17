@@ -177,6 +177,10 @@ pub struct Workspace {
     pub collapsed_folders: std::collections::HashSet<String>,
     /// Index into user messages for Cmd+Shift+Up/Down recall cycling.
     pub recall_ix: Option<usize>,
+    /// Ticks since the composer draft last changed — `Some` while a
+    /// debounced save is pending; `tick` flushes it (see
+    /// `crate::lifecycle`).
+    pub draft_save_ticks: Option<u8>,
     /// Composer text stashed when a recall cycle starts — restored when the
     /// cycle steps past the newest message.
     pub recall_saved: Option<String>,
@@ -355,3 +359,8 @@ impl Workspace {
         s
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "draft_persist_tests.rs"]
+mod draft_persist_tests;

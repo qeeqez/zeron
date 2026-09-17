@@ -50,6 +50,8 @@ impl Workspace {
         if dirty {
             cx.notify();
         }
+        // Debounced draft save — see `flush_draft_save`.
+        self.flush_draft_save();
     }
 }
 

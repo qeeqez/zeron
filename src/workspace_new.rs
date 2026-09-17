@@ -140,6 +140,7 @@ impl Workspace {
             recall_saved: None,
             history_ix: None,
             draft_before_recall: String::new(),
+            draft_save_ticks: None,
             editing: None,
             feedback: crate::feedback::FeedbackState::new(window, cx),
             close_confirmed: std::cell::Cell::new(false),
@@ -218,6 +219,10 @@ impl Workspace {
         } else {
             this.chats = loaded;
             this.active = project_state.active_chat.min(this.chats.len().saturating_sub(1));
+            // Restore the active chat's unsent draft into the composer —
+            // `set_value` suppresses Change, so no stash/dirty flag trips.
+            let draft = this.chats[this.active].draft.clone();
+            this.composer.update(cx, |s, cx| s.set_value(draft, window, cx));
             // The resumed thread's own provider/model/access replace the
             // settings selection — the picker shows the active thread.
             this.restore_thread_selection(cx);

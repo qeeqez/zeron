@@ -32,11 +32,16 @@ impl Workspace {
         // Slash commands run locally or queue — never injected mid-turn.
         // `send_or_queue` also covers the not-running case.
         if crate::slash::is_slash(text) || !self.chats[self.active].running {
-            self.send_or_queue(text, window, cx);
+            // Clear before dispatch so the send's own save persists the
+            // emptied draft.
             self.clear_composer(window, cx);
+            self.send_or_queue(text, window, cx);
             return;
         }
         let prompt = crate::send::build_prompt(text, &self.chats[self.active].attachments);
+        // Clear before dispatch — the queue persist or the turn's message
+        // write saves the emptied draft with it.
+        self.clear_composer(window, cx);
         if self.chats[self.active].stream.as_ref().is_some_and(|s| s.steer(&prompt)) {
             // Injected — the message joins the turn's transcript now.
             let attachments = std::mem::take(&mut self.chats[self.active].attachments);
@@ -46,7 +51,6 @@ impl Workspace {
             // stdin already closed) — queue it to send next.
             self.send_or_queue(text, window, cx);
         }
-        self.clear_composer(window, cx);
     }
 }
 

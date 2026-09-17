@@ -252,6 +252,8 @@ pub struct Chat {
     /// Agents-panel row tracking the in-flight turn — lets stop/finish
     /// close the row without scanning by name.
     pub run_agent: Option<u64>,
+    /// Unsent composer text — stashed on chat switch, written through on
+    /// every keystroke, and persisted so a draft survives restarts.
     pub draft: String,
     pub unread: bool,
     /// The title was auto-generated from the first exchange (see
