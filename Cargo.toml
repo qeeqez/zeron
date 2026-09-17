@@ -44,6 +44,14 @@ gpui = { version = "0.3.1", package = "gpui-pre", features = ["test-support"] }
 # Re-declared here to add test-support for test builds only (features union).
 gpui-kit = { version = "0.6", features = ["test-support"] }
 
+[lints.rust]
+# Deny rustc's future-incompatibility lint group in OUR code (deps are
+# lint-capped by cargo regardless). Covers patterns like `uninhabited_static`
+# and `semicolon_in_expressions_from_non_local_macros` that are warnings today
+# but hard errors in a future compiler — the same class `cargo report
+# future-incompatibilities` surfaces for dependencies.
+future_incompatible = "deny"
+
 [profile.release]
 opt-level = 3
 lto = "fat"
@@ -59,3 +67,19 @@ opt-level = 1
 [profile.release-test]
 inherits = "release"
 panic = "unwind"
+
+[patch.crates-io]
+# `portable-pty` 0.9.0 (latest) pins `nix ^0.28`, whose build script uses
+# `cfg_aliases` 0.1 — its macro expansion trips rustc's
+# `semicolon_in_expressions_from_macros` future-incompatibility lint
+# (rust-lang/rust#79813). Upstream fixed this by moving to `cfg_aliases` 0.2
+# in nix-rust/nix@1def0c0, while the crate version was still 0.28.0, so this
+# commit satisfies `nix ^0.28` and carries a 3-line diff over the published
+# 0.28.0 (the cfg_aliases bump plus release-doc notes).
+nix = { git = "https://github.com/nix-rust/nix", rev = "1def0c05c3d7ac460c3428bb2227cccd01008ccb" }
+# `block` 0.1.6 is unmaintained and declares `static _NSConcreteStackBlock`
+# with an uninhabited type, tripping rustc's `uninhabited_static`
+# future-incompatibility lint (rust-lang/rust#74840). It is pulled in by the
+# gpui-pre/cocoa/metal chain with no upgrade path that drops it, so we vendor
+# it with the same inhabited-`Class` fix the maintained `block2` crate uses.
+block = { path = "vendor/block" }
