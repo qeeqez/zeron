@@ -106,38 +106,56 @@ fn push_to(this: &mut Workspace, role: Role, s: &str) {
 /// window borrow) so the dismiss animation can park before the next chip
 /// click — a still-closing popover would toggle shut instead of opening.
 fn click_menu_item(vcx: &mut VisualTestContext, chip: &str, label: &str) {
-    // The popover element wraps its always-mounted trigger, so its id sits
-    // in the tree whether the menu is open or not — the menu is open iff
-    // the item is in the snapshot (PopupMenu builds items synchronously
-    // the frame it opens; there is no exit animation). Item absent for a
-    // while therefore means the chip click was swallowed, so re-click it.
-    // The grace window keeps the poll from toggling a just-opening menu
-    // shut. Find-and-click stay inside ONE update: a snapshot's leaf path
-    // goes stale across updates, so splitting them drops the click.
+    // The popover element wraps its always-mounted trigger, so the menu is
+    // open iff the item is in the snapshot — PopupMenu builds items the
+    // frame it opens and there is no exit animation. Item absent for a
+    // while means the chip click was swallowed, so re-click it. The item
+    // must stay visible through the 150ms enter animation before being
+    // clicked: a mid-slide surface puts the pointer where the item isn't
+    // yet, and a miss changes nothing (overlay_closable is off), so the
+    // click retries until the menu closes — item activation is the only
+    // thing that dismisses it. The chip itself is excluded from the match:
+    // it shows the picked label and sits under the popover as the trigger,
+    // so it would pass for a menu item once a selection lands.
     let popover = format!("popover:dropdown-menu:Name(\"{chip}\")");
+    let chip_id: gpui_kit::ElementId = chip.to_string().into();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-    let mut absent_since = std::time::Instant::now();
+    let (mut absent_since, mut seen_since, mut clicked_item) = (std::time::Instant::now(), None, false);
     loop {
         vcx.run_until_parked();
-        let clicked = vcx.update(|window, cx| {
+        let (present, clicked) = vcx.update(|window, cx| {
             window.draw(cx).clear(cx);
             let leaf = snapshots(window)
                 .iter()
-                .find(|s| s.label() == Some(label) && s.path().iter().any(|id| *id == popover.clone().into()))
+                .find(|s| {
+                    s.label() == Some(label) && s.path().iter().any(|id| *id == popover.clone().into()) && s.path().last() != Some(&chip_id)
+                })
                 .and_then(|s| s.path().last().cloned());
-            let Some(leaf) = leaf else { return false };
+            let Some(leaf) = leaf else { return (false, false) };
+            if seen_since.is_none_or(|t: std::time::Instant| t.elapsed() < std::time::Duration::from_millis(250)) {
+                return (true, false);
+            }
             window.within(gpui_kit::ElementId::Name(popover.clone().into())).click(leaf, cx);
-            true
+            (true, true)
         });
-        if clicked {
-            vcx.run_until_parked();
-            return;
+        if !present {
+            if clicked_item {
+                return;
+            }
+            seen_since = None;
+            if absent_since.elapsed() > std::time::Duration::from_secs(1) {
+                absent_since = std::time::Instant::now();
+                vcx.update(|window, cx| window.click(chip.to_string(), cx));
+            }
+        } else {
+            absent_since = std::time::Instant::now();
+            if clicked {
+                clicked_item = true;
+            } else {
+                seen_since.get_or_insert_with(std::time::Instant::now);
+            }
         }
         assert!(std::time::Instant::now() < deadline, "menu should offer {label}");
-        if absent_since.elapsed() > std::time::Duration::from_secs(1) {
-            absent_since = std::time::Instant::now();
-            vcx.update(|window, cx| window.click(chip.to_string(), cx));
-        }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }

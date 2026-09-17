@@ -144,11 +144,18 @@ fn check_for_updates_action_reports_available() {
     check_via_menu(handle, cx);
     assert_eq!(dialog_label(cx).as_deref(), Some("v99.0.0 available"));
     // View Release opens the release page and dismisses the dialog. The
-    // dialog slides in — let the animation finish so the click lands on the
-    // button's final position, not its animated one.
+    // slide-in animation runs off the wall clock — a click dispatched
+    // mid-motion can land where the button isn't yet, so retry the click
+    // until the platform records the URL (each attempt re-resolves the
+    // button's bounds from a fresh frame).
     cx.executor().advance_clock(std::time::Duration::from_secs(1));
-    cx.run_until_parked();
-    cx.update(|window, cx| window.click("update-dialog-view-release", cx));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while cx.opened_url().is_none() {
+        cx.run_until_parked();
+        cx.update(|window, cx| window.click("update-dialog-view-release", cx));
+        assert!(std::time::Instant::now() < deadline, "View Release should open the release page");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
     assert_eq!(cx.opened_url().as_deref(), Some("https://github.com/rixlhq/code/releases/tag/v99.0.0"));
     cx.run_until_parked();
     assert!(!dialog_open(cx), "View Release should close the dialog");
