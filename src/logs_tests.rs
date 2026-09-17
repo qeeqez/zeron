@@ -140,7 +140,7 @@ fn view_logs_closes_on_close_button_and_backdrop() {
 /// The palette exposes a View Logs command that dispatches the action.
 #[test]
 fn palette_lists_view_logs() {
-    let entries = crate::palette_items::build_entries(&[], "view logs");
+    let entries = crate::palette_items::build_entries(&[], "view logs", 0);
     assert!(
         entries
             .iter()

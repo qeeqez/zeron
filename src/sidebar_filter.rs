@@ -109,6 +109,13 @@ impl Workspace {
             .filter(|ix| self.sidebar_filters.matches(&self.chats[*ix]))
             .collect()
     }
+
+    /// Chats with a reply in flight — the Running chip's count, and the
+    /// gate for the palette command and sidebar stop-all bar (both appear
+    /// only at 2+). `running_agents` is the agent-row analog.
+    pub(crate) fn running_chats(&self) -> usize {
+        self.chats.iter().filter(|c| c.running).count()
+    }
 }
 
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.

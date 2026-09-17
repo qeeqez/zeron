@@ -1,6 +1,7 @@
 mod filter;
 mod group;
 mod messages;
+mod running;
 mod selection;
 
 use gpui_kit::assets::IconName;
@@ -165,35 +166,44 @@ impl Workspace {
         // Bulk-op bar: appears above the footer while chats are
         // Cmd-click-selected. Chat-list scoped — hidden on the Files tab.
         let selected_n = self.chats.iter().filter(|c| self.selected_chats.contains(&c.id)).count();
+        // Stop-all sits on the shared footer (both tabs) — running replies
+        // keep streaming while the user browses the file explorer. Built
+        // eagerly: the selection bar's `then` closure already borrows `cx`.
+        let running_bar = running::running_bar(self, cx);
         let selection_bar = (tab == SidebarTab::Chats && selected_n > 0).then(|| selection::selection_bar(selected_n, cx));
-        let footer = div().flex().flex_col().when_some(selection_bar, |d, bar| d.child(bar)).child(
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(IconName::CircleUser)
-                .child("Local")
-                .child(div().flex_1())
-                .child(
-                    div()
-                        .id("clear-chats")
-                        .cursor_pointer()
-                        .child(IconName::Trash)
-                        .on_click(cx.listener(|this, _, window, cx| this.clear_all_chats(window, cx))),
-                )
-                .child(
-                    div()
-                        .id("settings-btn")
-                        .test_support()
-                        .cursor_pointer()
-                        .child(IconName::Settings)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_settings(window, cx);
-                        })),
-                ),
-        );
+        let footer = div()
+            .flex()
+            .flex_col()
+            .when_some(selection_bar, |d, bar| d.child(bar))
+            .when_some(running_bar, |d, bar| d.child(bar))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(IconName::CircleUser)
+                    .child("Local")
+                    .child(div().flex_1())
+                    .child(
+                        div()
+                            .id("clear-chats")
+                            .cursor_pointer()
+                            .child(IconName::Trash)
+                            .on_click(cx.listener(|this, _, window, cx| this.clear_all_chats(window, cx))),
+                    )
+                    .child(
+                        div()
+                            .id("settings-btn")
+                            .test_support()
+                            .cursor_pointer()
+                            .child(IconName::Settings)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_settings(window, cx);
+                            })),
+                    ),
+            );
 
         div()
             .id("sidebar-wrap")

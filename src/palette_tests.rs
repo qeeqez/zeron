@@ -156,17 +156,17 @@ fn entry_at_maps_paths() {
         });
         // Section 0 row 0 is the first command; section 1 row 0 is the
         // most recent chat in sidebar order.
-        match entry_at(&chats, "", IndexPath::new(0).section(0)) {
+        match entry_at(&chats, "", IndexPath::new(0).section(0), 0) {
             Some(Entry::Command(spec)) => assert_eq!(spec.label, "New Chat"),
             _ => panic!("expected the New Chat command"),
         }
-        match entry_at(&chats, "", IndexPath::new(0).section(1)) {
+        match entry_at(&chats, "", IndexPath::new(0).section(1), 0) {
             Some(Entry::Chat(chat)) => assert_eq!(chat.title.as_ref(), "Second"),
             _ => panic!("expected the newest chat"),
         }
         // A query narrows both groups; the path resolves against the
         // filtered list.
-        match entry_at(&chats, "second", IndexPath::new(0).section(1)) {
+        match entry_at(&chats, "second", IndexPath::new(0).section(1), 0) {
             Some(Entry::Chat(chat)) => assert_eq!(chat.title.as_ref(), "Second"),
             _ => panic!("expected the fuzzy-matched chat"),
         }

@@ -146,3 +146,8 @@ fn pump_stream(events: std::sync::mpsc::Receiver<AgentEvent>, tx: std::sync::mps
         }
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "stop_all_tests.rs"]
+mod stop_all_tests;

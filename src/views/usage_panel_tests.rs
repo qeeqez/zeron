@@ -146,7 +146,7 @@ fn palette_command_opens_the_panel() {
     seed_usage(&ws, cx, 0, "gpt-5", &[UsageReport::tokens(100, 40)]);
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
-        let entries = crate::palette_items::build_entries(&[], "usage panel");
+        let entries = crate::palette_items::build_entries(&[], "usage panel", 0);
         let spec = entries
             .iter()
             .find_map(|e| match e {

@@ -7,8 +7,8 @@ use gpui_kit::assets::IconName;
 use crate::palette_items::{CommandSpec, Effect};
 use crate::workspace::Workspace;
 
-pub(crate) fn command_specs() -> Vec<CommandSpec> {
-    vec![
+pub(crate) fn command_specs(running: usize) -> Vec<CommandSpec> {
+    let mut specs = vec![
         CommandSpec {
             label: "New Chat",
             icon: IconName::Plus,
@@ -134,5 +134,20 @@ pub(crate) fn command_specs() -> Vec<CommandSpec> {
             keywords: &["appearance"],
             effect: Effect::Dispatch(Box::new(crate::ThemeDark)),
         },
-    ]
+    ];
+    // "Stop all replies" only exists while 2+ chats stream — below that the
+    // composer's per-chat stop covers it. Inserted after the chat lifecycle
+    // commands so the empty-query order stays stable.
+    if running >= 2 {
+        specs.insert(
+            5,
+            CommandSpec {
+                label: "Stop All Replies",
+                icon: IconName::Pause,
+                keywords: &["cancel", "interrupt", "halt"],
+                effect: Effect::Run(|this, _window, cx| this.stop_all_replies(cx)),
+            },
+        );
+    }
+    specs
 }

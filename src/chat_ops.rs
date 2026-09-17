@@ -168,6 +168,16 @@ impl Workspace {
         self.save();
     }
 
+    /// Stop every in-flight reply — the palette/sidebar "stop all" entry.
+    /// Each chat goes through `stop_chat_reply`, so queued sends, pending
+    /// approvals and agent rows behave exactly like a single stop.
+    pub fn stop_all_replies(&mut self, cx: &mut Context<Self>) {
+        let ids: Vec<u64> = self.chats.iter().filter(|c| c.running).map(|c| c.id).collect();
+        for id in ids {
+            self.stop_chat_reply(id, cx);
+        }
+    }
+
     /// Mark the reply finished. `failed_flag` survives so the retry banner
     /// stays visible until the next send/retry clears it.
     pub(crate) fn finish_reply(&mut self, chat_id: u64, cx: &mut Context<Self>) {

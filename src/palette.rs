@@ -22,10 +22,16 @@ impl Workspace {
         // the workspace lease, so it can't read `self` — it rebuilds groups
         // from this snapshot + the live query on every render.
         let chats = self.palette_chats();
+        // Same snapshot rule as `chats`: the gated "Stop All Replies" row is
+        // baked in at open — a turn ending mid-dialog doesn't shift rows.
+        let running = self.running_chats();
         let palette = self.palette.clone();
         let ws = cx.entity();
         window.open_dialog(cx, move |dialog, _window, cx| {
-            dialog.close_button(false).overlay_closable(true).child(palette_command(&palette, &chats, &ws, cx))
+            dialog
+                .close_button(false)
+                .overlay_closable(true)
+                .child(palette_command(&palette, &chats, running, &ws, cx))
         });
         // The dialog focuses its own handle on open; the palette needs its
         // query field focused so typing and ↑↓/Enter reach the Command
@@ -179,12 +185,12 @@ fn cancel_rename(ws: &Entity<Workspace>, cx: &mut App) -> bool {
 /// workspace render — `on_query` notifies the workspace so each keystroke
 /// re-runs this builder with fresh groups for the new query.
 fn palette_command(
-    palette: &Entity<gpui_kit::component::command::CommandState>, chats: &[crate::palette_items::ChatSnapshot], ws: &Entity<Workspace>,
-    cx: &mut App,
+    palette: &Entity<gpui_kit::component::command::CommandState>, chats: &[crate::palette_items::ChatSnapshot], running: usize,
+    ws: &Entity<Workspace>, cx: &mut App,
 ) -> Command {
     let ws_confirm = ws.clone();
     let ws_query = ws.clone();
-    let (commands, chat_group) = crate::palette_items::palette_groups(chats, &palette.read(cx).query(cx));
+    let (commands, chat_group) = crate::palette_items::palette_groups(chats, &palette.read(cx).query(cx), running);
     Command::new(palette)
         .placeholder("Type a command or search chats…")
         // Local filtering is substring-only; ranking is fuzzy and happens
@@ -223,7 +229,7 @@ impl Workspace {
     fn confirm_palette_entry(&mut self, path: IndexPath, window: &mut Window, cx: &mut Context<Self>) {
         window.close_dialog(cx);
         let query = self.palette.read(cx).query(cx);
-        match crate::palette_items::entry_at(&self.palette_chats(), &query, path) {
+        match crate::palette_items::entry_at(&self.palette_chats(), &query, path, self.running_chats()) {
             Some(Entry::Command(spec)) => {
                 if let crate::palette_items::Effect::Run(run) = spec.effect {
                     run(self, window, cx);

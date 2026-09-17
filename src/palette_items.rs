@@ -80,9 +80,9 @@ fn rank_command(spec: &CommandSpec, query: &str) -> Option<i32> {
 /// All palette entries for `query`, in display order: commands first, then
 /// chats. A non-empty query keeps only fuzzy matches, best score first within
 /// each group; an empty query lists everything in table/sidebar order.
-pub(crate) fn build_entries(chats: &[ChatSnapshot], query: &str) -> Vec<Entry> {
+pub(crate) fn build_entries(chats: &[ChatSnapshot], query: &str, running: usize) -> Vec<Entry> {
     let query = query.trim();
-    let specs = crate::palette_commands::command_specs();
+    let specs = crate::palette_commands::command_specs(running);
     let mut commands: Vec<(usize, i32)> = specs
         .iter()
         .enumerate()
@@ -137,10 +137,10 @@ pub(crate) fn build_entries(chats: &[ChatSnapshot], query: &str) -> Vec<Entry> {
 /// group, section 1 the chats group — `Command`'s section numbering counts
 /// every group in the model, so these stay stable even when a group filters
 /// to nothing.
-pub(crate) fn entry_at(chats: &[ChatSnapshot], query: &str, path: IndexPath) -> Option<Entry> {
+pub(crate) fn entry_at(chats: &[ChatSnapshot], query: &str, path: IndexPath, running: usize) -> Option<Entry> {
     let mut command_row = 0usize;
     let mut chat_row = 0usize;
-    build_entries(chats, query).into_iter().find(|entry| {
+    build_entries(chats, query, running).into_iter().find(|entry| {
         let hit = match entry {
             Entry::Command(_) => path.section == 0 && path.row == command_row,
             Entry::Chat(_) => path.section == 1 && path.row == chat_row,
@@ -155,10 +155,10 @@ pub(crate) fn entry_at(chats: &[ChatSnapshot], query: &str, path: IndexPath) -> 
 
 /// The two `Command` groups for the current query — headings hide themselves
 /// when their group is empty.
-pub(crate) fn palette_groups(chats: &[ChatSnapshot], query: &str) -> (CommandGroup, CommandGroup) {
+pub(crate) fn palette_groups(chats: &[ChatSnapshot], query: &str, running: usize) -> (CommandGroup, CommandGroup) {
     let mut commands = CommandGroup::new().label("Commands");
     let mut chat_group = CommandGroup::new().label("Chats");
-    for entry in build_entries(chats, query) {
+    for entry in build_entries(chats, query, running) {
         match entry {
             Entry::Command(spec) => commands = commands.item(command_item(spec)),
             Entry::Chat(chat) => chat_group = chat_group.item(chat_item(chat)),
