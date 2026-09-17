@@ -48,6 +48,13 @@ pub(crate) fn retry_items(menu: PopupMenu, ws: &Entity<Workspace>, window: &mut 
     let menu = menu.item(PopupMenuItem::new("Retry").icon(IconName::RotateCcw).on_click(move |_, _w, cx| {
         ws_retry.update(cx, |this, cx| this.retry_last(cx));
     }));
+    retry_model_submenu(menu, ws, window, cx)
+}
+
+/// The "Regenerate with model" submenu — shared by `retry_items` and the
+/// error row's "Retry turn" tail. Fewer than two switchable models hides
+/// it — a plain retry covers that case.
+pub(crate) fn retry_model_submenu(menu: PopupMenu, ws: &Entity<Workspace>, window: &mut Window, cx: &mut Context<PopupMenu>) -> PopupMenu {
     let picks = model_picks(ws, cx);
     if picks.len() < 2 {
         return menu;

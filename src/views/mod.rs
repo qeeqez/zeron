@@ -64,6 +64,8 @@ pub(crate) mod nav_row;
 mod plan_panel;
 mod project_switcher;
 pub(crate) mod rate_limit;
+#[cfg(test)]
+mod retry_failed_tests;
 mod retry_menu;
 mod saved_prompts;
 mod scheduled_panel;

@@ -6,6 +6,8 @@
 mod pager;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::{Disableable, Sizable};
 
 use gpui_kit::component::input::{Escape as InputEscape, Input};
 use gpui_kit::component::theme::ActiveTheme;
@@ -108,9 +110,27 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
             let color = if md.read(cx).raw { accent } else { muted };
             row = row.child(action_icon(("raw", ix), IconName::Code, color, &group, toggle_raw(md, ws.clone(), ix)));
         }
-        // Regenerate re-runs the turn that produced this reply — on the
-        // last message it's a plain retry, mid-chat it truncates first.
-        {
+        // A failed turn's row gets a real Retry button — always visible,
+        // disabled while a turn runs — instead of the ghost icon. It
+        // re-sends the turn's prompt through `regenerate_from`, which
+        // parks the error in the new reply's alternatives.
+        if msg.is_error() {
+            let running = ws.read(cx).chats[ws.read(cx).active].running;
+            let ws_retry = ws.clone();
+            row = row.child(
+                Button::new(("retry", ix))
+                    .ghost()
+                    .xsmall()
+                    .icon(IconName::RotateCcw)
+                    .label("Retry")
+                    .disabled(running)
+                    .on_click(move |_, window, cx| {
+                        ws_retry.update(cx, |this, cx| this.regenerate_from(ix, window, cx));
+                    }),
+            );
+        } else {
+            // Regenerate re-runs the turn that produced this reply — on the
+            // last message it's a plain retry, mid-chat it truncates first.
             let ws = ws.clone();
             row = row.child(action_icon(("retry", ix), IconName::RotateCcw, muted, &group, move |_, window, cx| {
                 ws.update(cx, |this, cx| this.regenerate_from(ix, window, cx));

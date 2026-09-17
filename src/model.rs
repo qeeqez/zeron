@@ -148,6 +148,14 @@ impl ChatMessage {
         }
     }
 
+    /// A failed turn's row: the backend writes errors as assistant text
+    /// starting `**Error:**` (see `apply_event`), and the auth/no-model
+    /// bail-outs push the same marker as a note. Drives the row's Retry
+    /// affordance — `failed_flag` alone misses the note path.
+    pub fn is_error(&self) -> bool {
+        self.role == Role::Assistant && matches!(&self.kind, MessageKind::Text(t) if t.starts_with("**Error:**"))
+    }
+
     /// The version chain's slot for this message: `alternatives` holds the
     /// other versions newest-first, so the position is the count of
     /// alternatives newer than `self` plus one (1-based for the pager).

@@ -36,6 +36,7 @@ pub(super) fn msg_menu(
     let is_last = mc.is_last;
     let role = mc.msg.role;
     let bookmarked = mc.msg.bookmarked;
+    let is_error = mc.msg.is_error();
     move |menu, window, cx| {
         // Copy variants stay grouped at the top; Copy Code only appears
         // when the message actually has fenced blocks.
@@ -101,6 +102,14 @@ pub(super) fn msg_menu(
             menu
         };
         match (role, is_last) {
+            // A failed turn's row swaps the retry tail for "Retry turn" —
+            // same resend path as Regenerate, labeled for the failure.
+            (Role::Assistant, _) if is_error => {
+                let menu = menu.item(
+                    msg_item("Retry turn", IconName::RotateCcw, &ws, move |this, w, cx| this.regenerate_from(ix, w, cx)).disabled(running),
+                );
+                if is_last { super::retry_menu::retry_model_submenu(menu, &ws, window, cx) } else { menu }
+            },
             (Role::Assistant, true) => super::retry_menu::retry_items(menu, &ws, window, cx),
             (Role::Assistant, false) => {
                 menu.item(msg_item("Regenerate", IconName::RotateCcw, &ws, move |this, w, cx| this.regenerate_from(ix, w, cx)))
