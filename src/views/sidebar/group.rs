@@ -215,7 +215,11 @@ pub(super) fn chat_groups(
         }
     } else {
         for name in &folders {
-            let items: Vec<NavRow> = filtered.iter().copied().filter(|ix| state.chats[*ix].folder == *name).map(&mut *row_of).collect();
+            // Folders order purely by `sort_order` — a drag can place a chat
+            // anywhere in its folder, so recency buckets don't apply here.
+            let mut ixs: Vec<usize> = filtered.iter().copied().filter(|ix| state.chats[*ix].folder == *name).collect();
+            crate::workspace::sort_group(state, &mut ixs);
+            let items: Vec<NavRow> = ixs.into_iter().map(&mut *row_of).collect();
             if items.is_empty() {
                 continue;
             }
@@ -235,7 +239,10 @@ pub(super) fn chat_groups(
                     .chat_drop_target(ws, name.clone()),
             );
         }
-        let unfiled: Vec<NavRow> = filtered.iter().copied().filter(|ix| state.chats[*ix].folder.is_empty()).map(&mut *row_of).collect();
+        // Unfiled is a named group too — same pure `sort_order` ordering.
+        let mut ixs: Vec<usize> = filtered.iter().copied().filter(|ix| state.chats[*ix].folder.is_empty()).collect();
+        crate::workspace::sort_group(state, &mut ixs);
+        let unfiled: Vec<NavRow> = ixs.into_iter().map(&mut *row_of).collect();
         if !unfiled.is_empty() {
             groups.push(ChatGroup::new("Unfiled").chat_drop_target(ws, "").children(unfiled));
         }

@@ -35,6 +35,10 @@ pub(crate) struct StoredChat {
     /// Missing in early v1 files — fall back to now().
     #[serde(default = "std::time::SystemTime::now")]
     pub(crate) created_at: std::time::SystemTime,
+    /// Manual sidebar position — missing in files written before drag
+    /// reorder existed; `0` falls back to `created_at` ordering.
+    #[serde(default)]
+    pub(crate) order: i64,
     /// Per-thread provider/model/access/workdir — missing in files written
     /// before thread defaults existed; empty means "follow the selection".
     #[serde(default)]
@@ -98,6 +102,7 @@ impl StoredChat {
         chat.title_generated = self.title_generated;
         chat.title_custom = self.title_custom;
         chat.created_at = self.created_at;
+        chat.order = self.order;
         chat.provider = self.provider;
         chat.model = self.model;
         chat.access = if self.access.is_empty() {
@@ -150,6 +155,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             title_generated: chat.title_generated,
             title_custom: chat.title_custom,
             created_at: chat.created_at,
+            order: chat.order,
             provider: chat.provider.clone(),
             model: chat.model.clone(),
             access: chat.access.map_or_else(String::new, |a| a.name().to_string()),

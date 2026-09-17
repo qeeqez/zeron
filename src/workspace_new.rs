@@ -125,6 +125,7 @@ impl Workspace {
                     .placeholder("Instructions applied to this chat's turns — appended after the global and project instructions.")
             }),
             collapsed_folders: std::collections::HashSet::new(),
+            chat_drop: None,
             folder_colors: project_state
                 .folder_colors
                 .iter()

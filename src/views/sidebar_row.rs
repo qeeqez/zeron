@@ -4,7 +4,10 @@
 //! `chat_row` adds what stock rows can't express: a hover-revealed "…" menu
 //! button and an inline rename editor that replaces the title label.
 
+mod drag_ghost;
 mod sidebar_menu;
+
+use drag_ghost::ChatDragGhost;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
@@ -30,35 +33,6 @@ pub(super) struct ChatDrag {
     title: SharedString,
 }
 
-/// The floating preview that follows the cursor while a chat row drags — a
-/// small pill with the chat's title, styled like the row it came from.
-struct ChatDragGhost {
-    title: SharedString,
-}
-
-impl Render for ChatDragGhost {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .id("chat-drag-ghost")
-            .cursor_grabbing()
-            .gap_2()
-            .py_1()
-            .px_3()
-            .max_w_64()
-            .overflow_hidden()
-            .whitespace_nowrap()
-            .rounded(cx.theme().radius)
-            .border_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().tokens.sidebar)
-            .text_sm()
-            .text_color(cx.theme().sidebar_foreground)
-            .opacity(0.85)
-            .child(IconName::FileText)
-            .child(self.title.clone())
-    }
-}
-
 /// One chat row: icon + title (or inline rename editor) + status + "…" menu.
 pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<Workspace>) -> NavRow {
     let chat_id = chat.id;
@@ -76,6 +50,7 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
     // `ws.rename`, and its outside-click would commit behind the dialog.
     let renaming = ws.renaming == Some(chat_id) && ws.rename_mode == crate::workspace::RenameMode::Inline;
     let ws_click = cx.entity();
+    let ws_drop = cx.entity();
     let row = NavRow::new(("chat-row", chat_id), chat.title.clone())
         .icon(if flags.pinned { IconName::StarFill } else { IconName::FileText })
         .active(ix == ws.active)
@@ -111,6 +86,24 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
             cx.stop_propagation();
             cx.new(|_| ChatDragGhost { title: drag.title.clone() })
         })
+        // Reorder/file target: the move handler runs for every row during a
+        // `ChatDrag`, so it self-selects on `bounds.contains` and tracks the
+        // hovered half as the drop edge.
+        .drop_target(
+            {
+                let ws = ws_drop.clone();
+                move |ev: &DragMoveEvent<ChatDrag>, _, cx| {
+                    let hovered = ev.bounds.contains(&ev.event.position);
+                    let above = ev.event.position.y < ev.bounds.origin.y + ev.bounds.size.height / 2.;
+                    ws.update(cx, |this, cx| this.set_chat_drop(ev.drag(cx).id, chat_id, hovered.then_some(above), cx));
+                }
+            },
+            {
+                let ws = ws_drop.clone();
+                move |drag: &ChatDrag, _, cx| ws.update(cx, |this, cx| this.drop_chat_on_row(drag.id, chat_id, cx))
+            },
+        )
+        .drop_line(ws.chat_drop.and_then(|d| (d.row == chat_id).then_some(d.above)))
         .suffix(row_suffix(cx.entity(), chat_id, flags, (chat.running, chat.unread), ws.send_queue.len(chat_id)))
     }
 }

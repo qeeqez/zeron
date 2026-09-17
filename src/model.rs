@@ -226,6 +226,10 @@ pub struct Chat {
     /// them, so renaming/deleting a folder rewrites every member chat.
     pub folder: String,
     pub created_at: SystemTime,
+    /// Manual sidebar position — `0` means "unset: sort by `created_at`".
+    /// Drag-reorder rewrites it (see `crate::chat_reorder`); persisted so a
+    /// custom order survives restarts.
+    pub order: i64,
     pub started_at: Option<Instant>,
     /// Color tag for visual grouping — `None` renders no dot. Persisted by
     /// name; ephemeral chats never reach disk so their tag is runtime-only.
@@ -344,6 +348,7 @@ impl Chat {
             pinned: false,
             folder: String::new(),
             created_at: SystemTime::now(),
+            order: 0,
             started_at: None,
             color: None,
             last_turn: None,

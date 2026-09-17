@@ -192,6 +192,10 @@ pub struct Workspace {
     /// just `Chat::folder` values, so this set may name a folder that no
     /// longer exists.
     pub collapsed_folders: std::collections::HashSet<String>,
+    /// The chat row a `ChatDrag` hovers plus the edge it would land on —
+    /// drives the drop indicator line (see `crate::workspace::reorder`).
+    /// Runtime-only; cleared on drop and when no drag is active.
+    pub chat_drop: Option<ChatDrop>,
     /// Folder color tags — folder name → `ChatColor`, persisted as
     /// `ProjectState.folder_colors` in state.json. May name a folder that
     /// no longer exists; the sidebar only reads it for live folders.
@@ -370,6 +374,14 @@ pub struct Workspace {
     pub backend: std::sync::Arc<dyn crate::backend::AgentBackend>,
 }
 
+/// The live drop target while a chat row drags: which row is hovered and
+/// whether the chat lands above (`true`) or below it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ChatDrop {
+    pub row: u64,
+    pub above: bool,
+}
+
 impl Workspace {
     /// Session-wide usage folded across this window's chats — the usage
     /// popover's bottom row. A chat's cost is priced on its own model,
@@ -397,3 +409,13 @@ impl Workspace {
 #[cfg(test)]
 #[path = "draft_persist_tests.rs"]
 mod draft_persist_tests;
+
+/// Drag-reorder for sidebar chats — declared here, not in `main.rs` — the
+/// crate root is at the SLOC cap.
+#[path = "chat_reorder.rs"]
+pub(crate) mod reorder;
+pub(crate) use reorder::{sort_group, sort_order};
+
+#[cfg(test)]
+#[path = "chat_reorder_tests.rs"]
+mod reorder_tests;

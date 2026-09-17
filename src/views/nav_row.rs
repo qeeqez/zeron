@@ -57,6 +57,12 @@ pub(crate) struct NavRow {
     /// Drag source applied to the row's `Stateful<Div>` — the toolkit's 2px
     /// threshold keeps plain clicks from starting a drag.
     on_drag: Option<DragSource>,
+    /// Drop target applied the same way — the closure registers the typed
+    /// `on_drag_move`/`on_drop` pair on the stateful row.
+    drop_target: Option<DragSource>,
+    /// Drop indicator edge while a chat drag hovers this row — `Some(true)`
+    /// draws the line on the row's top edge, `Some(false)` the bottom.
+    drop_line: Option<bool>,
     context_menu: Option<MenuBuilder>,
 }
 
@@ -78,6 +84,8 @@ impl NavRow {
             suffix: None,
             context_menu: None,
             on_drag: None,
+            drop_target: None,
+            drop_line: None,
         }
     }
 
@@ -134,6 +142,35 @@ impl NavRow {
         self
     }
 
+    /// Drop target for drags of type `T`: `on_move` runs on every drag move
+    /// (the toolkit fires it for all registered rows — check `ev.bounds`
+    /// against `ev.event.position`), `on_drop` on release over this row.
+    pub(crate) fn drop_target<T>(
+        mut self, on_move: impl Fn(&DragMoveEvent<T>, &mut Window, &mut App) + 'static,
+        on_drop: impl Fn(&T, &mut Window, &mut App) + 'static,
+    ) -> Self
+    where
+        T: 'static,
+    {
+        let on_move = Rc::new(on_move);
+        let on_drop = Rc::new(on_drop);
+        self.drop_target = Some(Rc::new(move |row| {
+            let on_drop = on_drop.clone();
+            row.on_drag_move({
+                let on_move = on_move.clone();
+                move |ev: &DragMoveEvent<T>, window, cx| on_move(ev, window, cx)
+            })
+            .on_drop(move |value: &T, window, cx| on_drop(value, window, cx))
+        }));
+        self
+    }
+
+    /// The drop indicator edge — see the `drop_line` field.
+    pub(crate) fn drop_line(mut self, edge: Option<bool>) -> Self {
+        self.drop_line = edge;
+        self
+    }
+
     /// Custom row content replacing the label and suffix.
     pub(crate) fn body<E: IntoElement>(mut self, body: impl Fn(&mut Window, &mut App) -> E + 'static) -> Self {
         self.body = Some(Rc::new(move |window, cx| body(window, cx).into_any_element()));
@@ -181,9 +218,9 @@ impl SidebarItem for NavRow {
     fn render(self, id: impl Into<ElementId>, window: &mut Window, cx: &mut App) -> impl IntoElement {
         // Copy the theme values up front — `theme()` borrows `cx`, and the
         // body/suffix closures need `&mut App` below.
-        let (radius, accent, accent_bg, accent_fg) = {
+        let (radius, accent, accent_bg, accent_fg, drag_border) = {
             let theme = cx.theme();
-            (theme.radius, theme.sidebar_accent, theme.tokens.sidebar_accent, theme.sidebar_accent_foreground)
+            (theme.radius, theme.sidebar_accent, theme.tokens.sidebar_accent, theme.sidebar_accent_foreground, theme.tokens.drag_border)
         };
         // Row content: the custom body (rename editor) replaces label+suffix.
         let content = match self.body {
@@ -214,12 +251,27 @@ impl SidebarItem for NavRow {
                 .bg(color)
                 .into_any_element()
         });
+        // The drop indicator — a 2px line on the row's top or bottom edge,
+        // half-overlapping so it reads as the gap the drop lands in.
+        let drop_line = self.drop_line.map(|above| {
+            div()
+                .id(format!("{}-drop-line", self.id))
+                .test_support()
+                .absolute()
+                .left_0()
+                .right_0()
+                .h(px(2.))
+                .bg(drag_border)
+                .map(|this| if above { this.top(px(-1.)) } else { this.bottom(px(-1.)) })
+                .into_any_element()
+        });
         let row = h_flex()
             .size_full()
             .id(self.id)
             // The drag listener needs the stateful element — `test_support`
             // wraps it in `Observed` under the test feature.
             .when_some(self.on_drag, |this, on_drag| on_drag(this))
+            .when_some(self.drop_target, |this, drop_target| drop_target(this))
             .test_support()
             .overflow_x_hidden()
             .flex_shrink_0()
@@ -246,5 +298,6 @@ impl SidebarItem for NavRow {
             .when_some(self.group, |this, group| this.group(group))
             .child(row)
             .when_some(edge, |this, edge| this.child(edge))
+            .when_some(drop_line, |this, line| this.child(line))
     }
 }

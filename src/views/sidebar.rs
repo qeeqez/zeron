@@ -98,6 +98,12 @@ impl Workspace {
         });
 
         let ws = cx.entity();
+        // A drag that ended without landing on a row (mouse-up over empty
+        // space, or a cancelled gesture) leaves `chat_drop` behind — clear
+        // it so the indicator can't stick.
+        if self.chat_drop.is_some() && !cx.has_active_drag() {
+            self.chat_drop = None;
+        }
         let mut row_of = |ix: usize| super::sidebar_row::chat_row(&self.chats[ix], ix, self, cx);
         // Folders lead the list (collapsible); unfiled chats fall under
         // "Unfiled". With no folders the flat recency groups render.
