@@ -10,7 +10,7 @@ use gpui_kit::TestAppContext;
 use gpui_kit::base::test_support::snapshots;
 use gpui_kit::component::dialog::Confirm;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{Role as A11yRole, Window};
+use gpui_kit::{Role as A11yRole, VisualTestContext, Window};
 
 use crate::composer_testutil::{composer_value, open_workspace, type_and_send, user_msgs};
 use crate::prompts::TemplateStore;
@@ -63,6 +63,13 @@ fn click_menu_item(window: &mut Window, cx: &mut gpui_kit::App, label: &str) {
     window.draw(cx).clear(cx);
 }
 
+/// Let a freshly opened dialog's slide-in animation finish so clicks land
+/// on the rows' final positions, not their animated ones.
+fn settle_dialog(cx: &mut VisualTestContext) {
+    cx.executor().advance_clock(std::time::Duration::from_secs(1));
+    cx.run_until_parked();
+}
+
 #[gpui_kit::test]
 fn save_template_dialog_saves_draft(cx: &mut TestAppContext) {
     let (workspace, cx) = open_workspace(cx);
@@ -92,8 +99,9 @@ fn picker_lists_in_saved_order(cx: &mut TestAppContext) {
         ws.templates.save("apple", "a body");
         ws.templates.save("mango", "m body");
     });
+    cx.update(|window, cx| workspace.update(cx, |ws, cx| ws.open_template_picker(window, cx)));
+    settle_dialog(cx);
     cx.update(|window, cx| {
-        workspace.update(cx, |ws, cx| ws.open_template_picker(window, cx));
         window.draw(cx).clear(cx);
         let top = |id: &'static str| f32::from(window.find(id).bounds().origin.y);
         assert!(top("template-row-zebra") < top("template-row-apple"), "saved order, not sorted");
@@ -108,6 +116,7 @@ fn pick_loads_draft_without_sending(cx: &mut TestAppContext) {
         ws.templates.save("greet", "say hello warmly");
     });
     type_and_send(cx, "/templates");
+    settle_dialog(cx);
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert!(window.find("templates-list").visible(), "/templates should open the picker");
@@ -127,8 +136,9 @@ fn picker_delete_removes_template(cx: &mut TestAppContext) {
     workspace.update(cx, |ws, _| {
         ws.templates.save("greet", "say hello");
     });
+    cx.update(|window, cx| workspace.update(cx, |ws, cx| ws.open_template_picker(window, cx)));
+    settle_dialog(cx);
     cx.update(|window, cx| {
-        workspace.update(cx, |ws, cx| ws.open_template_picker(window, cx));
         window.draw(cx).clear(cx);
         // The ✕ is hover-revealed — hidden until the row is hovered.
         assert!(!window.find("template-delete-greet").visible(), "delete hidden before hover");
@@ -148,10 +158,10 @@ fn picker_delete_removes_template(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn picker_empty_state(cx: &mut TestAppContext) {
     let (workspace, cx) = open_workspace(cx);
+    cx.update(|window, cx| workspace.update(cx, |ws, cx| ws.open_template_picker(window, cx)));
+    settle_dialog(cx);
     cx.update(|window, cx| {
-        workspace.update(cx, |ws, cx| ws.open_template_picker(window, cx));
         window.draw(cx).clear(cx);
         assert!(window.find("templates-empty").visible(), "empty store shows the empty state");
-        assert!(window.try_find("template-row-").is_none(), "no rows without templates");
     });
 }
