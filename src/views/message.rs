@@ -10,6 +10,77 @@ use crate::model::{MessageKind, Role, ToolCall};
 use crate::views::approval::render_approval;
 use crate::views::cards::{MsgCtx, render_diff, render_plan, render_tool_call, render_tool_group, tool_group};
 use crate::workspace::Workspace;
+/// Transcript spacing for one density. `density(compact)` maps
+/// `Workspace::compact_mode` onto the spacing values the message row, its
+/// footer, the day separator and the scroller's row gap read — the defaults
+/// below match the stock spacing (`py_2`, `pb_8`, `rems(0.625)` gaps) so off
+/// is a no-op.
+#[derive(Clone, Copy)]
+pub(crate) struct Density {
+    /// Vertical padding inside the message bubble (`md-body`).
+    pub body_py: Pixels,
+    /// Gap between a message's header/content/footer slots.
+    pub stack_gap: Rems,
+    /// Vertical padding around a day-separator label.
+    pub separator_py: Pixels,
+    /// Bottom padding the scroller puts between rows.
+    pub row_gap: Pixels,
+    /// Padding inside a fenced code block.
+    pub code_block_p: Pixels,
+    /// Vertical gap between Markdown blocks (paragraphs, lists, code).
+    pub paragraph_gap: Rems,
+}
+
+/// The spacing set for `Workspace::compact_mode` — compact trades the
+/// transcript's airy rhythm for denser rows.
+pub(crate) fn density(compact: bool) -> Density {
+    if compact {
+        Density {
+            body_py: px(4.),
+            stack_gap: rems(0.25),
+            separator_py: px(2.),
+            row_gap: px(8.),
+            code_block_p: px(6.),
+            paragraph_gap: rems(0.5),
+        }
+    } else {
+        Density {
+            body_py: px(8.),
+            stack_gap: rems(0.625),
+            separator_py: px(8.),
+            row_gap: px(32.),
+            code_block_p: px(12.),
+            paragraph_gap: rems(1.),
+        }
+    }
+}
+
+/// The `TextViewStyle` the transcript's Markdown renders with — the
+/// component style folds onto the themed one, so setting the density's
+/// paragraph gap and code-block padding leaves every other field themed.
+pub(crate) fn markdown_style(compact: bool) -> gpui_kit::component::text::TextViewStyle {
+    let d = density(compact);
+    gpui_kit::component::text::TextViewStyle {
+        paragraph_gap: d.paragraph_gap,
+        code_block: StyleRefinement::default().p(d.code_block_p),
+        ..Default::default()
+    }
+}
+
+/// Apply compact row spacing to a transcript `MessageScroller`: the row
+/// style overrides the scroller's stock `pb_8` between rows; the list style
+/// keeps the last row's bottom edge at the same inset (its `pb` would
+/// otherwise stack on top). Off is a no-op — the stock styles stay.
+pub(crate) fn density_scroller(
+    s: gpui_kit::component::message_scroller::MessageScroller, compact: bool,
+) -> gpui_kit::component::message_scroller::MessageScroller {
+    if !compact {
+        return s;
+    }
+    let d = density(true);
+    s.with_row_style(StyleRefinement::default().pb(d.row_gap))
+        .with_list_style(StyleRefinement::default().pt(d.body_py).pb(px(0.)))
+}
 
 pub fn render_message(mc: MsgCtx, focused: bool, ws: &Entity<Workspace>, window: &mut Window, cx: &mut App) -> AnyElement {
     let MsgCtx { ix, msg, .. } = mc;
@@ -64,7 +135,7 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
     let MsgCtx { ix, msg, .. } = mc;
     let MessageKind::Text(text) = &msg.kind else { unreachable!() };
     let role = msg.role;
-    let (word_wrap, font_size, undoable, edit_input, running, last_msg) = {
+    let (word_wrap, font_size, compact, undoable, edit_input, running, last_msg) = {
         let ws = ws.read(cx);
         let chat = &ws.chats[ws.active];
         let input = ws
@@ -79,12 +150,14 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
         (
             ws.word_wrap,
             ws.font_size,
+            ws.compact_mode,
             input.is_none() && !chat.running && last_user && crate::checkpoints::for_message(chat, ix).is_some(),
             input,
             chat.running,
             ix + 1 == chat.messages.len(),
         )
     };
+    let d = density(compact);
     // Long messages clip behind a fade + "Show more" bar — never the
     // streaming tail (it classifies once `running` clears) or the editor.
     let collapse = crate::views::chat_collapse::collapse_state(ws.read(cx), ix, msg, edit_input.is_some());
@@ -135,7 +208,7 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
             .id(("md-body", ix))
             .test_support()
             .px_4()
-            .py_2()
+            .py(d.body_py)
             .text_size(px(font_size))
             // Codex: user text sits in a tinted bubble; assistant replies are
             // flat Markdown on the chat surface — no bubble.
@@ -158,7 +231,11 @@ fn render_text(mc: MsgCtx, ws: &Entity<Workspace>, window: &mut Window, cx: &mut
     };
     let body = crate::views::chat_collapse::collapse_wrap(mc, body, collapse, ws, cx);
 
-    let mut message = Message::new().alignment(alignment).content(MessageContent::new().child(body));
+    let mut message = Message::new()
+        .alignment(alignment)
+        .content(MessageContent::new().child(body))
+        .with_stack_style(StyleRefinement::default().gap(d.stack_gap))
+        .gap(d.stack_gap);
     // Group for hover-revealed footer actions.
     if role == Role::Assistant {
         message = message.header(

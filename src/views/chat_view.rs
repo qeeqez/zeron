@@ -73,6 +73,7 @@ impl Workspace {
         // transcript holds focus (see `crate::msg_nav`).
         let nav_ix = self.nav_target(window);
         let nav_focus = self.nav_focus.clone();
+        let compact = self.compact_mode;
         let list = MessageScroller::new("chat-messages", self.scroller.clone(), move |ix, window, cx| {
             let real_ix = filtered.as_ref().map_or(ix, |f| *f.get(ix).unwrap_or(&ix));
             // Last visible message — under a filter that's the last match,
@@ -92,9 +93,13 @@ impl Workspace {
                 .map(|msg| render_message(MsgCtx { ix: real_ix, is_last, duration, msg }, nav_ix == Some(real_ix), &ws, window, cx))
                 .unwrap_or_else(|| div().into_any_element());
             let el = crate::chat_find::wrap_find_hit(el, real_ix, find.as_ref(), cx);
-            crate::views::date_separator::separator_row(real_ix, at, prev_at, el, cx)
+            crate::views::date_separator::separator_row(
+                crate::views::date_separator::SeparatorRow { ix: real_ix, at, prev_at, row: el, compact },
+                cx,
+            )
         })
         .with_jump_button_renderer(crate::chat_search::pill_renderer(ws_empty.clone(), unseen));
+        let list = crate::views::message::density_scroller(list, compact);
 
         // The header doubles as the window titlebar: it drags the window and
         // answers double-click. Interactive children stop mousedown so they

@@ -54,6 +54,10 @@ pub struct Settings {
     /// Off = replies only ever get the in-app toast.
     pub notify_background: bool,
     pub word_wrap: bool,
+    /// Compact transcript density — tighter row padding, icon-only footer
+    /// actions, slimmer day separators and code blocks. Off = the default
+    /// airy spacing.
+    pub compact_mode: bool,
     /// Per-message timestamps in the transcript footer — off = the footer
     /// shows only the hover actions and usage line.
     pub show_timestamps: bool,

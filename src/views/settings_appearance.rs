@@ -52,6 +52,20 @@ pub(crate) fn appearance_section(s: &SettingsView, cx: &App) -> impl IntoElement
             },
             &s.search,
         ))
+        .child(group_label("Messages", &s.search, cx))
+        .child(toggle_row(
+            ("toggle-compact", "Compact messages"),
+            s.compact_mode,
+            s.ws.clone(),
+            |this, next, _w, cx| {
+                this.compact_mode = next;
+                // Every row's height changed — remeasure both transcript
+                // scrollers (main + split pane) like the word-wrap toggle.
+                this.scroller.update(cx, |s, cx| s.remeasure(cx));
+                this.secondary_scroller.update(cx, |s, cx| s.remeasure(cx));
+            },
+            &s.search,
+        ))
 }
 
 /// A Codex-style theme card: mini preview swatch over a label, accent border

@@ -42,7 +42,8 @@ fn pager_btn(p: PagerBtn) -> gpui_kit::base::ObservedElement<Stateful<Div>> {
 
 /// `< pos/total >` — position counts versions newest-first, so a fresh
 /// regenerate shows `1/2` and paging back reaches the original reply.
-pub(super) fn version_pager(mc: MsgCtx, ws: &Entity<Workspace>) -> Div {
+/// Compact density drops the position label, leaving bare chevrons.
+pub(super) fn version_pager(mc: MsgCtx, ws: &Entity<Workspace>, compact: bool) -> Div {
     let MsgCtx { ix, msg, .. } = mc;
     let muted = hsla(0.0, 0.0, 0.55, 1.0);
     let pos = msg.version_position();
@@ -59,15 +60,17 @@ pub(super) fn version_pager(mc: MsgCtx, ws: &Entity<Workspace>) -> Div {
             ix,
             older: true,
         }))
-        .child(
-            div()
-                .id(("ver-pos", ix))
-                .test_support()
-                .aria_label(format!("{pos}/{total}"))
-                .text_xs()
-                .text_color(muted)
-                .child(format!("{pos}/{total}")),
-        )
+        .when(!compact, |d| {
+            d.child(
+                div()
+                    .id(("ver-pos", ix))
+                    .test_support()
+                    .aria_label(format!("{pos}/{total}"))
+                    .text_xs()
+                    .text_color(muted)
+                    .child(format!("{pos}/{total}")),
+            )
+        })
         .child(pager_btn(PagerBtn {
             id: ("ver-next", ix),
             icon: IconName::ChevronRight,

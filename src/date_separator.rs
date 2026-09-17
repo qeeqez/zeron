@@ -63,30 +63,41 @@ pub(crate) fn timestamp_label(at: SystemTime, today: chrono::NaiveDate) -> Strin
     }
 }
 
-/// Wrap a rendered message row in a column that carries the day separator
-/// above it. `at` is the row's own timestamp, `prev_at` the previous visible
+/// Inputs for [`separator_row`] — bundled to stay under the arg-count lint.
+/// `at` is the row's own timestamp, `prev_at` the previous visible
 /// message's — under a chat-search filter that's the previous *match*, so a
-/// divider still marks the day change between hits.
-pub(crate) fn separator_row(ix: usize, at: Option<SystemTime>, prev_at: Option<SystemTime>, row: AnyElement, cx: &App) -> AnyElement {
-    let Some(label) = at.and_then(|at| separator_label(prev_at, at)) else {
-        return row;
+/// divider still marks the day change between hits. `compact` shrinks the
+/// divider's padding (see `message::density`).
+pub(crate) struct SeparatorRow {
+    pub ix: usize,
+    pub at: Option<SystemTime>,
+    pub prev_at: Option<SystemTime>,
+    pub row: AnyElement,
+    pub compact: bool,
+}
+
+/// Wrap a rendered message row in a column that carries the day separator
+/// above it.
+pub(crate) fn separator_row(s: SeparatorRow, cx: &App) -> AnyElement {
+    let Some(label) = s.at.and_then(|at| separator_label(s.prev_at, at)) else {
+        return s.row;
     };
     div()
         .flex()
         .flex_col()
         .child(
             div()
-                .id(("date-separator", ix))
+                .id(("date-separator", s.ix))
                 .test_support()
                 .aria_label(label.clone())
                 .flex()
                 .justify_center()
-                .py_2()
+                .py(crate::views::message::density(s.compact).separator_py)
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
                 .child(label),
         )
-        .child(row)
+        .child(s.row)
         .into_any_element()
 }
 

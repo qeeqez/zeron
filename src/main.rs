@@ -260,8 +260,7 @@ fn main() {
         // bundle provides it.
         cx.set_app_identity("com.rixl.rixlcode", "Rixl Code");
         app_setup::install_chrome(cx);
-        cx.bind_keys(app_setup::workspace_keys());
-        cx.bind_keys(app_setup::panel_keys());
+        cx.bind_keys(app_setup::workspace_keys().into_iter().chain(app_setup::panel_keys()));
         app_setup::install_app_actions(cx);
         lifecycle::spawn_launch_window(cx);
     });

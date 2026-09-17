@@ -59,6 +59,7 @@ fn action_icon(
 /// timestamps setting is on — the message's time.
 pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Option<Entity<MarkdownState>>, cx: &mut App) -> Div {
     let MsgCtx { ix, msg, .. } = mc;
+    let compact = ws.read(cx).compact_mode;
     let muted = hsla(0.0, 0.0, 0.55, 1.0);
     let accent = cx.theme().accent;
     let group = SharedString::from(format!("msg-{ix}"));
@@ -115,7 +116,7 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
         // A regenerated reply keeps its predecessors — the pager swaps
         // them back in (see `Workspace::cycle_alternative`).
         if !msg.alternatives.is_empty() {
-            row = row.child(pager::version_pager(mc, ws));
+            row = row.child(pager::version_pager(mc, ws, compact));
         }
         // View-raw flips the body between rendered Markdown and source.
         if let Some(md) = md_state {
@@ -134,7 +135,9 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
                     .ghost()
                     .xsmall()
                     .icon(IconName::RotateCcw)
-                    .label("Retry")
+                    // Compact density drops the label — the glyph alone
+                    // carries the affordance.
+                    .when(!compact, |b| b.label("Retry"))
                     .disabled(running)
                     .on_click(move |_, window, cx| {
                         ws_retry.update(cx, |this, cx| this.regenerate_from(ix, window, cx));

@@ -71,6 +71,7 @@ impl Workspace {
             }
         });
         let ws = cx.entity();
+        let compact = self.compact_mode;
         let list = MessageScroller::new("split-messages", self.secondary_scroller.clone(), move |ix, window, cx| {
             let prev_at = ix.checked_sub(1).and_then(|p| messages.get(p)).map(|m| m.at);
             let at = messages.get(ix).map(|m| m.at);
@@ -78,8 +79,10 @@ impl Workspace {
                 .get(ix)
                 .map(|msg| split_message(ix, msg, &ws, window, cx))
                 .unwrap_or_else(|| div().into_any_element());
-            crate::views::date_separator::separator_row(ix, at, prev_at, row, cx)
+            crate::views::date_separator::separator_row(crate::views::date_separator::SeparatorRow { ix, at, prev_at, row, compact }, cx)
         });
+        // Same density overrides as the main transcript's scroller.
+        let list = crate::views::message::density_scroller(list, compact);
         div()
             .flex()
             .flex_col()
@@ -153,10 +156,11 @@ fn split_message(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, window: &
 /// for assistant replies) and image thumbnails.
 fn split_text(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, window: &mut Window, cx: &mut App) -> AnyElement {
     let MessageKind::Text(text) = &msg.kind else { unreachable!() };
-    let (word_wrap, font_size) = {
+    let (word_wrap, font_size, compact) = {
         let ws = ws.read(cx);
-        (ws.word_wrap, ws.font_size)
+        (ws.word_wrap, ws.font_size, ws.compact_mode)
     };
+    let d = crate::views::message::density(compact);
     let alignment = match msg.role {
         Role::User => MessageAlignment::End,
         Role::Assistant => MessageAlignment::Start,
@@ -189,7 +193,7 @@ fn split_text(ix: usize, msg: &ChatMessage, ws: &Entity<Workspace>, window: &mut
     let body = div()
         .id(("split-md-body", ix))
         .px_4()
-        .py_2()
+        .py(d.body_py)
         .text_size(px(font_size))
         .when(msg.role == Role::User, |d| d.rounded_lg().bg(cx.theme().accent).text_color(cx.theme().accent_foreground))
         .when(!thumbs.is_empty(), |d| d.child(div().flex().flex_wrap().gap_2().pb_1().children(thumbs)))
@@ -231,8 +235,10 @@ fn split_markdown_state(ix: usize, text: &str, window: &mut Window, cx: &mut App
 /// the active chat, so a read-only pane doesn't offer them.
 fn split_markdown(ix: usize, text: &SharedString, state: &Entity<MarkdownState>, ws: &Entity<Workspace>, cx: &mut App) -> AnyElement {
     state.update(cx, |state, cx| state.sync(text, cx));
+    let compact = ws.read(cx).compact_mode;
     let ws = ws.clone();
     TextView::new(&state.read(cx).view)
+        .style(super::message::markdown_style(compact))
         .code_block_actions(move |block, window, cx| split_code_actions(ix, block, window, cx))
         .markdown_block_parser(super::mermaid::parse_block)
         .markdown_block_renderer("mermaid", move |node, window, cx| super::mermaid::render_block(ix, node, window, cx))

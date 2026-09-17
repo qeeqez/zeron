@@ -31,25 +31,18 @@ impl SidebarTab {
         }
     }
 
-    fn label(self) -> &'static str {
+    /// Icon + label for the tab's header button.
+    fn parts(self) -> (IconName, &'static str) {
         match self {
-            Self::Chats => "Chats",
-            Self::Files => "Files",
-        }
-    }
-
-    fn icon(self) -> IconName {
-        match self {
-            Self::Chats => IconName::MessageSquare,
-            Self::Files => IconName::FolderTree,
+            Self::Chats => (IconName::MessageSquare, "Chats"),
+            Self::Files => (IconName::FolderTree, "Files"),
         }
     }
 }
 
 impl Workspace {
     pub fn render_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let collapsed = self.sidebar_collapsed;
-        let tab = self.sidebar_tab;
+        let (collapsed, tab) = (self.sidebar_collapsed, self.sidebar_tab);
         // Computed before the header so the filter row can show "N of M".
         let raw_query = self.search.read(cx).value().to_string();
         let query = raw_query.to_lowercase();
@@ -308,6 +301,7 @@ impl Workspace {
 /// mirrors the settings nav's accent-on-active styling.
 fn tab_button(tab: SidebarTab, current: SidebarTab, cx: &mut Context<Workspace>) -> impl IntoElement {
     let active = tab == current;
+    let (icon, label) = tab.parts();
     div()
         .id(tab.id())
         .test_support()
@@ -322,7 +316,7 @@ fn tab_button(tab: SidebarTab, current: SidebarTab, cx: &mut Context<Workspace>)
         .cursor_pointer()
         .when(active, |d| d.font_medium().bg(cx.theme().accent))
         .when(!active, |d| d.text_color(cx.theme().muted_foreground).hover(|d| d.bg(cx.theme().muted)))
-        .child(tab.icon())
-        .child(tab.label())
+        .child(icon)
+        .child(label)
         .on_click(cx.listener(move |this, _, _, cx| this.set_sidebar_tab(tab, cx)))
 }

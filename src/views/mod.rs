@@ -23,6 +23,8 @@ mod chat_collapse_tests;
 mod chat_info;
 mod chat_menu;
 mod chat_view;
+#[cfg(test)]
+mod compact_mode_tests;
 mod composer;
 mod composer_helpers;
 mod composer_voice;

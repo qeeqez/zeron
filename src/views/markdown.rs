@@ -72,8 +72,10 @@ pub(super) fn assistant_markdown(
     if state.read(cx).raw {
         return raw_markdown(ix, text, cx);
     }
+    let compact = ws.read(cx).compact_mode;
     let ws = ws.clone();
     TextView::new(&state.read(cx).view)
+        .style(super::message::markdown_style(compact))
         .code_block_actions(move |block, window, cx| code_block_actions(ix, block, window, cx))
         .markdown_block_parser(super::mermaid::parse_block)
         .markdown_block_renderer("mermaid", move |node, window, cx| super::mermaid::render_block(ix, node, window, cx))

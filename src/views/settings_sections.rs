@@ -32,6 +32,8 @@ pub struct SettingsView {
     pub contrast: u16,
     pub backend: &'static str,
     pub word_wrap: bool,
+    /// "Compact messages" switch — `Workspace::compact_mode`.
+    pub compact_mode: bool,
     /// "Show message timestamps" switch — `Workspace::show_timestamps`.
     pub show_timestamps: bool,
     pub theme: String,
@@ -128,6 +130,7 @@ impl SettingsView {
             backend: s.backend.name(),
             access: s.access,
             word_wrap: s.word_wrap,
+            compact_mode: s.compact_mode,
             show_timestamps: s.show_timestamps,
             theme: s.theme.clone(),
             ws: ws.clone(),

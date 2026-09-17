@@ -167,6 +167,7 @@ impl Workspace {
             notify_background: settings.notify_background,
             backend,
             word_wrap: settings.word_wrap,
+            compact_mode: settings.compact_mode,
             show_timestamps: settings.show_timestamps,
             preferred_editor: crate::open_in::PreferredEditor::from_name(&settings.preferred_editor),
             font_size: settings.font_size.clamp(crate::appearance::FONT_SIZE_MIN, crate::appearance::FONT_SIZE_MAX),
