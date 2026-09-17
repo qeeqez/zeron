@@ -115,10 +115,30 @@ fn top_row_ix(window: &gpui_kit::Window) -> usize {
 }
 
 /// Wheel-scroll the transcript — the real user path through the scroller's
-/// scroll mask, unlike `scroll_to_item`/`scroll_to_end`.
-fn wheel(row: usize, delta_y: f32, cx: &mut VisualTestContext) {
-    cx.update(|window, cx| {
-        window.scroll(("msg", row), ScrollDelta::Pixels(point(px(0.), px(delta_y))), cx);
+/// scroll mask, unlike `scroll_to_item`/`scroll_to_end`. Uses
+/// `simulate_event` at the middle visible row's center rather than
+/// `window.scroll`: the latter's `move_pointer`+`render_frame` measures more
+/// rows before the wheel lands, growing `items_height` so `scroll_max` lands
+/// inside an item and the list's re-engage check fails. The middle row's
+/// center is always inside the transcript — edge rows can be clipped under
+/// the titlebar or the pill.
+fn wheel(_row: usize, delta_y: f32, cx: &mut VisualTestContext) {
+    let pos = cx.update(|window, _cx| {
+        let mut centers: Vec<_> = gpui_kit::base::test_support::snapshots(window)
+            .iter()
+            .filter(|s| s.visible())
+            .filter_map(|s| match s.path().last() {
+                Some(ElementId::NamedInteger(name, _)) if name.as_ref() == "msg" => Some(s.bounds().center()),
+                _ => None,
+            })
+            .collect();
+        centers.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
+        centers[centers.len() / 2]
+    });
+    cx.simulate_event(gpui_kit::ScrollWheelEvent {
+        position: pos,
+        delta: ScrollDelta::Pixels(point(px(0.), px(delta_y))),
+        ..Default::default()
     });
 }
 
@@ -236,12 +256,20 @@ fn wheel_to_bottom_reattaches(cx: &mut TestAppContext) {
     // Wheel down on the topmost row — the pill floats over the bottom rows,
     // so a wheel dispatched there would hit the pill's hitbox, not the
     // scroller's mask. The mask clamps deltas short of the list's bottom
-    // padding, so the gesture that reaches the edge is the one whose event
-    // bubbles to the list — repeat like a real overscroll.
-    for _ in 0..3 {
+    // (its axis_max excludes the list's vertical padding), so one event may
+    // not reach the re-engage threshold — keep wheeling until follow resumes.
+    for _ in 0..10 {
         let top = cx.update(|window, _cx| top_row_ix(window));
         wheel(top, -5000., cx);
+        if ws.read_with(cx, |ws, cx| ws.scroller.read(cx).is_following_tail()) {
+            break;
+        }
     }
+    // The re-engage happens in the list's layout, after render reads
+    // `scrolled_up` — so the frame that follows the wheel still shows the
+    // pill and starts its fade. Draw once to latch that frame, then settle
+    // lets the transition finish.
+    cx.update(|window, cx| window.draw(cx).clear(cx));
     settle(cx);
     ws.read_with(cx, |ws, cx| {
         assert!(ws.scroller.read(cx).is_following_tail(), "wheeling to the bottom reattaches follow");
