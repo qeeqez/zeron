@@ -120,6 +120,27 @@ fn menu_labels(window: &Window) -> Vec<String> {
         .collect()
 }
 
+/// Click the error row's Retry button until the prompt re-sends — a click
+/// can land mid-layout while the transcript settles, so the observable
+/// send (not the click) is the success signal. 10s budget.
+fn click_retry_until_sent(sent: &std::sync::Arc<parking_lot::Mutex<Vec<String>>>, cx: &mut VisualTestContext) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            if window.find(("retry", 1usize)).visible() {
+                window.click(("retry", 1usize), cx);
+            }
+        });
+        cx.run_until_parked();
+        if sent.lock().len() >= 2 {
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "the Retry click never re-sent the prompt");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
 /// Click the top-level menu item with `label` — panics when it isn't
 /// offered.
 fn click_menu_item(window: &mut Window, label: &str, cx: &mut App) {
@@ -143,9 +164,8 @@ fn retry_button_resends_the_failed_prompt() {
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert!(window.find(("retry", 1usize)).visible(), "the error row shows a Retry button");
-        window.click(("retry", 1usize), cx);
     });
-    cx.run_until_parked();
+    click_retry_until_sent(&sent, cx);
     assert_eq!(sent.lock().as_slice(), ["fix the bug", "fix the bug"], "the same prompt was re-sent");
     app.read(|cx| {
         let chat = &ws.read(cx).chats[0];
@@ -162,12 +182,8 @@ fn retry_preserves_the_failed_attempt_as_an_alternative() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     let workdir = temp_workdir("alts");
-    fail_first_turn(&ws, cx, &workdir, "fix the bug");
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        window.click(("retry", 1usize), cx);
-    });
-    cx.run_until_parked();
+    let sent = fail_first_turn(&ws, cx, &workdir, "fix the bug");
+    click_retry_until_sent(&sent, cx);
     app.read(|cx| {
         let reply = &ws.read(cx).chats[0].messages[1];
         assert_eq!(reply.alternatives.len(), 1, "the failed attempt joined the version chain");
@@ -223,17 +239,24 @@ fn error_row_menu_retries_the_turn() {
     let (ws, cx) = mount(&mut app);
     let workdir = temp_workdir("menu");
     let sent = fail_first_turn(&ws, cx, &workdir, "fix the bug");
-    cx.update(|window, cx| {
-        window.right_click(("msg", 1usize), cx);
-    });
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        let labels = menu_labels(window);
-        assert!(labels.iter().any(|l| l == "Retry turn"), "the error row offers Retry turn: {labels:?}");
-        assert!(!labels.iter().any(|l| l == "Retry"), "the plain Retry tail is replaced: {labels:?}");
-        click_menu_item(window, "Retry turn", cx);
-    });
-    cx.run_until_parked();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while sent.lock().len() < 2 {
+        assert!(std::time::Instant::now() < deadline, "the Retry turn menu item never re-sent");
+        cx.update(|window, cx| {
+            window.right_click(("msg", 1usize), cx);
+        });
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            let labels = menu_labels(window);
+            if !labels.iter().any(|l| l == "Retry turn") {
+                return;
+            }
+            assert!(!labels.iter().any(|l| l == "Retry"), "the plain Retry tail is replaced: {labels:?}");
+            click_menu_item(window, "Retry turn", cx);
+        });
+        cx.run_until_parked();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
     assert_eq!(sent.lock().as_slice(), ["fix the bug", "fix the bug"], "the menu item re-sent the prompt");
     let _ = std::fs::remove_dir_all(&workdir);
 }
