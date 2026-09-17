@@ -18,20 +18,26 @@ Native macOS app in Rust on `gpui-kit` 0.6 (gpui-pre + gpui-component), Codex-de
 
 ## Feature areas (each file = one area, checkboxes = remaining work)
 
-| File | Area |
-|---|---|
-| `backend.md` | Real agent backend (replace simulation) |
-
-Completed areas live in `docs/done/`: `agents.md`, `sidebar.md`, `chat-ui.md`, `composer.md`, `settings.md`, `chrome.md`, `gpui-shell.md`, `scaffold.md`, `persistence.md`.
+Completed areas live in `docs/done/`: `agents.md`, `sidebar.md`, `chat-ui.md`, `composer.md`, `settings.md`, `chrome.md`, `gpui-shell.md`, `scaffold.md`, `persistence.md`, `backend.md`.
 
 ## Gaps vs Codex desktop (lane candidates)
 
-- MCP transport — settings UI exists; JSON-RPC plumbing is in-tree (`backend/acp_rpc.rs`), no `AgentBackend` impl yet (`backend.md`).
-- Diff review: no inline comment-on-line flow; Changes is read/stage only.
-- No multi-window chat drag-out / tear-off; windows are independent workspaces.
-- Terminal: no shell-integration decorations (command blocks, exit-code marks).
-- Notifications: activity bell exists; no per-notification action buttons (open chat, mark read).
-- No update channel UI beyond "Check for Updates" menu item.
+- Global search + terminal find bar: no match-case / whole-word toggles (the chat find bar has them; `find_opts.rs::FindOpts` is shared-ready).
+- Toast notifications have click-to-open only — no action buttons (blocked on gpui-kit `Notification` API support).
+- No drag-to-tear-off for chats — "Open in New Window" exists, drag-detach into an existing window does not.
+- Parallel-load test flakes: `filter_chips_narrow_live_results`, `role_chip_narrows_live_results`, `check_for_updates_action_reports_available` share process-wide env/static state — need per-test isolation.
+
+## Done recently (from this list)
+
+- ~~MCP transport~~ — `ProviderKind::Mcp` + `McpBackend` (`backend/mcp*.rs`).
+- ~~Diff review inline comments~~ — `review.rs`, `model_review.rs`, `views/diff.rs`.
+- ~~Multi-window~~ — `chat_window.rs` opens a chat in its own window.
+- ~~Terminal shell integration~~ — `terminal_blocks.rs` command blocks + OSC 133 marks.
+- ~~Update channel UI~~ — `update.rs` dialog, release notes, daily check, skip state.
+- ~~Notification actions~~ — activity dropdown has per-entry dismiss + mark-all-read/clear-read footer.
+- ~~Live worktree refresh~~ — `git_watch.rs` fingerprint poll updates Changes/Explorer.
+- ~~Send terminal block output to chat~~ — block header send button into the composer.
+- ~~Help menu~~ — shortcuts, release notes, report issue, reveal logs.
 
 ## Conventions
 
