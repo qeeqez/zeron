@@ -9,10 +9,10 @@
 
 use gpui_kit::component::input::Paste;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{ClipboardItem, ExternalPaths, FileDropEvent, Image, ImageFormat, InputEvent, TestAppContext, point, px};
+use gpui_kit::{ClipboardEntry, ClipboardItem, ExternalPaths, FileDropEvent, Image, ImageFormat, InputEvent, TestAppContext, point, px};
 
 use crate::composer_testutil::{composer_value, open_workspace, type_and_send, until, use_sim};
-use crate::model::MessageKind;
+use crate::model::{MessageKind, Role};
 
 #[gpui_kit::test]
 fn mention_menu_lists_files_and_inserts_token(cx: &mut TestAppContext) {
@@ -160,6 +160,52 @@ fn paste_text_still_reaches_the_composer(cx: &mut TestAppContext) {
     cx.dispatch_action(Paste);
     assert_eq!(composer_value(&workspace, cx), "plain text");
     assert!(workspace.read_with(cx, |ws, _| ws.chats[ws.active].attachments.is_empty()));
+}
+
+/// A Finder copy pastes as `ExternalPaths` (plus a string entry the platform
+/// adds for text editors): images attach as chips, other files land as
+/// `@path` mentions — and the paste is consumed, so no raw path text leaks
+/// into the draft.
+#[gpui_kit::test]
+fn paste_file_paths_attach_images_and_mention_files(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    let root = workspace.read_with(cx, |ws, _| ws.project.root().to_path_buf());
+    cx.write_to_clipboard(ClipboardItem {
+        entries: vec![
+            ClipboardEntry::ExternalPaths(ExternalPaths([root.join("src/main.rs"), root.join("shot.png")].into_iter().collect())),
+            ClipboardEntry::String(gpui_kit::ClipboardString::new("src/main.rs".into())),
+        ],
+    });
+    cx.dispatch_action(Paste);
+    let attachments = workspace.read_with(cx, |ws, _| ws.chats[ws.active].attachments.clone());
+    assert_eq!(
+        attachments,
+        vec![gpui_kit::SharedString::from(root.join("shot.png").to_string_lossy().into_owned())],
+        "pasted image path attaches as a chip"
+    );
+    assert_eq!(composer_value(&workspace, cx), "@src/main.rs ", "pasted file path mentions the project-relative path");
+}
+
+/// A pasted image rides the send: the user message carries the saved file
+/// as an attachment and the chip list clears.
+#[gpui_kit::test]
+fn paste_image_sends_with_the_message(cx: &mut TestAppContext) {
+    let (workspace, cx) = open_workspace(cx);
+    use_sim(&workspace, cx);
+    cx.write_to_clipboard(ClipboardItem::new_image(&Image::from_bytes(ImageFormat::Png, vec![1, 2, 3])));
+    cx.dispatch_action(Paste);
+    type_and_send(cx, "look at this");
+    let attachments = workspace.read_with(cx, |ws, _| {
+        ws.chats[ws.active]
+            .messages
+            .iter()
+            .find(|m| m.role == Role::User && matches!(&m.kind, MessageKind::Text(t) if t.contains("look at this")))
+            .map(|m| m.attachments.clone())
+            .unwrap_or_default()
+    });
+    assert_eq!(attachments.len(), 1, "sent message carries the pasted image");
+    assert!(attachments[0].as_str().ends_with(".png"), "attachment is the saved paste: {}", attachments[0]);
+    assert!(workspace.read_with(cx, |ws, _| ws.chats[ws.active].attachments.is_empty()), "send consumes the chips");
 }
 
 /// Dropping files on the chat pane routes by kind: images attach as chips,
