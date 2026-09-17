@@ -15,6 +15,7 @@ use std::time::SystemTime;
 use gpui_kit::component::{IndexPath, WindowExt};
 use gpui_kit::*;
 
+use crate::chat_search::role_filter::RoleFilter;
 use crate::model::{Chat, ChatMessage, Role};
 use crate::workspace::Workspace;
 
@@ -128,7 +129,7 @@ impl DateRange {
 }
 
 /// The filter row's selections, applied by `search` after the text match.
-/// Every `None` means "no constraint" — an all-default value filters
+/// `None`/`All` means "no constraint" — an all-default value filters
 /// nothing. Session-scoped on `Workspace::search_filters`, never persisted.
 #[derive(Clone, Default)]
 pub(crate) struct SearchFilters {
@@ -143,6 +144,8 @@ pub(crate) struct SearchFilters {
     pub model: Option<String>,
     /// Drop hits whose chat's `provider` differs.
     pub provider: Option<String>,
+    /// Drop hits whose message's role differs — `All` keeps both sides.
+    pub role: RoleFilter,
 }
 
 /// `(index, path)` pairs for every `N.json` chat file in `dir`, sorted —
@@ -191,7 +194,7 @@ pub(crate) fn search(docs: &[SearchDoc], query: &str, filters: &SearchFilters) -
             if taken >= PER_CHAT {
                 break;
             }
-            if !crate::chat_search::msg_matches(m, &query) {
+            if !filters.role.matches(m.role) || !crate::chat_search::msg_matches(m, &query) {
                 continue;
             }
             if from.is_some_and(|f| m.at < f) || filters.date_to.is_some_and(|t| m.at > t) {
@@ -315,3 +318,8 @@ mod global_search_context_tests;
 #[cfg(test)]
 #[path = "search_filter_tests.rs"]
 mod search_filter_tests;
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "search_role_tests.rs"]
+mod search_role_tests;

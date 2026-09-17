@@ -15,17 +15,21 @@ use gpui_kit::component::{Disableable, Sizable};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::chat_search::role_filter::RoleFilter;
 use crate::model::ChatMessage;
 use crate::workspace::Workspace;
 
 /// Indices of messages matching `query`, in transcript order. An empty query
 /// matches nothing — the bar shows `0 / 0` rather than highlighting all.
-pub(crate) fn matching_messages(messages: &[ChatMessage], query: &str) -> Vec<usize> {
+/// `role` narrows the hits to one side of the conversation; `All` keeps both.
+pub(crate) fn matching_messages(messages: &[ChatMessage], query: &str, role: RoleFilter) -> Vec<usize> {
     if query.is_empty() {
         return Vec::new();
     }
     let query = query.to_lowercase();
-    (0..messages.len()).filter(|&ix| crate::chat_search::msg_matches(&messages[ix], &query)).collect()
+    (0..messages.len())
+        .filter(|&ix| role.matches(messages[ix].role) && crate::chat_search::msg_matches(&messages[ix], &query))
+        .collect()
 }
 
 /// Next match position after `cur`, wrapping both ways. `cur` may be stale
@@ -81,7 +85,8 @@ pub(crate) fn new_find_input(window: &mut Window, cx: &mut Context<Workspace>) -
 
 /// Find-bar state: the query input plus navigation bookkeeping. `last_query`
 /// exists because Enter's propagated keystroke emits a spurious `Change` —
-/// `find_query_changed` compares before resetting `match_ix`.
+/// `find_query_changed` compares before resetting `match_ix`. `role` is the
+/// All / You / Assistant toggle; it resets to `All` whenever the bar closes.
 pub(crate) struct FindBar {
     pub input: Entity<InputState>,
     pub open: bool,
@@ -89,30 +94,40 @@ pub(crate) struct FindBar {
     /// `n / total` readout and the stronger highlight on the current hit.
     pub match_ix: usize,
     pub last_query: String,
+    pub role: RoleFilter,
 }
 
 impl FindBar {
     pub(crate) fn new(input: Entity<InputState>) -> Self {
-        Self { input, open: false, match_ix: 0, last_query: String::new() }
+        Self {
+            input,
+            open: false,
+            match_ix: 0,
+            last_query: String::new(),
+            role: RoleFilter::All,
+        }
     }
 }
 
 impl Workspace {
-    /// Matching message indices for the current find query — empty when the
-    /// bar is closed or the query is blank.
+    /// Matching message indices for the current find query and role filter —
+    /// empty when the bar is closed or the query is blank.
     pub(crate) fn find_matches(&self, cx: &App) -> Vec<usize> {
         if !self.find.open {
             return Vec::new();
         }
         let query = self.find.input.read(cx).value().to_string();
-        matching_messages(&self.chats[self.active].messages, &query)
+        matching_messages(&self.chats[self.active].messages, &query, self.find.role)
     }
 
     /// Cmd-F / FindInChat: toggle the find bar. Opening focuses the input;
-    /// closing clears the query and returns focus to the composer.
+    /// closing clears the query and returns focus to the composer. The role
+    /// filter resets to `All` on either transition, so a reopened bar always
+    /// starts unfiltered.
     pub fn open_chat_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.find.open = !self.find.open;
         self.find.match_ix = 0;
+        self.find.role = RoleFilter::All;
         if self.find.open {
             // The filter search and the find bar share the strip under the
             // titlebar — never show both.
@@ -173,13 +188,31 @@ impl Workspace {
         cx.notify();
     }
 
+    /// The role toggle's click: cycle All → You → Assistant and re-target the
+    /// first surviving match, like a query edit.
+    pub(crate) fn find_role_cycle(&mut self, cx: &mut Context<Self>) {
+        self.find.role = self.find.role.cycle();
+        self.find.match_ix = 0;
+        let matches = self.find_matches(cx);
+        if let Some(&first) = matches.first() {
+            self.scroll_to_message(first, cx);
+        }
+        cx.notify();
+    }
+
     /// Open the find bar on `query` and land on message `msg_ix` — the
     /// global-search jump target. `last_query` is pre-seeded so the
     /// programmatic `set_value`'s Change event doesn't reset `match_ix`
-    /// back to the first match (see `find_query_changed`).
+    /// back to the first match (see `find_query_changed`). A role filter
+    /// that would hide the target widens back to `All` — the jump must
+    /// land on the confirmed hit.
     pub(crate) fn jump_to_message(&mut self, query: &str, msg_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         if !self.find.open {
             self.open_chat_find(window, cx);
+        }
+        let target = self.chats[self.active].messages.get(msg_ix);
+        if target.is_some_and(|m| !self.find.role.matches(m.role)) {
+            self.find.role = RoleFilter::All;
         }
         self.find.last_query = query.to_string();
         self.find.input.update(cx, |s, cx| s.set_value(query, window, cx));
@@ -222,6 +255,13 @@ impl Workspace {
             .child(IconName::Search)
             .child(div().flex_1().child(Input::new(&self.find.input).appearance(true)))
             .child(
+                Button::new("find-role")
+                    .ghost()
+                    .xsmall()
+                    .label(self.find.role.label())
+                    .on_click(cx.listener(|this, _, _, cx| this.find_role_cycle(cx))),
+            )
+            .child(
                 div()
                     .id("find-count")
                     .test_support()
@@ -255,3 +295,8 @@ impl Workspace {
             )
     }
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[cfg(test)]
+#[path = "chat_find_role_tests.rs"]
+mod chat_find_role_tests;

@@ -201,8 +201,9 @@ impl Workspace {
         self.chat_search_open = !self.chat_search_open;
         self.search_match_ix = 0;
         // The find bar and the filter share the strip under the titlebar —
-        // never show both.
+        // never show both. Closing the bar resets its role filter too.
         self.find.open = false;
+        self.find.role = role_filter::RoleFilter::All;
         if self.chat_search_open {
             let input = self.chat_search.clone();
             window.defer(cx, move |window, cx| {
@@ -317,6 +318,10 @@ pub(crate) fn focus_new_chat(composer: &Entity<gpui_kit::component::input::Texta
     });
     window.set_window_title("New chat — Rixl Code");
 }
+
+// Declared here, not in `main.rs` — the crate root is at the SLOC cap.
+#[path = "role_filter.rs"]
+pub(crate) mod role_filter;
 
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]

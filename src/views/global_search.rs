@@ -19,6 +19,7 @@ use gpui_kit::component::{Sizable, WindowExt, h_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::chat_search::role_filter::RoleFilter;
 use crate::global_search::{DateRange, SearchDoc, SearchFilters, SearchHit, search};
 use crate::workspace::Workspace;
 
@@ -42,6 +43,20 @@ fn date_menu(filters: Entity<SearchFilters>, menu: PopupMenu, _window: &mut Wind
                 filters.update(cx, |f, _| f.date = range);
             }))
         })
+}
+
+/// The Role chip's menu — "Any role" plus the two message roles, checked
+/// on the current selection. Mirrors the find bar's All / You / Assistant
+/// toggle.
+fn role_menu(filters: Entity<SearchFilters>, menu: PopupMenu, _window: &mut Window, cx: &mut Context<PopupMenu>) -> PopupMenu {
+    let current = filters.read(cx).role;
+    [RoleFilter::All, RoleFilter::User, RoleFilter::Assistant].into_iter().fold(menu, |menu, role| {
+        let filters = filters.clone();
+        let label = if role == RoleFilter::All { "Any role" } else { role.label() };
+        menu.item(PopupMenuItem::new(label).checked(role == current).on_click(move |_, _, cx| {
+            filters.update(cx, |f, _| f.role = role);
+        }))
+    })
 }
 
 /// The Model chip's menu — "Any model" plus every distinct model id in the
@@ -112,7 +127,8 @@ fn filter_row(filters: &Entity<SearchFilters>, docs: &[SearchDoc], cx: &mut App)
     let date_label: SharedString = current.date.label().into();
     let model_label: SharedString = current.model.clone().unwrap_or_else(|| "Model".into()).into();
     let provider_label: SharedString = current.provider.clone().unwrap_or_else(|| "Provider".into()).into();
-    let (f_date, f_model, f_provider) = (filters.clone(), filters.clone(), filters.clone());
+    let role_label: SharedString = if current.role == RoleFilter::All { "Role".into() } else { current.role.label().into() };
+    let (f_date, f_model, f_provider, f_role) = (filters.clone(), filters.clone(), filters.clone(), filters.clone());
     h_flex()
         .id("search-filters")
         .test_support()
@@ -128,6 +144,7 @@ fn filter_row(filters: &Entity<SearchFilters>, docs: &[SearchDoc], cx: &mut App)
         .child(chip("search-filter-provider", IconName::Server, provider_label, move |menu, window, cx| {
             provider_menu(f_provider.clone(), providers.clone(), menu, window, cx)
         }))
+        .child(chip("search-filter-role", IconName::User, role_label, move |menu, window, cx| role_menu(f_role.clone(), menu, window, cx)))
         .into_any_element()
 }
 

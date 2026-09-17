@@ -7,6 +7,7 @@ use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext};
 
 use crate::chat_find::{matching_messages, step_ix};
+use crate::chat_search::role_filter::RoleFilter;
 use crate::model::{ChatMessage, MessageKind, PlanCard, PlanStatus, PlanStep, Role, ToolCall, ToolStatus};
 use crate::workspace::Workspace;
 
@@ -49,25 +50,25 @@ fn matching_messages_covers_message_kinds() {
         })),
         text("unrelated"),
     ];
-    assert_eq!(matching_messages(&messages, "hello"), vec![0]);
-    assert_eq!(matching_messages(&messages, "fix"), vec![1], "plan step labels match");
-    assert_eq!(matching_messages(&messages, "passed"), vec![2], "tool output matches");
-    assert_eq!(matching_messages(&messages, "shell"), vec![2], "tool name matches");
-    assert_eq!(matching_messages(&messages, "o"), vec![0, 1, 2], "transcript order preserved");
+    assert_eq!(matching_messages(&messages, "hello", RoleFilter::All), vec![0]);
+    assert_eq!(matching_messages(&messages, "fix", RoleFilter::All), vec![1], "plan step labels match");
+    assert_eq!(matching_messages(&messages, "passed", RoleFilter::All), vec![2], "tool output matches");
+    assert_eq!(matching_messages(&messages, "shell", RoleFilter::All), vec![2], "tool name matches");
+    assert_eq!(matching_messages(&messages, "o", RoleFilter::All), vec![0, 1, 2], "transcript order preserved");
 }
 
 #[test]
 fn matching_messages_is_case_insensitive() {
     let messages = vec![text("Hello World")];
-    assert_eq!(matching_messages(&messages, "HELLO"), vec![0]);
-    assert_eq!(matching_messages(&messages, "world"), vec![0]);
-    assert!(matching_messages(&messages, "bye").is_empty());
+    assert_eq!(matching_messages(&messages, "HELLO", RoleFilter::All), vec![0]);
+    assert_eq!(matching_messages(&messages, "world", RoleFilter::All), vec![0]);
+    assert!(matching_messages(&messages, "bye", RoleFilter::All).is_empty());
 }
 
 #[test]
 fn matching_messages_empty_query_matches_nothing() {
     let messages = vec![text("anything")];
-    assert!(matching_messages(&messages, "").is_empty());
+    assert!(matching_messages(&messages, "", RoleFilter::All).is_empty());
 }
 
 #[test]
