@@ -71,6 +71,7 @@ impl Workspace {
             snapshots: crate::snapshots::SnapshotsState::default(),
             changes: Vec::new(),
             changes_generation: 0,
+            git_watch: crate::git::GitWatch::default(),
             changes_scope: crate::changes::ChangesScope { dir: project.root().to_path_buf(), base: None },
             composer: inputs.composer,
             review: crate::review::Review::new(window, cx),

@@ -14,9 +14,9 @@ use crate::workspace::Workspace;
 
 impl Workspace {
     /// Spawn the ticker and the file scan. Called once from `Workspace::new`.
-    /// The ticker's second job is the scheduled-prompt check — due
-    /// automations fire through the normal send path (see
-    /// `crate::automations`).
+    /// The ticker's other jobs are the scheduled-prompt check (due
+    /// automations fire through the normal send path — see
+    /// `crate::automations`) and the git watch (`crate::git::watch`).
     pub(crate) fn start_background(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             loop {
@@ -26,17 +26,8 @@ impl Workspace {
             }
         })
         .detach();
-        // Scan project files off the UI thread — a large tree would block
-        // launch; the @-mention picker just stays empty until it lands.
-        let root = self.project.root().to_path_buf();
-        cx.spawn(async move |this, cx| {
-            let files = cx.background_executor().spawn(async move { crate::files::scan_project_files(&root) }).await;
-            let _ = this.update(cx, |this, cx| {
-                this.project_files = files;
-                cx.notify();
-            });
-        })
-        .detach();
+        // The @-mention picker's project-file scan — lives in `files.rs`.
+        self.start_file_scan(cx);
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
@@ -52,6 +43,9 @@ impl Workspace {
         }
         // Debounced draft save — see `flush_draft_save`.
         self.flush_draft_save();
+        // Git watch — fingerprints the checkout and refreshes `changes`
+        // when it moved (see `crate::git::watch`).
+        self.tick_git_watch(cx);
     }
 }
 

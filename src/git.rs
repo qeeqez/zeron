@@ -373,3 +373,11 @@ pub(crate) use stash::{StashEntry, stash_apply, stash_drop, stash_list, stash_po
 #[path = "git_blame.rs"]
 pub(crate) mod blame;
 pub(crate) use blame::{BlameLine, blame, commit_file_diff, file_log};
+
+/// Ticker-driven live refresh of the `changes` snapshot — fingerprints the
+/// watched checkout on the background executor and refires
+/// `refresh_changes` when it moves (`crate::git::watch::fingerprint`,
+/// `Workspace::tick_git_watch`). Split into `git_watch.rs` for the SLOC cap.
+#[path = "git_watch.rs"]
+pub(crate) mod watch;
+pub(crate) use watch::GitWatch;

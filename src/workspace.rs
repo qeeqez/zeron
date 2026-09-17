@@ -75,6 +75,10 @@ pub struct Workspace {
     /// stamped with an older generation is discarded, so a slow earlier
     /// refresh can't overwrite a newer snapshot.
     pub(crate) changes_generation: u64,
+    /// Ticker-driven git watch — fingerprints the active checkout on the
+    /// background executor and refreshes `changes` when it moves (see
+    /// `crate::git::watch`).
+    pub(crate) git_watch: crate::git::GitWatch,
     /// The scope `changes` was collected under — the checkout dir plus, for
     /// worktree chats, the merge-base commit rows diff against (see
     /// `crate::changes::ChangesScope`). Lands with each snapshot.

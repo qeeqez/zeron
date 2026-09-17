@@ -186,17 +186,33 @@ impl Workspace {
     /// shells out to several git processes and reads untracked files, so it
     /// runs on the background executor and publishes the result back.
     pub fn refresh_changes(&mut self, cx: &mut Context<Self>) {
+        self.refresh_changes_inner(true, cx);
+    }
+
+    /// The git watch's refresh (`crate::git::watch`): same collection minus
+    /// the `gh pr view` spawn — a worktree fingerprint can't see PR-side
+    /// changes anyway, so the panel keeps its last known PR status instead
+    /// of hitting the network on every dirty flip.
+    pub(crate) fn refresh_changes_watched(&mut self, cx: &mut Context<Self>) {
+        self.refresh_changes_inner(false, cx);
+    }
+
+    fn refresh_changes_inner(&mut self, include_pr: bool, cx: &mut Context<Self>) {
         self.changes_generation += 1;
         let generation = self.changes_generation;
+        // Manual and watch refreshes share the debounce gate — see
+        // `GitWatch::note_refresh`.
+        self.git_watch.note_refresh();
         let root = self.project.root().to_path_buf();
         let chat = &self.chats[self.active];
         let worktree = chat.worktree;
         let dir = if worktree { crate::worktree::workdir_for(chat, &root) } else { root.clone() };
         let picked = chat.diff_base.clone();
+        let pr_mode = if include_pr { PrMode::Fetch } else { PrMode::Keep(self.git.pr.clone()) };
         cx.spawn(async move |this, cx| {
             let snapshot = cx
                 .background_executor()
-                .spawn(async move { collect_snapshot(&root, &dir, worktree, picked.as_deref()) })
+                .spawn(async move { collect_snapshot(&root, &dir, worktree, picked.as_deref(), pr_mode) })
                 .await;
             let _ = this.update(cx, |this, cx| this.land_changes(generation, snapshot, cx));
         })
@@ -304,11 +320,21 @@ impl Workspace {
     }
 }
 
+/// Whether a collection refetches PR status (`gh pr view`, a network
+/// spawn) or reuses the panel's last known value — the watch path passes
+/// `Keep` since a worktree fingerprint can't see PR-side changes anyway.
+enum PrMode {
+    Fetch,
+    Keep(Option<PrStatus>),
+}
+
 /// One `refresh_changes` collection, run on the background executor: the
 /// file list under `dir` (a worktree chat's rows diff against the resolved
 /// base via `crate::worktree::diff`), plus the project-root git state the
 /// header and action block read.
-fn collect_snapshot(root: &std::path::Path, dir: &std::path::Path, worktree: bool, picked: Option<&str>) -> ChangesSnapshot {
+fn collect_snapshot(
+    root: &std::path::Path, dir: &std::path::Path, worktree: bool, picked: Option<&str>, pr_mode: PrMode,
+) -> ChangesSnapshot {
     let base = worktree.then(|| crate::worktree::diff::resolve_diff_base(root, dir, picked)).flatten();
     let changes = match &base {
         Some(b) => crate::worktree::diff::worktree_changes(dir, &b.commit).unwrap_or_else(|_| crate::git::collect(dir)),
@@ -319,8 +345,12 @@ fn collect_snapshot(root: &std::path::Path, dir: &std::path::Path, worktree: boo
         changes,
         scope: crate::changes::base::ChangesScope { dir: dir.to_path_buf(), base },
         // `gh pr view` only makes sense in a repo — skip the spawn entirely
-        // when there's no branch.
-        pr: branch.as_ref().and_then(|_| crate::git::pr_status(root, &[])),
+        // when there's no branch; `Keep` carries the last known status
+        // through instead of spawning `gh` at all.
+        pr: match pr_mode {
+            PrMode::Fetch => branch.as_ref().and_then(|_| crate::git::pr_status(root, &[])),
+            PrMode::Keep(pr) => pr,
+        },
         branch,
         commits: crate::git::log(root, 20),
         stashes: crate::git::stash_list(root),

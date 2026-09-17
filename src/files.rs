@@ -1,4 +1,6 @@
-use gpui_kit::SharedString;
+use gpui_kit::{Context, SharedString};
+
+use crate::workspace::Workspace;
 
 /// Cap on candidates so the @-mention filter stays cheap on huge trees.
 const MAX_FILES: usize = 2000;
@@ -120,3 +122,21 @@ fn sort_dirs(node: &mut DirNode) {
 /// which is at the SLOC cap (same pattern as `views/mod.rs`'s `#[path]`s).
 #[path = "fs_ops.rs"]
 pub(crate) mod fs_ops;
+
+impl Workspace {
+    /// Kick off the project-file scan for the @-mention picker on the
+    /// background executor — a large tree would block launch, so the
+    /// picker just stays empty until it lands. Called once from
+    /// `lifecycle::start_background`.
+    pub(crate) fn start_file_scan(&self, cx: &mut Context<Self>) {
+        let root = self.project.root().to_path_buf();
+        cx.spawn(async move |this, cx| {
+            let files = cx.background_executor().spawn(async move { scan_project_files(&root) }).await;
+            let _ = this.update(cx, |this, cx| {
+                this.project_files = files;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+}
