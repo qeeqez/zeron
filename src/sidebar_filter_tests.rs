@@ -30,6 +30,7 @@ fn chat(running: bool, unread: bool, plan: bool) -> Chat {
             usage: None,
             attachments: Vec::new(),
             bookmarked: false,
+            pinned: false,
             alternatives: Vec::new(),
         });
     }

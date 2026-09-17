@@ -52,7 +52,7 @@ fn context_menu_lists_copy_variants() {
         assert!(window.find("popup-menu").visible(), "right-click should open the message menu");
         assert_eq!(
             menu_labels(window),
-            ["Bookmark", "Copy", "Copy as Markdown", "Quote", "Regenerate with model", "Retry", "View raw"],
+            ["Bookmark", "Copy", "Copy as Markdown", "Pin", "Quote", "Regenerate with model", "Retry", "View raw"],
             "menu should list the copy variants — Fork from here stays hidden on the last message"
         );
         window.within("popup-menu").click(1usize, cx); // Copy as Markdown
@@ -80,6 +80,7 @@ fn context_menu_copy_code_writes_block_contents() {
                 "Copy",
                 "Copy Code",
                 "Copy as Markdown",
+                "Pin",
                 "Quote",
                 "Regenerate with model",
                 "Retry",

@@ -77,6 +77,7 @@ fn seeded(i: usize) -> ChatMessage {
         kind: MessageKind::Text(format!("message {i}").into()),
         rating: None,
         bookmarked: false,
+        pinned: false,
         usage: None,
         attachments: vec![],
         at: std::time::SystemTime::now(),

@@ -19,6 +19,7 @@ fn msg(role: Role, kind: MessageKind) -> ChatMessage {
         kind,
         rating: None,
         bookmarked: false,
+        pinned: false,
         usage: None,
         attachments: vec![],
         at: std::time::SystemTime::now(),

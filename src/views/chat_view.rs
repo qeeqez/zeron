@@ -209,6 +209,12 @@ impl Workspace {
                 this.attach_incoming(paths.0.to_vec(), window, cx);
             }))
             .child(header)
+            // The pinned message's banner sits directly under the titlebar —
+            // click jumps to the row, × unpins (see `views::pinned`).
+            .when_some(
+                self.pinned_message().map(|(ix, m)| (ix, crate::chat_msg::bookmarks_panel::snippet(m, 80))),
+                |d, (ix, snip)| d.child(crate::views::pinned::pinned_banner(ix, snip, &ws_empty, cx)),
+            )
             // Restricted-mode notice for an untrusted folder — the "Trust…"
             // button reopens the trust dialog (see `crate::views::trust`).
             .when(!self.trusted, |d| d.child(crate::views::trust::restricted_banner(cx)))

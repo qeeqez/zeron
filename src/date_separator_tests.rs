@@ -80,6 +80,7 @@ fn push(ws: &Entity<Workspace>, cx: &mut VisualTestContext, s: &str, at: SystemT
             kind: MessageKind::Text(s.into()),
             rating: None,
             bookmarked: false,
+            pinned: false,
             usage: None,
             attachments: vec![],
             at,

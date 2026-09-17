@@ -109,6 +109,7 @@ fn user_message_stays_plain_text() {
             kind: MessageKind::Text("**not bold** ```sh\nx\n```".into()),
             rating: None,
             bookmarked: false,
+            pinned: false,
             usage: None,
             attachments: vec![],
             at: std::time::SystemTime::now(),

@@ -188,6 +188,7 @@ mod tests {
             usage: Some(Usage { input, output }),
             attachments: vec![],
             bookmarked: false,
+            pinned: false,
             alternatives: vec![],
         }
     }

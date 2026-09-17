@@ -23,6 +23,7 @@ fn seed_user_with_attachments(ws: &Entity<Workspace>, attachments: &[&str], cx: 
             kind: MessageKind::Text("with image".into()),
             rating: None,
             bookmarked: false,
+            pinned: false,
             usage: None,
             attachments: attachments.iter().map(|a| (*a).into()).collect(),
             at: std::time::SystemTime::now(),

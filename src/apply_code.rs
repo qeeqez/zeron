@@ -111,6 +111,7 @@ fn approval_message(detail: String, respond: ApprovalResponder) -> ChatMessage {
         }),
         rating: None,
         bookmarked: false,
+        pinned: false,
         usage: None,
         attachments: vec![],
         at: SystemTime::now(),

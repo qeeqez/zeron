@@ -91,6 +91,16 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
         );
         row = row.child(icon.when(bookmarked, |el| el.visible()));
     }
+    {
+        // Pin marks the message for the banner under the titlebar — same
+        // hover-ghost/pinned-visible treatment as the bookmark star.
+        let ws = ws.clone();
+        let pinned = msg.pinned;
+        let icon = action_icon(("pin", ix), IconName::Pin, if pinned { accent } else { muted }, &group, move |_, _, cx| {
+            ws.update(cx, |this, cx| this.toggle_message_pin(ix, cx));
+        });
+        row = row.child(icon.when(pinned, |el| el.visible()));
+    }
     if msg.role == Role::User {
         // Edit reopens the message inline — commit truncates after it and
         // resends the edited text (see `Workspace::commit_edit`).

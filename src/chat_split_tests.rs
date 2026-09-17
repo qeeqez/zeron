@@ -35,6 +35,7 @@ fn seed(ws: &Entity<Workspace>, role: Role, text: &str, cx: &mut VisualTestConte
             kind: MessageKind::Text(text.into()),
             rating: None,
             bookmarked: false,
+            pinned: false,
             usage: None,
             attachments: vec![],
             alternatives: vec![],

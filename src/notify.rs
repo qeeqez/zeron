@@ -154,6 +154,7 @@ mod tests {
             kind: MessageKind::Text(text.into()),
             rating: None,
             bookmarked: false,
+            pinned: false,
             usage: None,
             attachments: vec![],
             at: SystemTime::now(),

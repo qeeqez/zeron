@@ -61,6 +61,7 @@ mod message_menu_tests;
 mod message_tests;
 mod model_picker;
 pub(crate) mod nav_row;
+mod pinned;
 mod plan_panel;
 mod project_switcher;
 pub(crate) mod rate_limit;

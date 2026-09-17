@@ -139,6 +139,7 @@ fn dashboard_charts_daily_usage() {
         usage: Some(Usage { input, output }),
         attachments: vec![],
         bookmarked: false,
+        pinned: false,
         alternatives: vec![],
     };
     ws.update(cx, |this, _| {

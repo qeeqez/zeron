@@ -37,6 +37,7 @@ pub(super) fn msg_menu(
     let role = mc.msg.role;
     let bookmarked = mc.msg.bookmarked;
     let is_error = mc.msg.is_error();
+    let pinned = mc.msg.pinned;
     move |menu, window, cx| {
         // Copy variants stay grouped at the top; Copy Code only appears
         // when the message actually has fenced blocks.
@@ -61,6 +62,9 @@ pub(super) fn msg_menu(
             })
             .item(msg_item(if bookmarked { "Remove bookmark" } else { "Bookmark" }, IconName::Star, &ws, move |this, _w, cx| {
                 this.toggle_bookmark(ix, cx)
+            }))
+            .item(msg_item(if pinned { "Unpin" } else { "Pin" }, IconName::Pin, &ws, move |this, _w, cx| {
+                this.toggle_message_pin(ix, cx)
             }))
             .separator();
         // "Fork from here" is hidden on the last message — forking the

@@ -128,6 +128,10 @@ pub struct ChatMessage {
     /// written before bookmarks existed.
     #[serde(default)]
     pub bookmarked: bool,
+    /// The chat's one pinned message — the banner under the titlebar
+    /// links back to it. Missing in files written before pinning existed.
+    #[serde(default)]
+    pub pinned: bool,
     /// Earlier versions of this reply, newest first — a regenerate/retry
     /// moves the outgoing reply here instead of dropping it, and the
     /// footer's `< N/M >` pager swaps one back in. Missing in files

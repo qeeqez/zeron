@@ -1,9 +1,9 @@
-//! Tests for message bookmarks: the ⋯/footer star toggles `bookmarked` on
-//! the message, the flag round-trips through `save_chats`/`load_chats`, the
-//! chat ⋯ menu's Bookmarks submenu lists starred rows and scrolls to them,
-//! and a regenerate drops the bookmark with its message.
+//! Tests for message pinning: the ⋯/footer pin toggles `pinned` on the
+//! message, one pin per chat (a second pin replaces the first), the flag
+//! round-trips through `save_chats`/`load_chats`, the titlebar banner
+//! jumps to the row and its × unpins, and a regenerate drops the pin with
+//! its message.
 
-use gpui_kit::base::test_support::snapshots;
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext};
@@ -15,7 +15,7 @@ use crate::workspace::Workspace;
 /// Mount a `Workspace` in a headless window with `HOME` redirected to a
 /// temp dir so settings/chats stay off the real profile.
 fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {
-    let dir = std::env::temp_dir().join(format!("rixlcode-bookmark-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("rixlcode-pin-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     // SAFETY: nextest runs each test in its own process.
@@ -51,8 +51,8 @@ fn push(ws: &Entity<Workspace>, cx: &mut VisualTestContext, role: Role, text: &s
     });
 }
 
-fn bookmarked(ws: &Entity<Workspace>, cx: &VisualTestContext) -> Vec<bool> {
-    ws.read_with(cx, |ws, _| ws.chats[ws.active].messages.iter().map(|m| m.bookmarked).collect())
+fn pinned(ws: &Entity<Workspace>, cx: &VisualTestContext) -> Vec<bool> {
+    ws.read_with(cx, |ws, _| ws.chats[ws.active].messages.iter().map(|m| m.pinned).collect())
 }
 
 /// A backend whose turn completes immediately — `retry_last` needs a real
@@ -77,125 +77,100 @@ impl AgentBackend for OkBackend {
 }
 
 #[test]
-fn toggle_marks_and_unmarks_the_message() {
+fn pin_toggles_and_a_second_pin_replaces_the_first() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     push(&ws, cx, Role::User, "question");
     push(&ws, cx, Role::Assistant, "answer");
     cx.update(|_, cx| {
-        ws.update(cx, |this, cx| this.toggle_bookmark(1, cx));
+        ws.update(cx, |this, cx| this.toggle_message_pin(1, cx));
     });
-    assert_eq!(bookmarked(&ws, cx), [false, true], "toggle stars the message");
+    assert_eq!(pinned(&ws, cx), [false, true], "toggle pins the message");
+    // One pin per chat — pinning elsewhere moves it.
     cx.update(|_, cx| {
-        ws.update(cx, |this, cx| this.toggle_bookmark(1, cx));
+        ws.update(cx, |this, cx| this.toggle_message_pin(0, cx));
     });
-    assert_eq!(bookmarked(&ws, cx), [false, false], "a second toggle unstars it");
+    assert_eq!(pinned(&ws, cx), [true, false], "the second pin replaces the first");
+    cx.update(|_, cx| {
+        ws.update(cx, |this, cx| this.toggle_message_pin(0, cx));
+    });
+    assert_eq!(pinned(&ws, cx), [false, false], "toggling the pinned row unpins it");
     // Out-of-range is a no-op, not a panic.
     cx.update(|_, cx| {
-        ws.update(cx, |this, cx| this.toggle_bookmark(9, cx));
+        ws.update(cx, |this, cx| this.toggle_message_pin(9, cx));
     });
-    assert_eq!(bookmarked(&ws, cx), [false, false]);
+    assert_eq!(pinned(&ws, cx), [false, false]);
 }
 
 #[test]
-fn bookmark_survives_save_and_load() {
+fn pin_survives_save_and_load() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     push(&ws, cx, Role::User, "question");
     push(&ws, cx, Role::Assistant, "answer worth keeping");
     let dir = cx.update(|_, cx| {
         ws.update(cx, |this, cx| {
-            this.toggle_bookmark(1, cx); // toggle_bookmark saves
+            this.toggle_message_pin(1, cx); // toggle_message_pin saves
             this.project.chats_dir()
         })
     });
     let mut next_id = 0;
     let loaded = crate::persist::load_chats(&dir, &mut next_id, true);
     assert_eq!(loaded.len(), 1);
-    assert!(!loaded[0].messages[0].bookmarked);
-    assert!(loaded[0].messages[1].bookmarked, "the star round-trips through disk");
+    assert!(!loaded[0].messages[0].pinned);
+    assert!(loaded[0].messages[1].pinned, "the pin round-trips through disk");
 
-    // Toggling off persists too — the file must not keep a stale star.
+    // Unpinning persists too — the file must not keep a stale pin.
     cx.update(|_, cx| {
-        ws.update(cx, |this, cx| this.toggle_bookmark(1, cx));
+        ws.update(cx, |this, cx| this.unpin_message(cx));
     });
     let mut next_id = 0;
     let loaded = crate::persist::load_chats(&dir, &mut next_id, true);
-    assert!(loaded[0].messages.iter().all(|m| !m.bookmarked), "unstarring persists");
+    assert!(loaded[0].messages.iter().all(|m| !m.pinned), "unpinning persists");
 }
 
-/// The chat ⋯ menu's Bookmarks submenu lists starred messages numbered and
-/// clipped; clicking one scrolls the transcript to that message.
+/// The banner under the titlebar: appears once a message is pinned, click
+/// scrolls the transcript to it, and the × unpins (hiding the banner).
 #[test]
-fn bookmarks_submenu_lists_and_jumps() {
+fn banner_renders_jumps_and_unpins() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     push(&ws, cx, Role::User, "the pinned question");
     for i in 0..40 {
         push(&ws, cx, Role::Assistant, &format!("filler reply {i}"));
     }
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.try_find("pinned-banner").is_none(), "no pin, no banner");
+    });
     cx.update(|_, cx| {
-        ws.update(cx, |this, cx| this.toggle_bookmark(0, cx));
+        ws.update(cx, |this, cx| this.toggle_message_pin(0, cx));
     });
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
+        let banner = window.find("pinned-banner");
+        assert!(banner.visible(), "a pinned message raises the banner");
+        assert_eq!(banner.label(), Some("Pinned: the pinned question"));
         // The tail is followed, so message 0 is scrolled out of view.
         assert!(window.try_find(("msg", 0usize)).is_none_or(|s| !s.visible()), "message 0 starts off-screen");
-        window.click("chat-menu", cx);
+        window.click("pinned-banner", cx);
         window.draw(cx).clear(cx);
-        let item = snapshots(window)
-            .iter()
-            .find(|s| s.label() == Some("Bookmarks"))
-            .unwrap_or_else(|| panic!("chat menu should offer Bookmarks"))
-            .clone();
-        window.within("popup-menu").hover(item.path().last().unwrap().clone(), cx);
+        assert!(window.find(("msg", 0usize)).visible(), "clicking the banner scrolls the pin into view");
+        window.click("unpin", cx);
         window.draw(cx).clear(cx);
-        let labels: Vec<String> = snapshots(window)
-            .iter()
-            .filter(|s| s.path().iter().any(|id| *id == gpui_kit::ElementId::from("submenu")))
-            .filter_map(|s| s.label().map(str::to_string))
-            .collect();
-        assert_eq!(labels, ["1. the pinned question"], "the submenu lists the starred message");
-        window.within("submenu").click(0usize, cx);
-        window.draw(cx).clear(cx);
-        assert!(window.find(("msg", 0usize)).visible(), "clicking a bookmark scrolls it into view");
+        assert!(window.try_find("pinned-banner").is_none(), "the × hides the banner");
     });
+    assert_eq!(pinned(&ws, cx), vec![false; 41], "the × cleared the pin");
 }
 
-/// With nothing starred the submenu still renders — a disabled
-/// "No bookmarks" row instead of an empty popover.
+/// Retrying the last turn drops the pinned reply with it — the flag lives
+/// on the message, so nothing dangles.
 #[test]
-fn bookmarks_submenu_empty_state() {
-    let mut app = TestAppContext::single();
-    let (_ws, cx) = mount(&mut app);
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        window.click("chat-menu", cx);
-        window.draw(cx).clear(cx);
-        let item = snapshots(window)
-            .iter()
-            .find(|s| s.label() == Some("Bookmarks"))
-            .unwrap_or_else(|| panic!("chat menu should offer Bookmarks"))
-            .clone();
-        window.within("popup-menu").hover(item.path().last().unwrap().clone(), cx);
-        window.draw(cx).clear(cx);
-        let labels: Vec<String> = snapshots(window)
-            .iter()
-            .filter(|s| s.path().iter().any(|id| *id == gpui_kit::ElementId::from("submenu")))
-            .filter_map(|s| s.label().map(str::to_string))
-            .collect();
-        assert_eq!(labels, ["No bookmarks"], "the empty submenu says so");
-    });
-}
-
-/// Retrying the last turn drops the bookmarked reply with it — the flag
-/// lives on the message, so nothing dangles.
-#[test]
-fn regenerate_drops_the_bookmark_with_the_message() {
+fn regenerate_drops_the_pin_with_the_message() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     // A temp workdir keeps the turn checkpoint off the real repo.
-    let workdir = std::env::temp_dir().join(format!("rixlcode-bookmark-retry-{}", std::process::id()));
+    let workdir = std::env::temp_dir().join(format!("rixlcode-pin-retry-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&workdir);
     std::fs::create_dir_all(&workdir).unwrap();
     cx.update(|_, cx| {
@@ -208,36 +183,36 @@ fn regenerate_drops_the_bookmark_with_the_message() {
     push(&ws, cx, Role::Assistant, "answer");
     cx.update(|_, cx| {
         ws.update(cx, |this, cx| {
-            this.toggle_bookmark(1, cx);
+            this.toggle_message_pin(1, cx);
             this.retry_last(cx);
         });
     });
     ws.read_with(cx, |ws, _| {
         assert_eq!(ws.chats[ws.active].messages.len(), 1, "the reply was dropped for the retry");
-        assert!(ws.chats[ws.active].messages.iter().all(|m| !m.bookmarked), "no bookmark survives the dropped message");
+        assert!(ws.chats[ws.active].messages.iter().all(|m| !m.pinned), "no pin survives the dropped message");
     });
     let _ = std::fs::remove_dir_all(&workdir);
 }
 
-/// The footer's star affordance: hidden until hover on a plain row, pinned
-/// visible once the message is starred.
+/// The footer's pin affordance: hidden until hover on a plain row, kept
+/// visible once the message is pinned.
 #[test]
-fn footer_star_marks_the_row() {
+fn footer_pin_marks_the_row() {
     let mut app = TestAppContext::single();
     let (ws, cx) = mount(&mut app);
     push(&ws, cx, Role::Assistant, "answer");
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
-        assert!(!window.find(("bookmark", 0usize)).visible(), "the star hides until hover");
+        assert!(!window.find(("pin", 0usize)).visible(), "the pin hides until hover");
         window.hover(("msg", 0usize), cx);
         window.draw(cx).clear(cx);
-        assert!(window.find(("bookmark", 0usize)).visible(), "hover reveals the star");
-        window.click(("bookmark", 0usize), cx);
+        assert!(window.find(("pin", 0usize)).visible(), "hover reveals the pin");
+        window.click(("pin", 0usize), cx);
         window.draw(cx).clear(cx);
     });
-    assert_eq!(bookmarked(&ws, cx), [true], "clicking the star bookmarks the message");
+    assert_eq!(pinned(&ws, cx), [true], "clicking the pin pins the message");
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
-        assert!(window.find(("bookmark", 0usize)).visible(), "a starred row keeps the icon pinned");
+        assert!(window.find(("pin", 0usize)).visible(), "a pinned row keeps the icon visible");
     });
 }

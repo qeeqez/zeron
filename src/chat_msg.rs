@@ -12,6 +12,11 @@ mod copy_tests;
 /// the SLOC cap.
 pub(crate) mod bookmarks_panel;
 
+/// Message pinning — one pinned message per chat, surfaced by the banner
+/// under the titlebar. Declared here, not in `main.rs` — the crate root
+/// is at the SLOC cap.
+pub(crate) mod pin;
+
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[cfg(test)]
 #[path = "quote_selection_tests.rs"]
@@ -275,6 +280,7 @@ impl Workspace {
                 kind: MessageKind::Text("".into()),
                 rating: None,
                 bookmarked: false,
+                pinned: false,
                 usage: None,
                 attachments: vec![],
                 at: std::time::SystemTime::now(),

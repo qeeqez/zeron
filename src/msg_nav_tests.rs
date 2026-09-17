@@ -20,6 +20,7 @@ fn push(ws: &Entity<Workspace>, cx: &mut VisualTestContext, role: Role, s: &str)
             kind: MessageKind::Text(s.into()),
             rating: None,
             bookmarked: false,
+            pinned: false,
             usage: None,
             attachments: vec![],
             at: std::time::SystemTime::now(),
