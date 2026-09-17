@@ -5,8 +5,8 @@ use gpui_kit::*;
 
 use crate::{
     AboutApp, BringAllToFront, CheckForUpdates, FindInChat, HideApp, HideOthers, MsgNavDown, MsgNavTop, MsgNavUp, NewWindow, OpenProject,
-    QuitApp, SearchAllChats, TogglePlan, ToggleTerminal, ViewLogs, ZoomIn, chat_msg::bookmarks_panel::ToggleBookmarks, lifecycle, menus,
-    shortcuts, update_check,
+    QuitApp, ReleaseNotes, ReportIssue, RevealLogs, SearchAllChats, ShowAll, TogglePlan, ToggleTerminal, ViewLogs, ZoomIn,
+    chat_msg::bookmarks_panel::ToggleBookmarks, lifecycle, menus, shortcuts, update, update_check,
 };
 
 /// The system-wide summon hotkey — declared here (not `main.rs`, which is
@@ -53,7 +53,13 @@ pub(crate) fn install_app_actions(cx: &mut App) {
     cx.on_action(|_: &CheckForUpdates, cx| update_check::check_for_updates(cx));
     cx.on_action(|_: &HideApp, cx| cx.hide());
     cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
+    cx.on_action(|_: &ShowAll, cx| cx.unhide_other_apps());
     cx.on_action(|_: &BringAllToFront, cx| cx.activate(false));
+    // Help-menu links + the logs dir don't need a window — global listeners
+    // keep them working after the last workspace closes.
+    cx.on_action(|_: &ReleaseNotes, cx| cx.open_url(update::RELEASES_PAGE));
+    cx.on_action(|_: &ReportIssue, cx| cx.open_url(&update::repo_page("issues")));
+    cx.on_action(|_: &RevealLogs, cx| cx.reveal_path(&crate::logs::logs_dir()));
     // The system-wide summon hotkey — reads the persisted toggle + chord.
     let settings = crate::persist::load_settings();
     global_hotkey::apply(settings.global_hotkey_enabled, &settings.global_hotkey, cx);

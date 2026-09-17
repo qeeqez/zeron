@@ -44,12 +44,13 @@ fn menu_bar_matches_native_macos_shape() {
     app.update(|cx| cx.set_menus(crate::menus::app_menus()));
     let menus = app.read(|cx| cx.get_menus().expect("menus should be installed"));
     let names: Vec<&str> = menus.iter().map(|m| m.name.as_ref()).collect();
-    assert_eq!(names, ["Rixl Code", "File", "Edit", "View", "Window"], "menu bar should match the native macOS shape");
+    assert_eq!(names, ["Rixl Code", "File", "Edit", "View", "Window", "Help"], "menu bar should match the native macOS shape");
 
     let app_menu = &menus[0];
     assert_eq!(menu_action(app_menu, "About Rixl Code"), Some(TypeId::of::<crate::AboutApp>()));
     assert_eq!(menu_action(app_menu, "Quit Rixl Code"), Some(TypeId::of::<crate::QuitApp>()));
     assert_eq!(menu_action(app_menu, "Hide Rixl Code"), Some(TypeId::of::<crate::HideApp>()));
+    assert_eq!(menu_action(app_menu, "Show All"), Some(TypeId::of::<crate::ShowAll>()));
     assert!(
         app_menu.items.iter().any(|i| matches!(i, OwnedMenuItem::SystemMenu(_))),
         "app menu should include the Services system submenu"
@@ -61,11 +62,34 @@ fn menu_bar_matches_native_macos_shape() {
     assert_eq!(menu_action(edit, "Undo"), Some(TypeId::of::<gpui_kit::component::input::Undo>()));
     assert_eq!(menu_action(edit, "Cut"), Some(TypeId::of::<gpui_kit::component::input::Cut>()));
     assert_eq!(menu_action(edit, "Select All"), Some(TypeId::of::<gpui_kit::component::input::SelectAll>()));
+    assert_eq!(menu_action(edit, "Start Dictation"), Some(TypeId::of::<crate::ToggleDictation>()));
 
     let window_menu = &menus[4];
     assert_eq!(menu_action(window_menu, "Minimize"), Some(TypeId::of::<crate::MinimizeWindow>()));
     assert_eq!(menu_action(window_menu, "Zoom"), Some(TypeId::of::<crate::ZoomWindow>()));
     assert_eq!(menu_action(&menus[3], "Enter Full Screen"), Some(TypeId::of::<crate::EnterFullscreen>()));
+    // Keyboard Shortcuts lives in Help, not View — the macOS-canonical spot.
+    assert_eq!(menu_action(&menus[3], "Keyboard Shortcuts"), None);
+
+    let help = &menus[5];
+    assert_eq!(menu_action(help, "Keyboard Shortcuts"), Some(TypeId::of::<crate::ShortcutsHelp>()));
+    assert_eq!(menu_action(help, "Release Notes"), Some(TypeId::of::<crate::ReleaseNotes>()));
+    assert_eq!(menu_action(help, "Report an Issue"), Some(TypeId::of::<crate::ReportIssue>()));
+    assert_eq!(menu_action(help, "Reveal Logs Folder"), Some(TypeId::of::<crate::RevealLogs>()));
+}
+
+#[test]
+fn help_link_actions_open_urls() {
+    let app = TestAppContext::single();
+    app.update(|cx| {
+        gpui_kit::init(cx);
+        crate::install_app_actions(cx);
+    });
+    // Global listeners handle these even with no window open.
+    app.update(|cx| cx.dispatch_action(&crate::ReportIssue));
+    assert_eq!(app.opened_url().as_deref(), Some("https://github.com/rixlhq/code/issues"));
+    app.update(|cx| cx.dispatch_action(&crate::ReleaseNotes));
+    assert_eq!(app.opened_url().as_deref(), Some(crate::update::RELEASES_PAGE));
 }
 
 #[test]

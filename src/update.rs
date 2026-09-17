@@ -13,13 +13,23 @@ use std::time::{Duration, SystemTime};
 /// The repository's releases page — the Download target and the fallback
 /// URL when a restored pending update has no `html_url` on file.
 pub(crate) const RELEASES_PAGE: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/releases");
+/// A repository URL minus trailing slash and `.git` suffix — the base every
+/// repo page link builds on so the env value's shape can't leak into it.
+pub(crate) fn repo_base(repo: &str) -> &str {
+    repo.trim_end_matches('/').trim_end_matches(".git")
+}
+/// `<repo>/<page>` in the browser — the Help menu's targets ("Report an
+/// Issue" is `repo_page("issues")`).
+pub(crate) fn repo_page(page: &str) -> String {
+    format!("{}/{page}", repo_base(env!("CARGO_PKG_REPOSITORY")))
+}
 /// `"owner/repo"` from `CARGO_PKG_REPOSITORY` — the GitHub API path segment.
 /// The repository URL is `https://github.com/<owner>/<repo>` (with or
 /// without a `.git` suffix); anything else yields a slug that 404s, which
 /// the check reports as "no releases" rather than crashing.
 #[cfg(not(test))]
 fn repo_slug() -> String {
-    let repo = env!("CARGO_PKG_REPOSITORY").trim_end_matches(".git").trim_end_matches('/');
+    let repo = repo_base(env!("CARGO_PKG_REPOSITORY"));
     repo.rsplit_once("github.com/").map(|(_, slug)| slug).unwrap_or(repo).to_string()
 }
 /// Latest-release endpoint. `latest` already skips drafts and prereleases.

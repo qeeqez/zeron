@@ -128,10 +128,16 @@ pub(crate) fn clear() {
     sink().lock().records.clear();
 }
 
-/// The log file path — `~/.rixl/rixlcode/logs/rixlcode.log`, beside the
-/// per-project stores (see `crate::project::projects_dir`).
+/// The logs dir — `~/.rixl/rixlcode/logs/`, beside the per-project stores
+/// (see `crate::project::projects_dir`). The Help menu's "Reveal Logs
+/// Folder" reveals it in Finder.
+pub(crate) fn logs_dir() -> PathBuf {
+    crate::persist::dirs_home().join(".rixl/rixlcode/logs")
+}
+
+/// The log file path — `~/.rixl/rixlcode/logs/rixlcode.log`.
 pub(crate) fn log_file_path() -> PathBuf {
-    crate::persist::dirs_home().join(".rixl/rixlcode/logs/rixlcode.log")
+    logs_dir().join("rixlcode.log")
 }
 
 /// Install the capture logger. Called once from `main` before the app runs

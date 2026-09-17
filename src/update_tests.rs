@@ -213,6 +213,18 @@ fn release_notes_excerpt_truncates() {
 }
 
 #[test]
+fn repo_page_derives_links_from_the_repository_url() {
+    // `repo_base` strips the URL shapes Cargo manifests commonly carry so
+    // page links can't leak a `.git` suffix or double slash.
+    assert_eq!(update::repo_base("https://github.com/rixlhq/code"), "https://github.com/rixlhq/code");
+    assert_eq!(update::repo_base("https://github.com/rixlhq/code.git"), "https://github.com/rixlhq/code");
+    assert_eq!(update::repo_base("https://github.com/rixlhq/code/"), "https://github.com/rixlhq/code");
+    assert_eq!(update::repo_base("https://github.com/rixlhq/code.git/"), "https://github.com/rixlhq/code");
+    // "Report an Issue" — the Help menu's target.
+    assert_eq!(update::repo_page("issues"), "https://github.com/rixlhq/code/issues");
+}
+
+#[test]
 fn profile_about_row_shows_pending_update() {
     let mut app = TestAppContext::single();
     sandbox_home();
