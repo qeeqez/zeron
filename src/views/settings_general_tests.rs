@@ -141,3 +141,22 @@ fn workspace_select_sets_default_workspace() {
     }
     assert_eq!(crate::persist::load_settings().default_workspace, "worktree", "last pick must persist");
 }
+
+/// The Messages group's timestamps switch writes `Workspace::show_timestamps`
+/// and persists it to settings.json.
+#[test]
+fn timestamps_toggle_persists() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    assert!(!ws.read_with(cx, |w, _| w.show_timestamps), "timestamps default off");
+    cx.update(|window, cx| {
+        open_general(&ws, window, cx);
+        let toggle = window.find("toggle-timestamps");
+        assert_eq!(toggle.checked(), Some(false), "switch mirrors the flag");
+        window.click("toggle-timestamps", cx);
+        window.draw(cx).clear(cx);
+        assert!(ws.read(cx).show_timestamps, "switch click should set the flag");
+        assert!(crate::persist::load_settings().show_timestamps, "switch click should persist");
+        assert_eq!(window.find("toggle-timestamps").checked(), Some(true));
+    });
+}

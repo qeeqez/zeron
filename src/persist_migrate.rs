@@ -22,6 +22,7 @@ impl Default for Settings {
             notify_sound: true,
             notify_background: true,
             word_wrap: true,
+            show_timestamps: false,
             diff_mode: "unified".into(),
             diff_ignore_ws: false,
             preferred_editor: String::new(),

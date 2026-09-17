@@ -92,6 +92,36 @@ fn completed_turn_shows_duration_and_feedback_toggles() {
     // The seeded message is an assistant note — verify role for sanity.
     app.read(|cx| assert!(matches!(ws.read(cx).chats[0].messages[0].role, Role::Assistant)));
 }
+
+/// The footer timestamp is opt-in: hidden by default, shown on every row
+/// once `show_timestamps` flips on — and gone again when it flips off.
+#[test]
+fn timestamps_render_only_when_enabled() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    seed_reply(&ws, cx);
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.try_find(("msg-time", 0usize)).is_none(), "timestamps default off");
+        ws.update(cx, |this, cx| {
+            this.show_timestamps = true;
+            cx.notify();
+        });
+        window.draw(cx).clear(cx);
+        let ts = window.find(("msg-time", 0usize));
+        assert!(ts.visible(), "timestamp should render when enabled");
+        let at = ws.read(cx).chats[0].messages[0].at;
+        let expected = crate::views::date_separator::timestamp_label(at, chrono::Local::now().date_naive());
+        assert_eq!(ts.label(), Some(expected.as_str()));
+        ws.update(cx, |this, cx| {
+            this.show_timestamps = false;
+            cx.notify();
+        });
+        window.draw(cx).clear(cx);
+        assert!(window.try_find(("msg-time", 0usize)).is_none(), "timestamp should hide when disabled");
+    });
+}
+
 /// Records every prompt the workspace sends so retry can be asserted
 /// against the real `run_backend` path. The stream ends immediately.
 struct RecordingBackend {

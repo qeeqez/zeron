@@ -1,7 +1,8 @@
 //! The message row's hover-revealed footer: ghost action icons (copy,
 //! quote, edit, view-raw, regenerate, rating, read-aloud) plus the turn
-//! duration, token usage and timestamp. A thumbs-down also mounts a "what
-//! went wrong" note editor under the row (see `crate::feedback`).
+//! duration, token usage and — when `Settings.show_timestamps` is on — the
+//! message's timestamp. A thumbs-down also mounts a "what went wrong" note
+//! editor under the row (see `crate::feedback`).
 
 mod pager;
 
@@ -54,7 +55,8 @@ fn action_icon(
 
 /// Hover-revealed action row under a message: copy, quote, edit (user
 /// messages), view-raw, regenerate (assistant replies), rating,
-/// read-aloud, then the turn duration, token usage and timestamp.
+/// read-aloud, then the turn duration, token usage and — when the
+/// timestamps setting is on — the message's time.
 pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Option<Entity<MarkdownState>>, cx: &mut App) -> Div {
     let MsgCtx { ix, msg, .. } = mc;
     let muted = hsla(0.0, 0.0, 0.55, 1.0);
@@ -189,7 +191,20 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
             }
             d.child(div().text_xs().text_color(muted).child(text))
         })
-        .child(div().text_xs().text_color(muted).child(format_time(msg.at)));
+        // The timestamp is opt-in (Settings > General > "Show message
+        // timestamps") — always visible when on, unlike the ghost icons.
+        .when(ws.read(cx).show_timestamps, |d| {
+            let label = crate::views::date_separator::timestamp_label(msg.at, chrono::Local::now().date_naive());
+            d.child(
+                div()
+                    .id(("msg-time", ix))
+                    .test_support()
+                    .aria_label(label.clone())
+                    .text_xs()
+                    .text_color(muted)
+                    .child(label),
+            )
+        });
     let mut footer = div().flex().flex_col().child(row);
     if msg.role == Role::Assistant {
         let editing = ws.read(cx).feedback_editing(ix);
@@ -200,10 +215,6 @@ pub(super) fn message_footer(mc: MsgCtx, ws: &Entity<Workspace>, md_state: Optio
         }
     }
     footer
-}
-
-fn format_time(at: std::time::SystemTime) -> String {
-    chrono::DateTime::<chrono::Local>::from(at).format("%H:%M").to_string()
 }
 
 /// The "what went wrong" editor under a thumbs-down: the shared feedback

@@ -93,6 +93,7 @@ impl Workspace {
             default_permissions: self.default_permissions.map_or_else(String::new, |a| a.name().to_string()),
             default_workspace: self.default_workspace.name().into(),
             word_wrap: self.word_wrap,
+            show_timestamps: self.show_timestamps,
             diff_mode: self.diff_mode.name().into(),
             diff_ignore_ws: self.git.ignore_ws,
             preferred_editor: self.preferred_editor.name().into(),

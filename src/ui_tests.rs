@@ -232,6 +232,7 @@ fn settings_switches_toggle_workspace_flags() {
             ("toggle-notify", ws.read(cx).notify_on_done),
             ("toggle-notify-background", ws.read(cx).notify_background),
             ("toggle-wrap", ws.read(cx).word_wrap),
+            ("toggle-timestamps", ws.read(cx).show_timestamps),
         ] {
             let toggle = window.find(id);
             assert_eq!(toggle.role(), Some(Role::Switch), "{id} must render a Switch");

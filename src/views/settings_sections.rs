@@ -32,6 +32,8 @@ pub struct SettingsView {
     pub contrast: u16,
     pub backend: &'static str,
     pub word_wrap: bool,
+    /// "Show message timestamps" switch — `Workspace::show_timestamps`.
+    pub show_timestamps: bool,
     pub theme: String,
     pub ws: Entity<Workspace>,
     /// The settings panel entity — provider rows/wizard drive its selection
@@ -126,6 +128,7 @@ impl SettingsView {
             backend: s.backend.name(),
             access: s.access,
             word_wrap: s.word_wrap,
+            show_timestamps: s.show_timestamps,
             theme: s.theme.clone(),
             ws: ws.clone(),
             panel: cx.entity(),

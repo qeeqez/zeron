@@ -125,6 +125,16 @@ pub(crate) fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
             },
             &s.search,
         ))
+        .child(toggle_row(
+            ("toggle-timestamps", "Show message timestamps"),
+            s.show_timestamps,
+            ws.clone(),
+            |this, next, _w, cx| {
+                this.show_timestamps = next;
+                this.scroller.update(cx, |s, cx| s.remeasure(cx));
+            },
+            &s.search,
+        ))
         .child(group_label("Usage", &s.search, cx))
         .child(default_row(
             "Budget alert",

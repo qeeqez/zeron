@@ -8,7 +8,7 @@
 //! leaves all of them — nav cursor, find hits, jump-to-match — untouched.
 //!
 //! Boundaries use local dates (`ChatMessage.at` → `chrono::Local`, the same
-//! conversion as `message_footer::format_time`). The leading message of the
+//! conversion as `timestamp_label` below). The leading message of the
 //! transcript gets no label — separators only divide days.
 //!
 //! Declared from `views/mod.rs` via `#[path]` — `main.rs` is at the SLOC cap.
@@ -41,6 +41,25 @@ pub(crate) fn day_label(day: chrono::NaiveDate, today: chrono::NaiveDate) -> Str
         day.format("%a, %b %-d").to_string()
     } else {
         day.format("%a, %b %-d, %Y").to_string()
+    }
+}
+
+/// The message footer's absolute timestamp: "14:32" today, "Mon 14:32"
+/// within the last week, "Sep 3" older (year appended off `today`'s year).
+/// `today` is a parameter so tests pin the boundaries.
+pub(crate) fn timestamp_label(at: SystemTime, today: chrono::NaiveDate) -> String {
+    let dt = chrono::DateTime::<chrono::Local>::from(at);
+    let day = dt.date_naive();
+    if day == today {
+        return dt.format("%H:%M").to_string();
+    }
+    if (today - day).num_days() < 7 {
+        return dt.format("%a %H:%M").to_string();
+    }
+    if day.year() == today.year() {
+        day.format("%b %-d").to_string()
+    } else {
+        day.format("%b %-d, %Y").to_string()
     }
 }
 

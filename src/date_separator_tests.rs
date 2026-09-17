@@ -52,6 +52,23 @@ fn day_label_names_recent_days_and_dates() {
     assert_eq!(day_label(chrono::NaiveDate::from_ymd_opt(2020, 3, 3).unwrap(), today), "Tue, Mar 3, 2020");
 }
 
+#[test]
+fn timestamp_label_scales_with_age() {
+    use crate::views::date_separator::timestamp_label;
+    // Fixed "now" keeps the assertions independent of the run date.
+    let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 16).unwrap(); // Wed
+    // Today → bare local time.
+    assert_eq!(timestamp_label(at_hms(2026, 9, 16, 14, 32), today), "14:32");
+    // Within the last week → weekday + time.
+    assert_eq!(timestamp_label(at_hms(2026, 9, 14, 9, 5), today), "Mon 09:05");
+    // Boundary: 6 days back still gets the weekday form…
+    assert_eq!(timestamp_label(at_hms(2026, 9, 10, 9, 5), today), "Thu 09:05");
+    // …7 days back falls to the date form.
+    assert_eq!(timestamp_label(at_hms(2026, 9, 9, 9, 5), today), "Sep 9");
+    // Other year → year appended.
+    assert_eq!(timestamp_label(at_hms(2025, 9, 9, 9, 5), today), "Sep 9, 2025");
+}
+
 /// Mount a `Workspace` in a headless window with `HOME` redirected to a
 /// temp dir so settings/chats reads+writes stay off the real profile.
 fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext) {

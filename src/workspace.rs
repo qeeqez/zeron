@@ -263,6 +263,8 @@ pub struct Workspace {
     /// chat finishing, or any turn while the window is unfocused.
     pub notify_background: bool,
     pub word_wrap: bool,
+    /// Per-message timestamps in the transcript footer — `Settings.show_timestamps`.
+    pub show_timestamps: bool,
     /// Preferred editor for "Open in Editor" — `Settings.preferred_editor`.
     pub preferred_editor: crate::open_in::PreferredEditor,
     /// Interface font size in px — the rem base, so chat text and rem-sized
