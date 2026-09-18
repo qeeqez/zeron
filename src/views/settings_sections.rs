@@ -24,8 +24,12 @@ pub struct SettingsView {
     pub notify: bool,
     /// "Notification sound" switch — `Workspace::notify_sound`.
     pub notify_sound: bool,
-    /// "Notify on background replies" switch — `Workspace::notify_background`.
+    /// The "Only when unfocused" leg of the completion-delivery pick —
+    /// `Workspace::notify_background`.
     pub notify_background: bool,
+    /// "Permission notifications" switch and the "Always" leg of the
+    /// completion-delivery pick — `Workspace::notify_prefs`.
+    pub notify_prefs: crate::notify::prefs::NotifyPrefs,
     pub font_size: f32,
     pub code_font_size: f32,
     pub sidebar_frosted: bool,
@@ -127,6 +131,7 @@ impl SettingsView {
             notify: s.notify_on_done,
             notify_sound: s.notify_sound,
             notify_background: s.notify_background,
+            notify_prefs: s.notify_prefs,
             font_size: s.font_size,
             code_font_size: s.code_font_size,
             sidebar_frosted: s.sidebar_frosted,

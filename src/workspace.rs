@@ -293,6 +293,10 @@ pub struct Workspace {
     /// OS notification for replies the user isn't watching — a background
     /// chat finishing, or any turn while the window is unfocused.
     pub notify_background: bool,
+    /// Extra notification granularity — the "Always" delivery leg and the
+    /// permission-notifications gate, persisted to `notify.json` (see
+    /// `crate::notify::prefs`).
+    pub notify_prefs: crate::notify::prefs::NotifyPrefs,
     pub word_wrap: bool,
     /// Compact transcript density — `Settings.compact_mode`.
     pub compact_mode: bool,

@@ -288,21 +288,6 @@ fn sound_switch_persists(cx: &mut TestAppContext) {
     });
 }
 
-#[gpui_kit::test]
-fn background_switch_persists(cx: &mut TestAppContext) {
-    let (workspace, cx) = open_workspace(cx);
-    cx.update(|window, cx| workspace.update(cx, |ws, cx| ws.open_settings(window, cx)));
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        assert!(window.find("settings-section-general").visible());
-        let toggle = window.find("toggle-notify-background");
-        assert_eq!(toggle.checked(), Some(true), "switch should mirror the default-on flag");
-        window.click("toggle-notify-background", cx);
-    });
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        assert!(!workspace.read(cx).notify_background, "switch click should clear the flag");
-        assert!(!crate::persist::load_settings().notify_background, "switch click should persist");
-        assert_eq!(window.find("toggle-notify-background").checked(), Some(false));
-    });
-}
+// The background-delivery leg is now one option of the "Turn completion
+// notifications" segmented pick — its click coverage (flags + both
+// persisted stores) lives in `notify::prefs_tests`.

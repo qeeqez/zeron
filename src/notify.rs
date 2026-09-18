@@ -6,8 +6,18 @@ use gpui_kit::*;
 use crate::model::{Chat, MessageKind, Role};
 use crate::workspace::Workspace;
 
+/// The per-type granularity controls: "Turn completion notifications"
+/// timing and the "Permission notifications" gate — `src/notify/prefs.rs`
+/// (declared here rather than `main.rs`, which is at the SLOC cap).
+pub(crate) mod prefs;
+
+#[cfg(test)]
+#[path = "notify/prefs_tests.rs"]
+mod prefs_tests;
+
 /// What a finished reply surfaces: an in-app toast always, plus a system
-/// notification and dock bounce while the reply isn't on screen.
+/// notification per the timing pick — "Only when unfocused" while the
+/// reply isn't on screen, or "Always". A dock bounce rides unwatched posts.
 #[derive(Debug, PartialEq)]
 pub(crate) struct DoneNotice {
     /// Chat title — the toast/system headline.
@@ -15,8 +25,8 @@ pub(crate) struct DoneNotice {
     /// A preview of the reply's first line, or the failure's first line.
     body: String,
     failed: bool,
-    /// Post to the OS notification center — only while the user isn't
-    /// watching the chat (background chat or unfocused window).
+    /// Post to the OS notification center — the resolved delivery pick:
+    /// while the chat isn't watched ("Only when unfocused"), or always.
     system: bool,
 }
 
@@ -64,12 +74,13 @@ fn preview_line(text: &str) -> Option<String> {
 }
 
 impl Workspace {
-    /// System bell (gated by `notify_sound`), an in-app toast, plus — when
-    /// the user isn't watching the chat — a system notification and dock
-    /// bounce. "Not watching" means the finished chat isn't the active one
-    /// or the window is unfocused; the OS surface also needs
-    /// `notify_background`, and the toast/system surfaces need
-    /// `notify_on_done`. The sound is its own toggle so a reply can chime
+    /// System bell (gated by `notify_sound`), an in-app toast, plus — per
+    /// the "Turn completion notifications" pick — a system notification
+    /// and dock bounce. `notify_system` resolves the delivery: "Only when
+    /// unfocused" posts while the finished chat isn't on screen (a
+    /// background chat or an unfocused window), "Always" posts regardless,
+    /// "Never" stays in-app. The toast/system surfaces need
+    /// `notify_on_done`; the sound is its own toggle so a reply can chime
     /// without a popup. Clicking either surface activates the window and
     /// opens the chat; a failed turn's toast also carries a Retry button
     /// that re-sends the last prompt. The platform layer is a safe no-op where
@@ -84,7 +95,8 @@ impl Workspace {
         }
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
-        let notice = Self::done_notice(chat, is_active && window.is_window_active(), self.notify_background);
+        let watched = is_active && window.is_window_active();
+        let notice = Self::done_notice(chat, self.notify_system(watched));
         let ws = cx.entity().downgrade();
         let ws_retry = cx.entity().downgrade();
         let note = if notice.failed { Notification::error(notice.body) } else { Notification::success(notice.body) }
@@ -104,7 +116,9 @@ impl Workspace {
             note
         };
         window.push_notification(note, cx);
-        if notice.system {
+        // A dock bounce means "you're not looking" — "Always" posting a
+        // banner while the reply is on screen doesn't earn one.
+        if notice.system && !watched {
             window.request_attention();
         }
     }
@@ -129,18 +143,21 @@ impl Workspace {
     /// An unanswered approval request is a turn blocked on a click — unlike
     /// a finished reply it never arrives by itself, so it earns the same
     /// surfaces: an in-app toast always, a system notification and dock
-    /// bounce while unwatched (the same `notify_on_done`/`notify_background`
-    /// gates). No action button: the command must be read in the chat
-    /// before approving, so click-to-open is the only honest affordance.
-    /// And no chime — `notify_sound` is specifically the *finish* bell.
+    /// bounce per `notify_system`'s timing pick. Approval notices run on
+    /// their own gate (`notify_prefs.approvals` — the "Permission
+    /// notifications" switch), independent of `notify_on_done`. No action
+    /// button: the command must be read in the chat before approving, so
+    /// click-to-open is the only honest affordance. And no chime —
+    /// `notify_sound` is specifically the *finish* bell.
     /// `summary` is the `"<kind>: <what will run>"` line from the caller.
     pub(crate) fn notify_approval(&mut self, chat_id: u64, summary: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.notify_on_done {
+        if !self.notify_prefs.approvals {
             return;
         }
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
-        let system = self.notify_background && !(is_active && window.is_window_active());
+        let watched = is_active && window.is_window_active();
+        let system = self.notify_system(watched);
         let title = chat.title.clone();
         let body = format!("Needs approval — {}", preview_line(summary).unwrap_or_else(|| summary.trim().to_string()));
         let ws = cx.entity().downgrade();
@@ -155,7 +172,7 @@ impl Workspace {
                 });
             });
         window.push_notification(note, cx);
-        if system {
+        if system && !watched {
             window.request_attention();
         }
     }
@@ -171,11 +188,10 @@ impl Workspace {
         }
     }
 
-    /// The notice for a finished reply. `watched` is "the user can see the
-    /// reply land" — the chat is active AND the window focused — so
-    /// `system` stays false only then; `allow_system` is the
-    /// `notify_background` toggle, off = never ping the OS.
-    fn done_notice(chat: &Chat, watched: bool, allow_system: bool) -> DoneNotice {
+    /// The notice for a finished reply. `system` is the resolved OS
+    /// delivery from `notify_system` — the segmented row's pick folded
+    /// with whether the chat is on screen.
+    fn done_notice(chat: &Chat, system: bool) -> DoneNotice {
         let body = if chat.failed_flag {
             Self::error_detail(chat).map_or_else(|| "Reply failed".to_string(), |line| format!("Reply failed — {line}"))
         } else {
@@ -185,7 +201,7 @@ impl Workspace {
             title: chat.title.clone(),
             body,
             failed: chat.failed_flag,
-            system: allow_system && !watched,
+            system,
         }
     }
 
@@ -242,8 +258,8 @@ mod tests {
     }
 
     #[test]
-    fn success_notice_is_in_app_only_when_watched() {
-        let notice = Workspace::done_notice(&chat("Build fix"), true, true);
+    fn in_app_notice_keeps_system_off() {
+        let notice = Workspace::done_notice(&chat("Build fix"), false);
         assert_eq!(
             notice,
             DoneNotice {
@@ -256,11 +272,10 @@ mod tests {
     }
 
     #[test]
-    fn success_notice_goes_system_when_unwatched() {
-        // Unwatched covers both cases the caller ORs in: a background chat
-        // finishing while focused, and any chat while the window is
-        // unfocused.
-        let notice = Workspace::done_notice(&chat("Build fix"), false, true);
+    fn system_notice_sets_the_flag() {
+        // The caller resolves delivery via `notify_system` — an OS-bound
+        // notice just carries the flag through.
+        let notice = Workspace::done_notice(&chat("Build fix"), true);
         assert_eq!(
             notice,
             DoneNotice {
@@ -273,17 +288,11 @@ mod tests {
     }
 
     #[test]
-    fn background_toggle_off_keeps_notice_in_app() {
-        let notice = Workspace::done_notice(&chat("Build fix"), false, false);
-        assert!(!notice.system, "notify_background off must never post to the OS");
-    }
-
-    #[test]
     fn failed_notice_strips_error_markdown() {
         let mut chat = chat("Build fix");
         chat.failed_flag = true;
         assistant_text(&mut chat, "**Error:** codex exited 1\nmore detail");
-        let notice = Workspace::done_notice(&chat, false, true);
+        let notice = Workspace::done_notice(&chat, true);
         assert!(notice.failed);
         assert_eq!(notice.body, "Reply failed — codex exited 1");
     }
@@ -292,7 +301,7 @@ mod tests {
     fn failed_notice_falls_back_without_error_text() {
         let mut chat = chat("Build fix");
         chat.failed_flag = true;
-        let notice = Workspace::done_notice(&chat, false, true);
+        let notice = Workspace::done_notice(&chat, true);
         assert_eq!(notice.body, "Reply failed");
     }
 
@@ -300,7 +309,7 @@ mod tests {
     fn success_notice_previews_the_reply() {
         let mut chat = chat("Build fix");
         assistant_text(&mut chat, "Fixed the borrow error\nand two more lines");
-        let notice = Workspace::done_notice(&chat, false, true);
+        let notice = Workspace::done_notice(&chat, true);
         assert_eq!(notice.body, "Fixed the borrow error");
     }
 
@@ -308,7 +317,7 @@ mod tests {
     fn preview_skips_blank_lines_and_truncates() {
         let mut chat = chat("Build fix");
         assistant_text(&mut chat, &format!("\n  \n{}", "x".repeat(140)));
-        let notice = Workspace::done_notice(&chat, false, true);
+        let notice = Workspace::done_notice(&chat, true);
         assert_eq!(notice.body.chars().count(), 101, "100 chars + ellipsis");
         assert!(notice.body.ends_with('…'));
     }

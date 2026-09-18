@@ -230,7 +230,7 @@ fn settings_switches_toggle_workspace_flags() {
         assert!(window.find("settings-section-general").visible());
         for (id, on) in [
             ("toggle-notify", ws.read(cx).notify_on_done),
-            ("toggle-notify-background", ws.read(cx).notify_background),
+            ("toggle-notify-approvals", ws.read(cx).notify_prefs.approvals),
             ("toggle-wrap", ws.read(cx).word_wrap),
             ("toggle-timestamps", ws.read(cx).show_timestamps),
         ] {

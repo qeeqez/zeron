@@ -229,17 +229,18 @@ fn done_toast_click_returns_to_tail(cx: &mut TestAppContext) {
     );
 }
 
-/// `notify_on_done` gates approval notices too — the toggle is the
-/// user-visible "toast/system surfaces" switch, not strictly "reply done".
+/// Approval notices run on their own gate (`notify_prefs.approvals` —
+/// the "Permission notifications" switch), independent of the
+/// turn-completion toggle.
 #[gpui_kit::test]
-fn approval_notice_respects_notify_toggle(cx: &mut TestAppContext) {
+fn approval_notice_respects_approvals_toggle(cx: &mut TestAppContext) {
     let (ws, cx) = open_workspace(cx);
     let chat_id = ws.update(cx, |this, _| {
-        this.notify_on_done = false;
+        this.notify_prefs.approvals = false;
         this.chats[0].id
     });
     cx.update(|window, cx| {
         ws.update(cx, |ws, cx| ws.notify_approval(chat_id, "Apply patch: apply diff", window, cx));
     });
-    assert_eq!(toast_count(cx), 0, "notify_on_done off must silence approval notices");
+    assert_eq!(toast_count(cx), 0, "approvals off must silence approval notices");
 }

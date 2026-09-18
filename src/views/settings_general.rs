@@ -14,6 +14,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::backend::AccessMode;
+use crate::notify::prefs::NotifyTiming;
 use crate::open_in::PreferredEditor;
 use crate::views::settings::SettingsPanel;
 use crate::views::settings_default_model::default_model_picker;
@@ -80,21 +81,28 @@ pub(crate) fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
             },
             &s.search,
         ))
+        .child(default_row(
+            "Turn completion notifications",
+            "System banner when a reply finishes — Always posts even while you're watching.",
+            notify_timing_row(s, &ws).into_any_element(),
+            &s.search,
+            cx,
+        ))
+        .child(toggle_row(
+            ("toggle-notify-approvals", "Permission notifications"),
+            s.notify_prefs.approvals,
+            ws.clone(),
+            |this, next, _w, cx| {
+                this.set_notify_approvals(next, cx);
+            },
+            &s.search,
+        ))
         .child(toggle_row(
             ("toggle-notify-sound", "Notification sound"),
             s.notify_sound,
             ws.clone(),
             |this, next, _w, _cx| {
                 this.notify_sound = next;
-            },
-            &s.search,
-        ))
-        .child(toggle_row(
-            ("toggle-notify-background", "Notify on background replies"),
-            s.notify_background,
-            ws.clone(),
-            |this, next, _w, _cx| {
-                this.notify_background = next;
             },
             &s.search,
         ))
@@ -172,6 +180,28 @@ pub(crate) fn general_section(s: &SettingsView, cx: &App) -> impl IntoElement {
                 .text_xs()
                 .text_color(cx.theme().danger)
                 .child(e.clone())
+        }))
+}
+
+/// The "Turn completion notifications" pick — the real app's Never /
+/// Only when unfocused / Always dropdown, rendered as a segmented button
+/// row like the Agent-access pick. `NotifyTiming` maps the pick onto the
+/// (`always`, `notify_background`) flag pair.
+fn notify_timing_row(s: &SettingsView, ws: &Entity<Workspace>) -> impl IntoElement {
+    let current = NotifyTiming::current(s.notify_prefs.always, s.notify_background);
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_xs()
+        .children(NotifyTiming::ALL.into_iter().enumerate().map(|(ix, timing)| {
+            let btn = Button::new(("notify-timing", ix)).label(timing.label()).on_click({
+                let ws = ws.clone();
+                move |_, _, cx| {
+                    ws.update(cx, |this, cx| this.set_notify_timing(timing, cx));
+                }
+            });
+            if timing == current { btn.primary() } else { btn.outline() }
         }))
 }
 

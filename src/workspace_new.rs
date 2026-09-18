@@ -170,6 +170,7 @@ impl Workspace {
             notify_on_done: settings.notify_on_done,
             notify_sound: settings.notify_sound,
             notify_background: settings.notify_background,
+            notify_prefs: crate::notify::prefs::NotifyPrefs::load(),
             backend,
             word_wrap: settings.word_wrap,
             compact_mode: settings.compact_mode,
