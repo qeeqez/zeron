@@ -183,6 +183,75 @@ fn running_chip_filters_the_list() {
     });
 }
 
+/// Cmd+Shift+] / [ cycling: `cycle_target` steps through the visible
+/// sidebar order and wraps at both ends — the same list Cmd+1..9 uses.
+#[test]
+fn cycle_target_steps_and_wraps() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    cx.update(|_, cx| {
+        ws.update(cx, |this, cx| {
+            this.new_chat(cx);
+            this.new_chat(cx);
+            // Newest-first sidebar order: [2, 1, 0]; active is chats[2].
+            assert_eq!(this.sidebar_visible(""), vec![2, 1, 0]);
+            assert_eq!(this.active, 2);
+            assert_eq!(this.cycle_target(true, cx), Some(1), "next steps down the visible list");
+            assert_eq!(this.cycle_target(false, cx), Some(0), "prev from the top wraps to the bottom");
+            this.active = 0;
+            assert_eq!(this.cycle_target(true, cx), Some(2), "next from the bottom wraps to the top");
+            this.active = 1;
+            assert_eq!(this.cycle_target(false, cx), Some(2));
+            assert_eq!(this.cycle_target(true, cx), Some(0));
+        });
+    });
+}
+
+/// Cycling narrows to the filtered set — chips shrink what the keys reach.
+#[test]
+fn cycle_target_respects_filters() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    cx.update(|_, cx| {
+        ws.update(cx, |this, cx| {
+            this.new_chat(cx);
+            this.new_chat(cx);
+            this.chats[0].unread = true;
+            this.sidebar_filters.toggle(SidebarFilter::Unread);
+            // Only chats[0] is visible — cycling has nowhere to go.
+            assert_eq!(this.cycle_target(true, cx), None);
+            this.chats[1].unread = true;
+            this.active = 1;
+            assert_eq!(this.cycle_target(true, cx), Some(0), "cycle stays inside the filtered set");
+        });
+    });
+}
+
+/// The full action path: dispatching NextChat/PrevChat flips `active`.
+#[test]
+fn cycle_actions_switch_chats() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    cx.update(|_, cx| {
+        ws.update(cx, |this, cx| {
+            this.new_chat(cx);
+            this.new_chat(cx);
+        });
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.dispatch_action(Box::new(crate::NextChat), cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(ws.read_with(cx, |this, _| this.active), 1, "NextChat moved down the visible list");
+    cx.update(|window, cx| window.dispatch_action(Box::new(crate::PrevChat), cx));
+    cx.run_until_parked();
+    assert_eq!(ws.read_with(cx, |this, _| this.active), 2, "PrevChat moved back up");
+    cx.update(|window, cx| window.dispatch_action(Box::new(crate::PrevChat), cx));
+    cx.run_until_parked();
+    assert_eq!(ws.read_with(cx, |this, _| this.active), 0, "PrevChat at the top wrapped to the bottom");
+}
+
 /// A filter that matches nothing renders the muted "No chats match" row.
 #[test]
 fn no_match_shows_empty_row() {

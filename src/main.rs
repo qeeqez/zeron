@@ -227,7 +227,7 @@ actions!([
     SearchAllChats, FindInChat, CopyTranscript, EmojiPalette, RevealChats, EscapeKey, ShortcutsHelp, RecallLast, RecallPrev, RecallNext,
     NewWindow, OpenProject, AboutApp, CheckForUpdates, HideApp, HideOthers, MinimizeWindow, ZoomWindow, EnterFullscreen, BringAllToFront,
     ToggleDictation, ToggleTerminal, MsgNavDown, MsgNavUp, MsgNavTop, MsgNavBottom, MsgNavEnter, RenameChat, ViewLogs, ZoomIn, ZoomOut,
-    ZoomReset, ReleaseNotes, ReportIssue, RevealLogs, ShowAll,
+    ZoomReset, ReleaseNotes, ReportIssue, RevealLogs, ShowAll, NextChat, PrevChat,
 ]);
 
 // Re-exported at the crate root for tests — they bind the workspace keymap

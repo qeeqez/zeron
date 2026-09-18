@@ -116,6 +116,52 @@ impl Workspace {
     pub(crate) fn running_chats(&self) -> usize {
         self.chats.iter().filter(|c| c.running).count()
     }
+
+    /// The vec index `chat_cycle` selects next: `active`'s position in the
+    /// visible list stepped forward or back, wrapping at both ends. An
+    /// active chat outside the visible set (filtered out) starts from the
+    /// nearest edge. `None` when fewer than 2 chats are visible.
+    pub(crate) fn cycle_target(&self, forward: bool, cx: &gpui_kit::App) -> Option<usize> {
+        let query = self.search.read(cx).value().to_lowercase();
+        let vis = self.sidebar_visible(&query);
+        if vis.len() < 2 {
+            return None;
+        }
+        Some(match vis.iter().position(|&ix| ix == self.active) {
+            Some(p) if forward => vis[(p + 1) % vis.len()],
+            Some(p) => vis[(p + vis.len() - 1) % vis.len()],
+            None if forward => vis[0],
+            None => *vis.last().unwrap(),
+        })
+    }
+}
+
+/// Cmd+Shift+] / [ — cycle through the visible chat list in sidebar order
+/// (same resolution as Cmd+1..9: filter chips and the query box apply).
+/// The index math lives in `Workspace::cycle_target` — testable headless.
+pub(crate) fn chat_cycle<A: gpui_kit::Action + CycleDir>(
+    cx: &mut gpui_kit::Context<Workspace>,
+) -> impl Fn(&A, &mut gpui_kit::Window, &mut gpui_kit::App) + 'static {
+    let ws = cx.entity();
+    move |_: &A, window, cx| {
+        ws.update(cx, |this, cx| {
+            if let Some(next) = this.cycle_target(A::FWD, cx) {
+                this.select_chat(next, window, cx);
+            }
+        });
+    }
+}
+
+/// Which way `chat_cycle` steps — carried on the action type like
+/// `ChatIx` carries a position.
+pub(crate) trait CycleDir {
+    const FWD: bool;
+}
+impl CycleDir for crate::NextChat {
+    const FWD: bool = true;
+}
+impl CycleDir for crate::PrevChat {
+    const FWD: bool = false;
 }
 
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.

@@ -8,10 +8,10 @@ use gpui_kit::*;
 use crate::workspace::Workspace;
 use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EnterFullscreen,
-    EscapeKey, FindInChat, GoToFile, MinimizeWindow, NewChat, OpenPalette, OpenSettings, RecallLast, RecallNext, RecallPrev, RenameChat,
-    RevealChats, SearchAllChats, SearchChat, ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges, ToggleDictation,
-    ToggleExplorer, TogglePlan, ToggleSidebar, ToggleSnapshots, ToggleTerminal, ViewLogs, ZoomIn, ZoomOut, ZoomReset, ZoomWindow,
-    chat_msg::bookmarks_panel::ToggleBookmarks,
+    EscapeKey, FindInChat, GoToFile, MinimizeWindow, NewChat, NextChat, OpenPalette, OpenSettings, PrevChat, RecallLast, RecallNext,
+    RecallPrev, RenameChat, RevealChats, SearchAllChats, SearchChat, ShortcutsHelp, ThemeDark, ThemeLight, ToggleAgents, ToggleChanges,
+    ToggleDictation, ToggleExplorer, TogglePlan, ToggleSidebar, ToggleSnapshots, ToggleTerminal, ViewLogs, ZoomIn, ZoomOut, ZoomReset,
+    ZoomWindow, chat_msg::bookmarks_panel::ToggleBookmarks,
 };
 
 /// Every `on_action` listener on the workspace root — chat switching, panel
@@ -48,6 +48,8 @@ pub(crate) fn workspace_actions(root: Div, window: &Window, cx: &mut Context<Wor
     .on_action(chat_switch::<Chat7>(cx))
     .on_action(chat_switch::<Chat8>(cx))
     .on_action(chat_switch::<Chat9>(cx))
+    .on_action(chat_cycle::<NextChat>(cx))
+    .on_action(chat_cycle::<PrevChat>(cx))
     .on_action(move |_: &ToggleSidebar, _, cx| {
         ws_side.update(cx, |this, cx| this.toggle_sidebar(cx));
     })
@@ -250,6 +252,8 @@ fn chat_switch<A: Action + ChatIx>(cx: &mut Context<Workspace>) -> impl Fn(&A, &
         });
     }
 }
+
+use crate::sidebar_filter::chat_cycle;
 
 trait ChatIx {
     const IX: usize;
