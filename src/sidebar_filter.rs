@@ -188,3 +188,6 @@ impl CycleDir for crate::PrevChat {
 #[cfg(test)]
 #[path = "sidebar_filter_tests.rs"]
 mod sidebar_filter_tests;
+#[cfg(test)]
+#[path = "sidebar_working_tests.rs"]
+mod sidebar_working_tests;

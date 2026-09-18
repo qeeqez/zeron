@@ -6,6 +6,7 @@ use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext};
 
+use crate::model::AgentStatus;
 use crate::send_queue::Queued;
 use crate::workspace::Workspace;
 
@@ -229,5 +230,56 @@ fn approval_shield_marks_blocked_chats() {
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert!(window.try_find(("approval-needed", chat_id)).is_none(), "answered approval clears the marker");
+    });
+}
+
+/// A chat keeps its "working" spinner after its own turn ends while
+/// subagents attributed to it are still running — the row reads the
+/// `chat_working` aggregate, so a finished reply with live subagents can't
+/// look idle. The marker drops once the last attributed agent settles.
+#[test]
+fn working_indicator_outlives_the_turn() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    let chat_id = cx.update(|window, cx| {
+        ws.update(cx, |this, cx| {
+            this.backend = std::sync::Arc::new(crate::backend::SimBackend);
+            this.composer.update(cx, |composer, cx| composer.set_value("run it", window, cx));
+            this.send(window, cx);
+            this.chats[0].id
+        })
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.find(("chat-working", chat_id)).visible(), "streaming turn spins the row");
+    });
+
+    // Run the clock until the reply task finishes — the simulated
+    // subagents take longer, so the chat still counts as working.
+    for _ in 0..32 {
+        cx.executor().advance_clock(std::time::Duration::from_millis(100));
+        cx.run_until_parked();
+        if !ws.read_with(cx, |ws, _| ws.chats[0].running) {
+            break;
+        }
+    }
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(!ws.read(cx).chats[0].running, "the reply turn has finished");
+        assert!(ws.read(cx).agents.iter().any(|a| a.status == AgentStatus::Running), "a subagent is still running");
+        assert!(window.find(("chat-working", chat_id)).visible(), "a running subagent keeps the row working");
+    });
+
+    // Once the last attributed agent settles the row returns to idle.
+    for _ in 0..64 {
+        cx.executor().advance_clock(std::time::Duration::from_millis(100));
+        cx.run_until_parked();
+        if ws.read_with(cx, |ws, _| ws.agents.iter().all(|a| a.status != AgentStatus::Running)) {
+            break;
+        }
+    }
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.try_find(("chat-working", chat_id)).is_none(), "idle chat drops the spinner");
     });
 }
