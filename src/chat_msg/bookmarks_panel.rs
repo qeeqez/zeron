@@ -15,6 +15,7 @@ use std::rc::Rc;
 
 use gpui_kit::*;
 
+use crate::model::MessageKind;
 use crate::workspace::Workspace;
 
 actions!([ToggleBookmarks]);
@@ -98,10 +99,10 @@ impl Workspace {
             + self.pending_bookmark_count
     }
 
-    /// Recount stars in chats whose transcripts still live only on disk —
-    /// the badge's pending half. Debounced: `save` calls this on every
-    /// mutation, and a scan stamped with an older `bookmark_count_gen`
-    /// lands nothing.
+    /// Recount stars (and plan cards, for the sidebar's "Has plan" chip) in
+    /// chats whose transcripts still live only on disk — the badge's
+    /// pending half. Debounced: startup, deletes, and panel opens can race,
+    /// so a scan stamped with an older `bookmark_count_gen` lands nothing.
     pub(crate) fn refresh_pending_bookmarks(&mut self, cx: &mut Context<Self>) {
         self.bookmark_count_gen += 1;
         let stamp = self.bookmark_count_gen;
@@ -113,7 +114,7 @@ impl Workspace {
         let dir = self.project.chats_dir();
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(std::time::Duration::from_millis(300)).await;
-            let counts = cx.background_executor().spawn(async move { pending_stars(&dir, &pending) }).await;
+            let counts = cx.background_executor().spawn(async move { pending_scan(&dir, &pending) }).await;
             let _ = this.update(cx, |this, cx| this.land_pending_bookmarks(stamp, counts, cx));
         })
         .detach();
@@ -122,17 +123,21 @@ impl Workspace {
     /// Land a finished pending-star scan — dropped when a newer
     /// `refresh_pending_bookmarks` superseded it (`stamp` predates the
     /// current generation).
-    fn land_pending_bookmarks(&mut self, stamp: u64, counts: Vec<(std::time::SystemTime, usize)>, cx: &mut Context<Self>) {
+    fn land_pending_bookmarks(&mut self, stamp: u64, counts: Vec<(std::time::SystemTime, usize, bool)>, cx: &mut Context<Self>) {
         if self.bookmark_count_gen != stamp {
             return;
         }
         // Chats hydrated mid-scan now count live — keep only the
         // still-pending half so nothing double-counts.
-        self.pending_bookmark_count = counts
-            .iter()
-            .filter(|(at, _)| self.chats.iter().any(|c| c.pending_load.is_some() && c.created_at == *at))
-            .map(|(_, n)| n)
-            .sum();
+        let still_pending = |at: &std::time::SystemTime| self.chats.iter().any(|c| c.pending_load.is_some() && c.created_at == *at);
+        self.pending_bookmark_count = counts.iter().filter(|(at, _, _)| still_pending(at)).map(|(_, n, _)| n).sum();
+        // The scan's plan bit feeds the sidebar's "Has plan" chip —
+        // pending chats would otherwise read as plan-free until opened.
+        for chat in &mut self.chats {
+            if chat.pending_load.is_some() {
+                chat.pending_has_plan = counts.iter().any(|(at, _, plan)| *at == chat.created_at && *plan);
+            }
+        }
         cx.notify();
     }
 
@@ -192,15 +197,18 @@ impl Workspace {
     }
 }
 
-/// One `(created_at, stars)` pair per pending chat — runs on the
-/// background executor, so it takes probes rather than the `Rc`-holding
-/// chats. `find_stored` tolerates slot shifts the way hydration does.
-fn pending_stars(dir: &std::path::Path, pending: &[crate::persist::ChatFileProbe]) -> Vec<(std::time::SystemTime, usize)> {
+/// One `(created_at, stars, has_plan)` triple per pending chat — runs on
+/// the background executor, so it takes probes rather than the
+/// `Rc`-holding chats. `find_stored` tolerates slot shifts the way
+/// hydration does.
+fn pending_scan(dir: &std::path::Path, pending: &[crate::persist::ChatFileProbe]) -> Vec<(std::time::SystemTime, usize, bool)> {
     pending
         .iter()
         .map(|probe| {
-            let n = crate::persist::find_stored(dir, probe).map_or(0, |s| s.messages.iter().filter(|m| m.bookmarked).count());
-            (probe.created_at, n)
+            let (stars, has_plan) = crate::persist::find_stored(dir, probe).map_or((0, false), |s| {
+                (s.messages.iter().filter(|m| m.bookmarked).count(), s.messages.iter().any(|m| matches!(&m.kind, MessageKind::Plan(_))))
+            });
+            (probe.created_at, stars, has_plan)
         })
         .collect()
 }

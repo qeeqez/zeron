@@ -240,13 +240,20 @@ impl Workspace {
         let live = self.chats.iter().enumerate().filter(|x| !x.1.ephemeral && x.1.pending_load.is_none());
         let mut docs: Vec<SearchDoc> = live.map(|(ix, chat)| SearchDoc::live(ix, chat)).collect();
         let dir = self.project.chats_dir();
-        for (ix, chat) in self.chats.iter().enumerate() {
-            if !chat.ephemeral
-                && let Some(probe) = crate::persist::ChatFileProbe::of(chat)
-                && let Some(stored) = crate::persist::find_stored(&dir, &probe)
-            {
+        // Pending chats' own files — each `find_stored` pays a full
+        // transcript read, so the probes fan out across scoped threads
+        // rather than serializing on the UI thread.
+        let (pending_ix, probes): (Vec<(usize, u64)>, Vec<crate::persist::ChatFileProbe>) = self
+            .chats
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !c.ephemeral)
+            .filter_map(|(ix, c)| crate::persist::ChatFileProbe::of(c).map(|p| ((ix, c.id), p)))
+            .unzip();
+        for ((ix, id), stored) in pending_ix.into_iter().zip(crate::persist::find_stored_all(&dir, &probes)) {
+            if let Some(stored) = stored {
                 let mut doc = SearchDoc::stored(ix, stored);
-                doc.chat_id = Some(chat.id);
+                doc.chat_id = Some(id);
                 docs.push(doc);
             }
         }
@@ -258,7 +265,7 @@ impl Workspace {
         for (file_ix, path) in crate::persist::chat_files(&dir) {
             if file_ix >= self.chats.len()
                 && let Some(stored) = crate::persist::read_stored(&path)
-                && !live_ats.contains(&stored.created_at)
+                && !stored.created_at.is_some_and(|at| live_ats.contains(&at))
             {
                 docs.push(SearchDoc::stored(file_ix, stored));
             }

@@ -8,7 +8,7 @@ use crate::model::{Chat, ChatMessage, MessageKind, ToolStatus};
 /// The `messages` field is generic so `load_chats` can parse metadata-only
 /// (`IgnoredAny`) without paying for transcripts nobody opened yet, and
 /// `recover_interrupted` can take just the messages to mutate.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub(crate) struct StoredChat<M = Vec<ChatMessage>> {
     pub(crate) v: u32,
     pub(crate) title: String,
@@ -35,9 +35,12 @@ pub(crate) struct StoredChat<M = Vec<ChatMessage>> {
     /// placeholder check.
     #[serde(default)]
     pub(crate) title_custom: bool,
-    /// Missing in early v1 files — fall back to now().
-    #[serde(default = "std::time::SystemTime::now")]
-    pub(crate) created_at: std::time::SystemTime,
+    /// Missing in early v1 files — `None` marks them so `load_chats` can
+    /// load them eagerly: a lazy-load probe can't re-identify a file whose
+    /// timestamp was never persisted (each parse would stamp a different
+    /// `now()`). Writes always store `Some`.
+    #[serde(default)]
+    pub(crate) created_at: Option<std::time::SystemTime>,
     /// Manual sidebar position — missing in files written before drag
     /// reorder existed; `0` falls back to `created_at` ordering.
     #[serde(default)]
@@ -106,7 +109,9 @@ impl<M> StoredChat<M> {
         chat.draft = self.draft;
         chat.title_generated = self.title_generated;
         chat.title_custom = self.title_custom;
-        chat.created_at = self.created_at;
+        // `None` marks a pre-`created_at` file — stamp it now; the value
+        // only identifies this run's in-memory chat.
+        chat.created_at = self.created_at.unwrap_or_else(std::time::SystemTime::now);
         chat.order = self.order;
         chat.provider = self.provider;
         chat.model = self.model;
@@ -150,17 +155,27 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
     // this chat — a stale hint after another window rewrote slots must not
     // graft a neighbor's transcript onto these metadata fields.
     let mut deferred = std::collections::HashMap::new();
-    for chat in chats {
+    for (ix, chat) in chats.iter().enumerate() {
         // A pending chat already carrying live messages diverged from its
         // file while the file was unreadable — memory is authoritative
         // (see `hydrate_chat`), so there is nothing to re-read.
         if chat.pending_load.is_none() || !chat.messages.is_empty() {
             continue;
         }
-        if let Some(messages) = persist_load::ChatFileProbe::of(chat)
-            .and_then(|probe| persist_load::find_stored(dir, &probe))
-            .map(|stored| stored.messages)
+        let Some(probe) = persist_load::ChatFileProbe::of(chat) else { continue };
+        // The chat's own slot still holds its file with identical metadata
+        // — the file is already correct, so skip the transcript re-read.
+        // `read_meta` ignores `messages`, keeping this check cheap on the
+        // every-save path. The `probe.slot == ix` gate matters: a file
+        // anywhere else is the drift case `find_stored` handles — another
+        // position's write (or the stale sweep) would take it.
+        if probe.slot == ix
+            && persist_load::read_meta(&dir.join(format!("{}.json", probe.slot)))
+                .is_some_and(|meta| meta == stored_fields(chat, persist_load::SkipMessages))
         {
+            continue;
+        }
+        if let Some(messages) = persist_load::find_stored(dir, &probe).map(|stored| stored.messages) {
             deferred.insert(chat.id, messages);
         }
     }
@@ -184,33 +199,7 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
             },
             None => (*chat.messages).clone(),
         };
-        let mut stored = StoredChat {
-            v: 1,
-            title: chat.title.to_string(),
-            messages,
-            pinned: chat.pinned,
-            archived: chat.archived,
-            folder: chat.folder.clone(),
-            draft: chat.draft.clone(),
-            title_generated: chat.title_generated,
-            title_custom: chat.title_custom,
-            created_at: chat.created_at,
-            order: chat.order,
-            provider: chat.provider.clone(),
-            model: chat.model.clone(),
-            access: chat.access.map_or_else(String::new, |a| a.name().to_string()),
-            workdir: chat.workdir.clone(),
-            effort: chat.effort.clone().unwrap_or_default(),
-            worktree: chat.worktree,
-            diff_base: chat.diff_base.clone(),
-            thread_id: chat.thread_id.clone(),
-            checkpoints: chat.checkpoints.clone(),
-            feedback: chat.feedback.clone(),
-            prompt_history: chat.prompt_history.clone(),
-            color: chat.color.map_or_else(String::new, |c| c.name().to_string()),
-            instructions: chat.instructions.clone().unwrap_or_default(),
-            budget_alert_usd: chat.budget_alert_usd,
-        };
+        let mut stored = stored_fields(chat, messages);
         let tmp = dir.join(format!("{ix}.json.tmp"));
         let dst = dir.join(format!("{ix}.json"));
         // A Running tool in a chat this workspace isn't running belongs to
@@ -267,6 +256,39 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
     }
 }
 
+/// The `Chat` → `StoredChat` field mapping — generic over the messages
+/// payload so the pending-chat fast path can compare metadata without a
+/// transcript (`StoredChat<SkipMessages>`).
+fn stored_fields<M>(chat: &Chat, messages: M) -> StoredChat<M> {
+    StoredChat {
+        v: 1,
+        title: chat.title.to_string(),
+        messages,
+        pinned: chat.pinned,
+        archived: chat.archived,
+        folder: chat.folder.clone(),
+        draft: chat.draft.clone(),
+        title_generated: chat.title_generated,
+        title_custom: chat.title_custom,
+        created_at: Some(chat.created_at),
+        order: chat.order,
+        provider: chat.provider.clone(),
+        model: chat.model.clone(),
+        access: chat.access.map_or_else(String::new, |a| a.name().to_string()),
+        workdir: chat.workdir.clone(),
+        effort: chat.effort.clone().unwrap_or_default(),
+        worktree: chat.worktree,
+        diff_base: chat.diff_base.clone(),
+        thread_id: chat.thread_id.clone(),
+        checkpoints: chat.checkpoints.clone(),
+        feedback: chat.feedback.clone(),
+        prompt_history: chat.prompt_history.clone(),
+        color: chat.color.map_or_else(String::new, |c| c.name().to_string()),
+        instructions: chat.instructions.clone().unwrap_or_default(),
+        budget_alert_usd: chat.budget_alert_usd,
+    }
+}
+
 /// Load chats from `dir`; returns empty vec on any error. Files are read in
 /// numeric-name order — the same order `save_chats` wrote — so the persisted
 /// `active_chat` index still points at the same conversation. Each chat gets
@@ -276,7 +298,9 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
 /// pays for metadata. `Chat::pending_load` records the slot the transcript
 /// lives in plus whether `recover_interrupted` applies — `hydrate_chat`
 /// replays it on first open. Pass `recover_interrupted` only on a cold
-/// start, when no live window can own those turns.
+/// start, when no live window can own those turns. Files written before
+/// `created_at` existed load eagerly — a `pending_load` probe can't
+/// re-identify a file whose timestamp was never persisted.
 pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted: bool) -> Vec<Chat> {
     let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
     let mut files: Vec<(usize, PathBuf)> = entries
@@ -293,11 +317,27 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
     files
         .into_iter()
         .filter_map(|(ix, path)| {
-            let stored: StoredChat<serde::de::IgnoredAny> = serde_json::from_str(&fs::read_to_string(&path).ok()?).ok()?;
+            let raw = fs::read_to_string(&path).ok()?;
+            let stored: StoredChat<serde::de::IgnoredAny> = serde_json::from_str(&raw).ok()?;
             if stored.v != 1 {
                 // Unknown format — keep the file as .bak so it isn't lost.
                 let _ = fs::rename(&path, path.with_extension("json.bak"));
                 return None;
+            }
+            if stored.created_at.is_none() {
+                // Written before `created_at` existed — a `find_stored`
+                // probe could never re-identify this file, so the lazy
+                // path can't serve it. Load the transcript eagerly, the
+                // way `load_chats` always did; the next save stamps
+                // `created_at` and the file rejoins the lazy path.
+                let full: StoredChat = serde_json::from_str(&raw).ok()?;
+                let (mut chat, mut messages) = full.into_chat(*next_id);
+                if recover_interrupted {
+                    persist_load::mark_interrupted(&mut messages);
+                }
+                chat.messages = std::rc::Rc::new(messages);
+                *next_id += 1;
+                return Some(chat);
             }
             let (mut chat, _) = stored.into_chat(*next_id);
             // `hydrate_chat` re-reads this file on first open and replays
@@ -322,7 +362,7 @@ mod persist_templates;
 
 #[cfg(test)]
 pub(crate) use persist_load::hydrate_all;
-pub(crate) use persist_load::{ChatFileProbe, chat_files, find_stored, hydrate_chat, read_stored};
+pub(crate) use persist_load::{ChatFileProbe, chat_files, find_stored, find_stored_all, hydrate_chat, read_stored};
 pub use persist_prompts::{load_prompts, save_prompts};
 
 pub use crate::persist_settings::{DefaultModel, Settings, load_settings, save_settings};

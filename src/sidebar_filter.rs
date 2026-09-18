@@ -52,12 +52,14 @@ impl SidebarFilter {
         }
     }
 
-    /// Whether `chat` satisfies this chip alone.
+    /// Whether `chat` satisfies this chip alone. `HasPlan` also consults
+    /// `pending_has_plan` — the pending-bookmark scan sets it so unopened
+    /// chats aren't invisible to the chip.
     pub fn matches(self, chat: &Chat) -> bool {
         match self {
             Self::Running => chat.running,
             Self::Unread => chat.unread,
-            Self::HasPlan => chat.latest_plan().is_some(),
+            Self::HasPlan => chat.latest_plan().is_some() || (chat.pending_load.is_some() && chat.pending_has_plan),
         }
     }
 }

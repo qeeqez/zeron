@@ -20,7 +20,7 @@ pub enum Checkpoint {
 /// A checkpoint pinned to the user message that opened its turn. `at`
 /// duplicates the message timestamp so a stale entry — an index reused
 /// after `/clear` or an edit — can't restore the wrong state.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TurnCheckpoint {
     pub ix: usize,
     pub at: std::time::SystemTime,

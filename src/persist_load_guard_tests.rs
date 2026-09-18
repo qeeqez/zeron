@@ -1,7 +1,8 @@
 //! Multi-window guard rails for lazy loading: a foreign file must never
 //! graft onto a pending chat's metadata save, messages landed while the
-//! file was unreadable must still persist, and a diverged pending chat's
-//! live transcript must survive a late-arriving hydrate. Declared from
+//! file was unreadable must still persist, a diverged pending chat's live
+//! transcript must survive a late-arriving hydrate, and a file the probe
+//! can't re-identify must never lazy-load at all. Declared from
 //! `persist_load.rs` — `persist_load_tests.rs` is at the SLOC cap.
 
 use std::rc::Rc;
@@ -42,7 +43,7 @@ fn foreign_slot_file_is_not_grafted() {
     save_chats(&dir, &loaded[..1]);
     let stored = crate::persist::read_stored(&dir.join("0.json")).unwrap();
     assert_eq!(stored.title, "ours");
-    assert_eq!(stored.created_at, ours_at);
+    assert_eq!(stored.created_at, Some(ours_at));
     assert_eq!(stored.messages.len(), 2, "the foreign transcript must not be grafted");
     assert!(matches!(&stored.messages[0].kind, MessageKind::Text(t) if t.as_str() == "one"));
 }
@@ -84,4 +85,71 @@ fn diverged_pending_chat_is_not_clobbered_by_hydrate() {
     assert!(loaded[0].pending_load.is_none());
     assert_eq!(loaded[0].messages.len(), 1);
     assert!(matches!(&loaded[0].messages[0].kind, MessageKind::Text(t) if t.as_str() == "live"));
+}
+
+#[test]
+fn legacy_file_without_created_at_loads_eagerly() {
+    let dir = temp_dir("legacy");
+    save_chats(&dir, &[seeded_chat(0, "alpha", vec![msg("one"), msg("two")])]);
+    // Pre-`created_at` files lack the field — and every field added after
+    // it (thread_id included) — so a lazy-load probe could never
+    // re-identify them: the transcript must load eagerly instead.
+    let path = dir.join("0.json");
+    let mut json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let obj = json.as_object_mut().unwrap();
+    obj.remove("created_at");
+    obj.remove("thread_id");
+    std::fs::write(&path, serde_json::to_string_pretty(&json).unwrap()).unwrap();
+    let mut next_id = 0;
+    let loaded = load_chats(&dir, &mut next_id, false);
+    assert_eq!(loaded.len(), 1);
+    assert!(loaded[0].pending_load.is_none(), "a file it can't re-identify loads eagerly");
+    assert_eq!(loaded[0].messages.len(), 2, "the transcript survived the eager load");
+    // The next save stamps `created_at`, so the file rejoins the lazy path.
+    save_chats(&dir, &loaded);
+    let mut next_id = 0;
+    let mut reloaded = load_chats(&dir, &mut next_id, false);
+    assert!(reloaded[0].pending_load.is_some());
+    assert!(crate::persist::hydrate_chat(&mut reloaded[0], &dir));
+    assert_eq!(reloaded[0].messages.len(), 2);
+}
+
+#[test]
+fn shifted_pending_chat_keeps_its_history_on_save() {
+    let dir = temp_dir("shifted-save");
+    save_chats(&dir, &[seeded_chat(0, "first", vec![msg("f")]), seeded_chat(1, "second", vec![msg("s1"), msg("s2")])]);
+    let mut next_id = 0;
+    let loaded = load_chats(&dir, &mut next_id, false);
+    // Dropping the earlier chat shifts the pending one's vec position
+    // below its recorded slot — a save must still carry its transcript to
+    // the new slot, not let the stale sweep take the old file.
+    let shifted = &loaded[1..];
+    save_chats(&dir, shifted);
+    let stored = crate::persist::read_stored(&dir.join("0.json")).expect("the transcript moved to slot 0");
+    assert_eq!(stored.title, "second");
+    assert_eq!(stored.messages.len(), 2);
+    assert!(!dir.join("1.json").exists(), "the vacated slot was swept");
+}
+
+#[test]
+fn find_stored_all_resolves_every_probe() {
+    let dir = temp_dir("find-all");
+    save_chats(
+        &dir,
+        &[
+            seeded_chat(0, "a", vec![msg("1")]),
+            seeded_chat(1, "b", vec![msg("2")]),
+            seeded_chat(2, "c", vec![msg("3")]),
+        ],
+    );
+    let mut next_id = 0;
+    let loaded = load_chats(&dir, &mut next_id, false);
+    let probes: Vec<_> = loaded.iter().filter_map(crate::persist::ChatFileProbe::of).collect();
+    let found = crate::persist::find_stored_all(&dir, &probes);
+    assert_eq!(found.len(), 3, "one result per probe, in probe order");
+    for (chat, stored) in loaded.iter().zip(&found) {
+        let stored = stored.as_ref().expect("each probe found its file");
+        assert_eq!(stored.title, chat.title.to_string());
+        assert_eq!(stored.messages.len(), 1);
+    }
 }

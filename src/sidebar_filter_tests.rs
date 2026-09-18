@@ -58,6 +58,22 @@ fn each_filter_matches_its_flag() {
     assert!(!SidebarFilter::HasPlan.matches(&plain));
 }
 
+/// An unopened chat whose on-disk transcript holds a plan still matches
+/// HasPlan — the pending-bookmark scan feeds `pending_has_plan`.
+#[test]
+fn has_plan_sees_scanned_pending_chats() {
+    let mut pending = chat(false, false, false);
+    pending.pending_load = Some((0, false));
+    pending.pending_has_plan = true;
+    assert!(SidebarFilter::HasPlan.matches(&pending));
+    // The flag alone doesn't qualify a hydrated chat — hydration clears
+    // it and `latest_plan` takes over.
+    pending.pending_load = None;
+    assert!(!SidebarFilter::HasPlan.matches(&pending));
+    pending.pending_has_plan = false;
+    assert!(!SidebarFilter::HasPlan.matches(&pending));
+}
+
 /// Chips AND together: Running+Unread passes only a chat that is both.
 #[test]
 fn active_filters_and_together() {

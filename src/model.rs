@@ -338,6 +338,10 @@ pub struct Chat {
     /// on disk: `load_chats` parses metadata only and `ensure_messages`
     /// re-reads the file on first open. Runtime state — never persisted.
     pub pending_load: Option<(usize, bool)>,
+    /// The on-disk transcript holds a plan card — set by the
+    /// `refresh_pending_bookmarks` scan so the sidebar's "Has plan" chip
+    /// sees unopened chats; cleared on hydrate. Runtime state.
+    pub pending_has_plan: bool,
 }
 
 impl Chat {
@@ -385,6 +389,7 @@ impl Chat {
             expanded_msgs: std::collections::HashSet::new(),
             prompt_history: Vec::new(),
             pending_load: None,
+            pending_has_plan: false,
         }
     }
 

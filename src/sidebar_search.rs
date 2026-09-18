@@ -73,16 +73,16 @@ impl PendingLookup {
     /// chat's drifted file the live half already covered).
     fn live_id(&self, ix: usize, stored: &crate::persist::StoredChat) -> Option<Option<u64>> {
         if let Some((id, at)) = self.by_slot.get(&ix)
-            && stored.created_at == *at
+            && stored.created_at == Some(*at)
         {
             return Some(Some(*id));
         }
         // Stale hint or unscanned slot — `created_at` still names the
         // pending chat the file belongs to, if any.
-        if let Some(id) = self.by_at.get(&stored.created_at) {
+        if let Some(id) = stored.created_at.and_then(|at| self.by_at.get(&at)) {
             return Some(Some(*id));
         }
-        if self.live_ats.contains(&stored.created_at) {
+        if stored.created_at.is_some_and(|at| self.live_ats.contains(&at)) {
             return None;
         }
         (ix >= self.live_len).then_some(None)
