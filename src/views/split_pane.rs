@@ -46,7 +46,13 @@ impl Workspace {
             .min_w_0()
             .h_full()
             .on_drag_move::<super::sidebar_row::ChatDrag>(move |ev: &DragMoveEvent<super::sidebar_row::ChatDrag>, _, cx| {
-                ws.update(cx, |this, cx| this.set_tear_off_hover(ev.bounds.contains(&ev.event.position), cx));
+                ws.update(cx, |this, cx| {
+                    // Ephemeral chats never reach disk — another window
+                    // can't load one, so the affordance doesn't apply to
+                    // their drags.
+                    let droppable = this.chats.iter().any(|c| c.id == ev.drag(cx).id && !c.ephemeral);
+                    this.set_tear_off_hover(droppable && ev.bounds.contains(&ev.event.position), cx);
+                });
             })
             .on_drop::<super::sidebar_row::ChatDrag>(move |drag, _, cx| {
                 ws_drop.update(cx, |this, cx| {

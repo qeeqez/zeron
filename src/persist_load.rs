@@ -81,6 +81,13 @@ pub(crate) fn find_stored(dir: &Path, probe: &ChatFileProbe) -> Option<StoredCha
 /// start — a live turn in another window keeps its `Running` status.
 pub(crate) fn hydrate_chat(chat: &mut Chat, dir: &Path) -> bool {
     let Some((_, recover)) = chat.pending_load else { return true };
+    // Live messages on a still-pending chat mean a mutation landed while
+    // the file was unreadable — memory is authoritative now, and loading
+    // the file back would silently drop them.
+    if !chat.messages.is_empty() {
+        chat.pending_load = None;
+        return true;
+    }
     let Some(probe) = ChatFileProbe::of(chat) else { return true };
     let Some(mut stored) = find_stored(dir, &probe) else {
         // Nothing readable — keep `pending_load` so `save_chats` keeps
@@ -114,3 +121,7 @@ pub(crate) fn hydrate_all(chats: &mut [Chat], dir: &Path) {
 #[cfg(test)]
 #[path = "persist_load_tests.rs"]
 mod persist_load_tests;
+
+#[cfg(test)]
+#[path = "persist_load_guard_tests.rs"]
+mod persist_load_guard_tests;

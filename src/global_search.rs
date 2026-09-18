@@ -250,15 +250,15 @@ impl Workspace {
                 docs.push(doc);
             }
         }
-        // A pending transcript that drifted past the loaded set was already
-        // emitted above (find_stored rescan) with its live id — emitting it
-        // again as disk-only would load a duplicate chat on click.
-        let pending_ats: std::collections::HashSet<SystemTime> =
-            self.chats.iter().filter(|c| c.pending_load.is_some()).map(|c| c.created_at).collect();
+        // Any live chat's file that drifted past the loaded set was already
+        // emitted — pending chats above (find_stored rescan) with their
+        // live id, hydrated ones in `live` — so emitting it again as
+        // disk-only would load a duplicate chat on click.
+        let live_ats: std::collections::HashSet<SystemTime> = self.chats.iter().map(|c| c.created_at).collect();
         for (file_ix, path) in crate::persist::chat_files(&dir) {
             if file_ix >= self.chats.len()
                 && let Some(stored) = crate::persist::read_stored(&path)
-                && !pending_ats.contains(&stored.created_at)
+                && !live_ats.contains(&stored.created_at)
             {
                 docs.push(SearchDoc::stored(file_ix, stored));
             }

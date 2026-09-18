@@ -118,8 +118,9 @@ impl Workspace {
         if let Some(ix) = self.chat_index(chat_id) {
             self.mark_chat_activity_read(self.chats[ix].created_at);
             self.select_chat(ix, window, cx);
-            // The click means "show me the new thing" — select_chat's spot
-            // restore could land mid-history, so re-engage tail follow.
+            // The click means "show me the new thing" — pin the view to
+            // the tail so the fresh reply is on screen even when the chat
+            // was already selected mid-history (select_chat no-ops then).
             self.scroller.update(cx, |s, cx| s.scroll_to_end(cx));
         }
         cx.notify();

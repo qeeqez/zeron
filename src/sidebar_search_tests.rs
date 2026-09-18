@@ -228,3 +228,26 @@ fn empty_query_hides_the_group() {
         assert!(window.try_find("group-header-Messages").is_none(), "clearing the query hides the group");
     });
 }
+
+/// A hydrated chat's file drifting past the loaded set (another window's
+/// longer slot map) must not produce a disk-only hit — clicking it would
+/// load a duplicate of the live chat.
+#[test]
+fn drifted_live_file_does_not_duplicate() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    cx.update(|window, cx| {
+        ws.update(cx, |this, _cx| {
+            push_to(this, "needle body");
+            this.save();
+            let dir = this.project.chats_dir();
+            std::fs::copy(dir.join("0.json"), dir.join("7.json")).unwrap();
+        });
+        type_query(&ws, window, cx, "needle");
+    });
+    settle(cx);
+    ws.read_with(cx, |this, _| {
+        assert_eq!(this.sidebar_hits.len(), 1, "only the live hit remains");
+        assert!(this.sidebar_hits.iter().all(|h| h.chat_id.is_some()), "no disk-only hit for a live chat's file");
+    });
+}

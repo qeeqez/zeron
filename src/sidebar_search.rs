@@ -53,9 +53,15 @@ struct PendingLookup {
     /// another window may have rewritten the slots, and a foreign file
     /// must not be attributed to this chat.
     by_slot: std::collections::HashMap<usize, (u64, SystemTime)>,
-    /// `created_at` → chat id — catches a pending transcript that drifted
-    /// past the loaded set (a `None` id would load a duplicate on click).
+    /// `created_at` → chat id, pending chats only — catches a pending
+    /// transcript that drifted past the loaded set (a `None` id would
+    /// load a duplicate on click).
     by_at: std::collections::HashMap<SystemTime, u64>,
+    /// `created_at` of every live chat — a hydrated chat's file is already
+    /// searched in the live half, so a copy drifting past the loaded set
+    /// drops here instead of becoming a disk-only hit that loads a
+    /// duplicate on click.
+    live_ats: std::collections::HashSet<SystemTime>,
     /// `Workspace::chats.len()` at scan time — slots past it are disk-only.
     live_len: usize,
 }
@@ -63,15 +69,23 @@ struct PendingLookup {
 impl PendingLookup {
     /// A scanned file's live chat id: `Some(Some(id))` attaches the hit to
     /// a live chat, `Some(None)` treats the file as disk-only, `None`
-    /// drops it (a foreign file sitting at a live index).
+    /// drops it (a foreign file sitting at a live index, or a hydrated
+    /// chat's drifted file the live half already covered).
     fn live_id(&self, ix: usize, stored: &crate::persist::StoredChat) -> Option<Option<u64>> {
-        let id = match self.by_slot.get(&ix) {
-            Some((id, at)) if stored.created_at == *at => Some(*id),
-            // Stale hint or unscanned slot — `created_at` still names the
-            // pending chat the file belongs to, if any.
-            _ => self.by_at.get(&stored.created_at).copied(),
-        };
-        (id.is_some() || ix >= self.live_len).then_some(id)
+        if let Some((id, at)) = self.by_slot.get(&ix)
+            && stored.created_at == *at
+        {
+            return Some(Some(*id));
+        }
+        // Stale hint or unscanned slot — `created_at` still names the
+        // pending chat the file belongs to, if any.
+        if let Some(id) = self.by_at.get(&stored.created_at) {
+            return Some(Some(*id));
+        }
+        if self.live_ats.contains(&stored.created_at) {
+            return None;
+        }
+        (ix >= self.live_len).then_some(None)
     }
 }
 
@@ -165,6 +179,7 @@ impl Workspace {
                 .filter_map(|c| c.pending_load.map(|(slot, _)| (slot, (c.id, c.created_at))))
                 .collect(),
             by_at: self.chats.iter().filter(|c| c.pending_load.is_some()).map(|c| (c.created_at, c.id)).collect(),
+            live_ats: self.chats.iter().map(|c| c.created_at).collect(),
             live_len: self.chats.len(),
         };
         cx.spawn(async move |this, cx| {

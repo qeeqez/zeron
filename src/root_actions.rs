@@ -5,6 +5,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::sidebar_filter::chat_cycle;
 use crate::workspace::Workspace;
 use crate::{
     Chat1, Chat2, Chat3, Chat4, Chat5, Chat6, Chat7, Chat8, Chat9, CloseWindow, CopyTranscript, DeleteChat, EmojiPalette, EnterFullscreen,
@@ -252,8 +253,6 @@ fn chat_switch<A: Action + ChatIx>(cx: &mut Context<Workspace>) -> impl Fn(&A, &
         });
     }
 }
-
-use crate::sidebar_filter::chat_cycle;
 
 trait ChatIx {
     const IX: usize;

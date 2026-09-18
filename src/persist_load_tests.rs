@@ -13,7 +13,7 @@ use crate::persist::{load_chats, save_chats};
 use crate::workspace::Workspace;
 
 /// A text message with the field set `ChatMessage` literals carry.
-fn msg(text: &str) -> ChatMessage {
+pub(super) fn msg(text: &str) -> ChatMessage {
     ChatMessage {
         alternatives: vec![],
         role: Role::Assistant,
@@ -27,13 +27,13 @@ fn msg(text: &str) -> ChatMessage {
     }
 }
 
-fn seeded_chat(id: u64, title: &str, messages: Vec<ChatMessage>) -> Chat {
+pub(super) fn seeded_chat(id: u64, title: &str, messages: Vec<ChatMessage>) -> Chat {
     let mut chat = Chat::new(id, title);
     chat.messages = Rc::new(messages);
     chat
 }
 
-fn temp_dir(name: &str) -> std::path::PathBuf {
+pub(super) fn temp_dir(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("rixlcode-persist-load-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir
@@ -247,6 +247,24 @@ fn usage_totals_include_unopened_chats() {
             let after = this.usage_totals().by_day.iter().map(|d| d.tokens).sum::<u64>();
             assert_eq!(after, 30, "opening the panel totals the unopened chat's stamps");
         });
+    });
+}
+
+#[test]
+fn search_docs_skip_a_hydrated_chats_drifted_file() {
+    sandbox_home();
+    let project = crate::project::Project::current();
+    save_chats(&project.chats_dir(), &[seeded_chat(0, "opened chat", vec![msg("needle")]), seeded_chat(1, "plain", vec![])]);
+    project.save_state(&crate::project::ProjectState { active_chat: 0, ..Default::default() });
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    // Another window's longer slot map left a copy of an already-open
+    // chat's file past the loaded set — it must not become a disk-only
+    // doc whose click loads a duplicate chat.
+    std::fs::copy(project.chats_dir().join("0.json"), project.chats_dir().join("7.json")).unwrap();
+    ws.read_with(cx, |this, _| {
+        let docs = this.search_docs();
+        assert!(!docs.iter().any(|d| d.chat_id.is_none() && d.title.as_ref() == "opened chat"));
     });
 }
 

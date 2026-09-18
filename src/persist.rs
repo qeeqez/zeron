@@ -151,6 +151,12 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
     // graft a neighbor's transcript onto these metadata fields.
     let mut deferred = std::collections::HashMap::new();
     for chat in chats {
+        // A pending chat already carrying live messages diverged from its
+        // file while the file was unreadable — memory is authoritative
+        // (see `hydrate_chat`), so there is nothing to re-read.
+        if chat.pending_load.is_none() || !chat.messages.is_empty() {
+            continue;
+        }
         if let Some(messages) = persist_load::ChatFileProbe::of(chat)
             .and_then(|probe| persist_load::find_stored(dir, &probe))
             .map(|stored| stored.messages)
@@ -166,10 +172,14 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
         }
         // An unhydrated chat must not persist its empty placeholder — use
         // the transcript re-read above. A missing read means the file
-        // vanished or changed hands mid-save, so leave the disk copy as is.
+        // vanished or changed hands mid-save, so leave the disk copy as
+        // is — unless the chat has since grown live messages; those must
+        // persist rather than silently drop (memory is authoritative —
+        // `hydrate_chat` clears `pending_load` on the same rule).
         let messages = match chat.pending_load {
             Some(_) => match deferred.remove(&chat.id) {
                 Some(m) => m,
+                None if !chat.messages.is_empty() => (*chat.messages).clone(),
                 None => continue,
             },
             None => (*chat.messages).clone(),
@@ -218,6 +228,11 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
         if foreign_turn
             && let Some(on_disk) = fs::read_to_string(&dst).ok().and_then(|s| serde_json::from_str::<StoredChat>(&s).ok())
             && on_disk.v == 1
+            // `dst` is just a slot — after another window rewrote the map
+            // it can hold a different chat entirely, so graft only the
+            // same chat's transcript (the `created_at` identity
+            // `find_stored` verifies too).
+            && on_disk.created_at == stored.created_at
             && on_disk.messages.len() >= stored.messages.len()
         {
             stored.messages = on_disk.messages;
