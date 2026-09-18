@@ -166,6 +166,7 @@ impl Workspace {
             self.persist_activity();
             return false;
         };
+        self.ensure_messages(ix);
         let chat = &mut self.chats[ix];
         std::rc::Rc::make_mut(&mut chat.messages).push(ChatMessage {
             alternatives: vec![],

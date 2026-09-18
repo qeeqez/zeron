@@ -24,6 +24,7 @@ pub(crate) struct AgentSpec {
 pub fn simulate_reply(this: &mut Workspace, chat_id: u64, cx: &mut Context<Workspace>) {
     this.spawn_agent(AgentSpec { name: "explorer", lane: "rixl/explore", steps_total: 4 }, cx);
     this.spawn_agent(AgentSpec { name: "reviewer", lane: "rixl/review", steps_total: 3 }, cx);
+    this.ensure_messages_by_id(chat_id);
     if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
         Rc::make_mut(&mut chat.messages).push(ChatMessage {
             role: Role::Assistant,

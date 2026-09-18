@@ -15,6 +15,7 @@ impl Workspace {
     /// already on screen), on the current split chat, and on archived
     /// chats — they stay off screen like the sidebar.
     pub fn open_split(&mut self, ix: usize, cx: &mut Context<Self>) {
+        self.ensure_messages(ix);
         let Some(chat) = self.chats.get(ix) else { return };
         if ix == self.active || self.secondary == Some(ix) || chat.archived {
             return;

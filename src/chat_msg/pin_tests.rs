@@ -115,7 +115,8 @@ fn pin_survives_save_and_load() {
         })
     });
     let mut next_id = 0;
-    let loaded = crate::persist::load_chats(&dir, &mut next_id, true);
+    let mut loaded = crate::persist::load_chats(&dir, &mut next_id, true);
+    crate::persist::hydrate_all(&mut loaded, &dir);
     assert_eq!(loaded.len(), 1);
     assert!(!loaded[0].messages[0].pinned);
     assert!(loaded[0].messages[1].pinned, "the pin round-trips through disk");
@@ -125,7 +126,8 @@ fn pin_survives_save_and_load() {
         ws.update(cx, |this, cx| this.unpin_message(cx));
     });
     let mut next_id = 0;
-    let loaded = crate::persist::load_chats(&dir, &mut next_id, true);
+    let mut loaded = crate::persist::load_chats(&dir, &mut next_id, true);
+    crate::persist::hydrate_all(&mut loaded, &dir);
     assert!(loaded[0].messages.iter().all(|m| !m.pinned), "unpinning persists");
 }
 

@@ -32,6 +32,11 @@ impl Workspace {
     /// other side panels' (`Settings.usage_panel_open`).
     pub fn toggle_usage_panel(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.usage_panel_open = !self.usage_panel_open;
+        // The panel totals per-message token stamps — opening it is the
+        // user's request for that data, so unopened chats hydrate here.
+        if self.usage_panel_open {
+            self.ensure_all_messages();
+        }
         self.save_settings();
         cx.notify();
     }

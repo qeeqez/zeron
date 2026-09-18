@@ -33,6 +33,7 @@ impl Workspace {
     /// dialog, then reveal the file in Finder. Temporary chats can't be
     /// exported — nothing about them persists.
     pub fn export_chat_html(&mut self, ix: usize, cx: &mut Context<Self>) {
+        self.ensure_messages(ix);
         let Some(chat) = self.chats.get(ix) else { return };
         if chat.ephemeral {
             self.push_note("Temporary chats can't be exported.".into(), cx);

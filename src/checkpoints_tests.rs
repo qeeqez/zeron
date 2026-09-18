@@ -168,7 +168,8 @@ mod tests {
         });
         crate::persist::save_chats(&dir, &[chat]);
         let mut next = 1;
-        let loaded = crate::persist::load_chats(&dir, &mut next, false);
+        let mut loaded = crate::persist::load_chats(&dir, &mut next, false);
+        crate::persist::hydrate_all(&mut loaded, &dir);
         assert_eq!(loaded.len(), 1);
         let cp = for_message(&loaded[0], 0).expect("checkpoint survives reload");
         assert_eq!(cp.checkpoint, Checkpoint::Git("abc123".into()));

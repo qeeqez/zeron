@@ -205,6 +205,7 @@ impl crate::workspace::Workspace {
     /// last user message is always the turn's first. No-op when the chat
     /// has no user message yet or the workdir can't be snapshotted.
     pub(crate) fn record_turn_checkpoint(&mut self, chat_id: u64, workdir: &Path) {
+        self.ensure_messages_by_id(chat_id);
         let turn = self.chats.iter().find(|c| c.id == chat_id).and_then(|chat| {
             chat.messages
                 .iter()

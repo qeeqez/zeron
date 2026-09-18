@@ -80,6 +80,8 @@ impl Workspace {
         self.stamp_thread();
         let prev_active = self.active;
         self.active = index;
+        // The incoming chat's transcript may still live only on disk.
+        self.ensure_messages(index);
         // Selecting the split-pane chat swaps the panes — the old active
         // takes over the secondary slot so both stay on screen. Any other
         // selection leaves the pane alone; a stale/archived one clears.
@@ -105,9 +107,7 @@ impl Workspace {
             s.focus(window, cx);
         });
         let count = self.filtered_count(cx);
-        self.scroller.update(cx, |s, cx| {
-            s.reset(count, cx);
-        });
+        self.scroller.update(cx, |s, cx| s.reset(count, cx));
         window.set_window_title(&format!("{} — Rixl Code", self.chats[index].title));
         cx.notify();
         self.save();
@@ -218,6 +218,7 @@ impl Workspace {
 impl Workspace {
     /// Duplicate chat `ix` (title + messages) as a new chat and select it.
     pub fn duplicate_chat(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.ensure_messages(ix);
         let Some(src) = self.chats.get(ix) else { return };
         let id = self.next_chat_id;
         self.next_chat_id += 1;

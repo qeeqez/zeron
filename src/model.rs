@@ -334,6 +334,10 @@ pub struct Chat {
     /// The user dismissed the current alert — the banner stays hidden
     /// until the cap changes. Runtime state, not persisted.
     pub budget_dismissed: bool,
+    /// `(slot, recover_interrupted)` when the transcript still lives only
+    /// on disk: `load_chats` parses metadata only and `ensure_messages`
+    /// re-reads the file on first open. Runtime state — never persisted.
+    pub pending_load: Option<(usize, bool)>,
 }
 
 impl Chat {
@@ -380,6 +384,7 @@ impl Chat {
             expanded_tool_groups: std::collections::HashSet::new(),
             expanded_msgs: std::collections::HashSet::new(),
             prompt_history: Vec::new(),
+            pending_load: None,
         }
     }
 

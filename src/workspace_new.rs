@@ -82,6 +82,8 @@ impl Workspace {
             sidebar_hits: Vec::new(),
             sidebar_hits_extra: 0,
             sidebar_search_gen: 0,
+            pending_bookmark_count: 0,
+            bookmark_count_gen: 0,
             scroller: inputs.scroller,
             secondary_scroller: cx.new(|cx| gpui_kit::component::message_scroller::MessageScrollerState::new(0, cx)),
             model: providers.iter().find(|p| p.id == selected_provider).map_or_else(SharedString::default, |p| {
@@ -235,6 +237,14 @@ impl Workspace {
         } else {
             this.chats = loaded;
             this.active = project_state.active_chat.min(this.chats.len().saturating_sub(1));
+            // Only the restored chat's transcript materializes now — the
+            // rest stay on disk until first opened (see `pending_load`).
+            this.ensure_messages(this.active);
+            // Panels restored open aggregate every transcript — hydrate.
+            if this.usage_panel_open || this.bookmarks_panel.open {
+                this.ensure_all_messages();
+            }
+            this.refresh_pending_bookmarks(cx);
             // Restore the active chat's unsent draft into the composer —
             // `set_value` suppresses Change, so no stash/dirty flag trips.
             let draft = this.chats[this.active].draft.clone();

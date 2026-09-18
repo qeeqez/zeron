@@ -100,7 +100,11 @@ impl Workspace {
     /// history must not clobber a live turn.
     pub(crate) fn land_session(&mut self, resumed: Option<ResumedSession>, cx: &mut Context<Self>) {
         let Some(resumed) = resumed else { return };
-        let Some(chat) = self.chats.iter_mut().find(|c| c.thread_id == resumed.id) else { return };
+        let Some(ix) = self.chats.iter().position(|c| c.thread_id == resumed.id) else { return };
+        // A pending transcript isn't empty — hydrate before the check so a
+        // late-arriving history can't clobber what the file holds.
+        self.ensure_messages(ix);
+        let chat = &mut self.chats[ix];
         if !chat.messages.is_empty() {
             return;
         }

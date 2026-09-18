@@ -186,7 +186,8 @@ fn rating_and_note_survive_save_load() {
     chat.feedback.push(FeedbackNote { at, note: "hallucinated the API".into() });
     crate::persist::save_chats(&dir, &[chat]);
     let mut next_id = 0;
-    let loaded = crate::persist::load_chats(&dir, &mut next_id, false);
+    let mut loaded = crate::persist::load_chats(&dir, &mut next_id, false);
+    crate::persist::hydrate_all(&mut loaded, &dir);
     assert_eq!(loaded.len(), 1);
     assert_eq!(loaded[0].messages[0].rating, Some(false));
     assert_eq!(loaded[0].feedback.as_slice(), [FeedbackNote { at, note: "hallucinated the API".into() }].as_slice());
@@ -203,7 +204,8 @@ fn save_drops_notes_whose_message_is_gone() {
     chat.feedback.push(FeedbackNote { at: std::time::SystemTime::now(), note: "stale".into() });
     crate::persist::save_chats(&dir, &[chat]);
     let mut next_id = 0;
-    let loaded = crate::persist::load_chats(&dir, &mut next_id, false);
+    let mut loaded = crate::persist::load_chats(&dir, &mut next_id, false);
+    crate::persist::hydrate_all(&mut loaded, &dir);
     assert_eq!(loaded.len(), 1);
     assert!(loaded[0].feedback.is_empty());
     let _ = std::fs::remove_dir_all(&dir);

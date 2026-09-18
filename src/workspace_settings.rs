@@ -19,6 +19,8 @@ impl Workspace {
             let dropped = evict_overflow(&mut self.chats, MAX_CHATS, self.project.root(), self.active);
             self.active = self.active.saturating_sub(dropped).min(self.chats.len().saturating_sub(1));
             self.secondary = secondary_id.and_then(|id| self.chat_index(id)).filter(|&s| s != self.active);
+            // Eviction can leave a never-opened chat active.
+            self.ensure_messages(self.active);
         }
         // Setup-script runs nobody claimed (forked worktrees) land their
         // note here — before `save_chats` so the message persists in the
@@ -27,6 +29,13 @@ impl Workspace {
             self.note_setup_outcome(outcome);
         }
         crate::persist::save_chats(&self.project.chats_dir(), &self.chats);
+        // `save_chats` wrote each pending chat's transcript to its current
+        // slot — re-stamp the hint so `find_stored` keeps the cheap path.
+        for (ix, chat) in self.chats.iter_mut().enumerate() {
+            if let Some((_, recover)) = chat.pending_load {
+                chat.pending_load = Some((ix, recover));
+            }
+        }
         self.save_project_state();
     }
 

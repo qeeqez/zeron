@@ -160,6 +160,7 @@ impl Workspace {
     /// unless `opts.allow_empty` — compare forks a fresh chat so its
     /// prompt lands as the first message.
     fn fork_inner(&mut self, chat_ix: usize, opts: ForkOpts, window: &mut Window, cx: &mut Context<Self>) {
+        self.ensure_messages(chat_ix);
         let Some(src) = self.chats.get(chat_ix) else { return };
         let end = opts.at.map_or(src.messages.len(), |ix| ix + 1);
         if end > src.messages.len() || (end == 0 && !opts.allow_empty) {

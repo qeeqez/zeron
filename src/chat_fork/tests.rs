@@ -111,7 +111,8 @@ fn fork_is_selected_and_persists() {
         ws.project.chats_dir()
     });
     let mut next_id = 100;
-    let loaded = crate::persist::load_chats(&dir, &mut next_id, false);
+    let mut loaded = crate::persist::load_chats(&dir, &mut next_id, false);
+    crate::persist::hydrate_all(&mut loaded, &dir);
     let fork = loaded.iter().find(|c| c.title == "Fix bug · fork").expect("fork should persist");
     assert_eq!(fork.messages.len(), 3, "persisted fork holds the truncated transcript");
     assert!(loaded.iter().any(|c| c.title == "Fix bug" && c.messages.len() == 4), "original persists intact");

@@ -12,8 +12,8 @@ use std::time::SystemTime;
 
 use gpui_kit::*;
 
-use crate::global_search::{chat_files, read_stored};
 use crate::model::ChatMessage;
+use crate::persist::{chat_files, read_stored};
 use crate::workspace::Workspace;
 
 /// Keystroke → disk scan delay. Live chats rescan instantly; only the
@@ -42,6 +42,37 @@ pub(crate) struct SidebarMsgHit {
     pub count: usize,
     /// The matched message's timestamp — hits sort newest-first on it.
     pub at: SystemTime,
+}
+
+/// The pending-chat identity maps the disk scan resolves file ids with —
+/// `pending_load` slot hints plus `created_at`s, none of the `Rc`s a live
+/// `Chat` holds (the scan runs on the background executor).
+struct PendingLookup {
+    /// File slot → `(chat id, created_at)` — the transcript's last known
+    /// position. `created_at` verifies the hint before a live id attaches:
+    /// another window may have rewritten the slots, and a foreign file
+    /// must not be attributed to this chat.
+    by_slot: std::collections::HashMap<usize, (u64, SystemTime)>,
+    /// `created_at` → chat id — catches a pending transcript that drifted
+    /// past the loaded set (a `None` id would load a duplicate on click).
+    by_at: std::collections::HashMap<SystemTime, u64>,
+    /// `Workspace::chats.len()` at scan time — slots past it are disk-only.
+    live_len: usize,
+}
+
+impl PendingLookup {
+    /// A scanned file's live chat id: `Some(Some(id))` attaches the hit to
+    /// a live chat, `Some(None)` treats the file as disk-only, `None`
+    /// drops it (a foreign file sitting at a live index).
+    fn live_id(&self, ix: usize, stored: &crate::persist::StoredChat) -> Option<Option<u64>> {
+        let id = match self.by_slot.get(&ix) {
+            Some((id, at)) if stored.created_at == *at => Some(*id),
+            // Stale hint or unscanned slot — `created_at` still names the
+            // pending chat the file belongs to, if any.
+            _ => self.by_at.get(&stored.created_at).copied(),
+        };
+        (id.is_some() || ix >= self.live_len).then_some(id)
+    }
 }
 
 /// The chat's newest body match plus its total match count; `None` when
@@ -101,12 +132,14 @@ impl Workspace {
             self.sidebar_hits_extra = 0;
             return;
         }
-        // Temporary chats are unsearchable — they never reach disk.
+        // Temporary chats are unsearchable — they never reach disk, and
+        // pending transcripts aren't in memory — their files are scanned
+        // in the disk half below (keyed to the live chat id).
         let mut hits: Vec<SidebarMsgHit> = self
             .chats
             .iter()
             .enumerate()
-            .filter(|(_, c)| !c.ephemeral)
+            .filter(|(_, c)| !c.ephemeral && c.pending_load.is_none())
             .filter_map(|(ix, c)| chat_hit(Some(c.id), ix, c.title.clone(), &c.messages, &query))
             .collect();
         hits.sort_by_key(|h| std::cmp::Reverse(h.at));
@@ -114,11 +147,26 @@ impl Workspace {
         hits.truncate(MAX_ROWS);
         self.sidebar_hits = hits;
 
-        // Disk half: chat files past the loaded set, parsed off the main
-        // thread after the debounce. `chat_files`/`read_stored` are the
-        // same helpers the Cmd-Shift-F dialog scans with.
+        // Disk half: chat files past the loaded set plus pending chats'
+        // own files, parsed off the main thread after the debounce. A
+        // pending chat's hits keep its live id so `open_hit` selects (and
+        // hydrates) the real chat — but only when the file's `created_at`
+        // still matches: another window may have rewritten the slots, and
+        // a foreign file must not be attributed to this chat. Files that
+        // drifted past the loaded set are matched back by `created_at` too
+        // (a `None` id would load a duplicate on click).
+        // `chat_files`/`read_stored` are the same helpers the Cmd-Shift-F
+        // dialog scans with.
         let dir = self.project.chats_dir();
-        let live_len = self.chats.len();
+        let pending = PendingLookup {
+            by_slot: self
+                .chats
+                .iter()
+                .filter_map(|c| c.pending_load.map(|(slot, _)| (slot, (c.id, c.created_at))))
+                .collect(),
+            by_at: self.chats.iter().filter(|c| c.pending_load.is_some()).map(|c| (c.created_at, c.id)).collect(),
+            live_len: self.chats.len(),
+        };
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(DEBOUNCE).await;
             let dir_hits = cx
@@ -126,10 +174,10 @@ impl Workspace {
                 .spawn(async move {
                     let mut hits: Vec<SidebarMsgHit> = chat_files(&dir)
                         .into_iter()
-                        .filter(|(ix, _)| *ix >= live_len)
+                        .filter(|(ix, _)| *ix >= pending.live_len || pending.by_slot.contains_key(ix))
                         .filter(|(_, path)| path.metadata().is_ok_and(|m| m.len() <= MAX_FILE_BYTES))
                         .filter_map(|(ix, path)| read_stored(&path).map(|s| (ix, s)))
-                        .filter_map(|(ix, s)| chat_hit(None, ix, s.title.into(), &s.messages, &query))
+                        .filter_map(|(ix, s)| pending.live_id(ix, &s).and_then(|id| chat_hit(id, ix, s.title.into(), &s.messages, &query)))
                         .collect();
                     hits.sort_by_key(|h| std::cmp::Reverse(h.at));
                     hits

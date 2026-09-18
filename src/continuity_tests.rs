@@ -60,6 +60,7 @@ fn saved_chats_reopen_on_launch() {
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert!(window.find("sidebar-wrap").visible(), "sidebar renders");
+        ws.update(cx, |this, _| this.ensure_all_messages());
         let ws = ws.read(cx);
         assert_eq!(ws.chats.len(), 2, "both saved chats must be restored");
         assert_eq!(ws.chats[0].title, "prior chat");
@@ -216,7 +217,8 @@ fn second_window_save_preserves_completed_turn() {
 
     let project = crate::project::Project::current();
     let mut next_id = 0;
-    let loaded = crate::persist::load_chats(&project.chats_dir(), &mut next_id, false);
+    let mut loaded = crate::persist::load_chats(&project.chats_dir(), &mut next_id, false);
+    crate::persist::hydrate_all(&mut loaded, &project.chats_dir());
     assert_eq!(loaded.len(), 1);
     assert!(
         matches!(&loaded[0].messages[0].kind, MessageKind::Tool(t) if t.status == ToolStatus::Done && t.output.as_str() == "built"),

@@ -110,7 +110,8 @@ fn bookmark_survives_save_and_load() {
         })
     });
     let mut next_id = 0;
-    let loaded = crate::persist::load_chats(&dir, &mut next_id, true);
+    let mut loaded = crate::persist::load_chats(&dir, &mut next_id, true);
+    crate::persist::hydrate_all(&mut loaded, &dir);
     assert_eq!(loaded.len(), 1);
     assert!(!loaded[0].messages[0].bookmarked);
     assert!(loaded[0].messages[1].bookmarked, "the star round-trips through disk");
@@ -120,7 +121,8 @@ fn bookmark_survives_save_and_load() {
         ws.update(cx, |this, cx| this.toggle_bookmark(1, cx));
     });
     let mut next_id = 0;
-    let loaded = crate::persist::load_chats(&dir, &mut next_id, true);
+    let mut loaded = crate::persist::load_chats(&dir, &mut next_id, true);
+    crate::persist::hydrate_all(&mut loaded, &dir);
     assert!(loaded[0].messages.iter().all(|m| !m.bookmarked), "unstarring persists");
 }
 

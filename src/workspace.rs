@@ -112,6 +112,12 @@ pub struct Workspace {
     /// Bumped per query edit; a landing disk scan stamped with an older
     /// generation is discarded.
     pub sidebar_search_gen: u64,
+    /// Starred messages in chats whose transcripts are still on disk —
+    /// counted by a background scan (see `refresh_pending_bookmarks`) so
+    /// the sidebar badge totals every chat, not just opened ones.
+    pub pending_bookmark_count: usize,
+    /// Bumped per scheduled bookmark scan; stale landings are discarded.
+    pub bookmark_count_gen: u64,
     pub scroller: Entity<MessageScrollerState>,
     /// The split pane's transcript scroller — independent of `scroller` so
     /// the read-only pane keeps its own scroll position and tail-follow.
@@ -419,6 +425,11 @@ mod draft_persist_tests;
 #[path = "chat_reorder.rs"]
 pub(crate) mod reorder;
 pub(crate) use reorder::{sort_group, sort_key};
+
+/// Lazy transcript materialization — declared here, not in `main.rs` —
+/// the crate root is at the SLOC cap.
+#[path = "hydrate.rs"]
+mod hydrate;
 
 #[cfg(test)]
 #[path = "chat_reorder_tests.rs"]

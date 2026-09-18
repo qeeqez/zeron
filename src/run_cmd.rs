@@ -169,6 +169,7 @@ impl Workspace {
     /// Push the running tool card for `command` and run it on the
     /// background executor; the result lands via `land_command_run`.
     fn spawn_command_run(&mut self, run: PendingRun, cx: &mut Context<Self>) {
+        self.ensure_messages_by_id(run.chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == run.chat_id) else { return };
         let cwd = crate::worktree::workdir_for(chat, self.project.root());
         let tool_ix = NEXT_RUN_IX.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);

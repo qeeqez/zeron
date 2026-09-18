@@ -2,13 +2,14 @@
 //! from `chat_msg.rs`/`workspace.rs` for the SLOC cap and declared from
 //! `chat_msg.rs` beside `toggle_bookmark` (`main.rs` is at the cap). The
 //! panel itself renders in `views::bookmarks_panel`; this file owns what it
-//! shows: every bookmarked message across the project's *loaded* chats,
-//! grouped per chat in sidebar order.
+//! shows: every bookmarked message across the project's chats, grouped per
+//! chat in sidebar order.
 //!
-//! Scope note: only `self.chats` is scanned — chats still on disk that this
-//! window never loaded don't appear until opened (or pulled in by global
-//! search). Loading every chat file to find its stars would re-read the
-//! whole project on each render; loaded-only is the v1 trade-off.
+//! Lazy loading (`Chat::pending_load`) leaves unopened chats' transcripts
+//! on disk: opening the panel hydrates them all — an explicit request for
+//! that data — and the sidebar badge gets its pending half from a
+//! debounced background file scan (`refresh_pending_bookmarks`) so stars
+//! never silently vanish before first open.
 
 use std::rc::Rc;
 
@@ -83,15 +84,68 @@ impl Workspace {
             .collect()
     }
 
-    /// Total starred messages across loaded chats — the sidebar row's suffix.
+    /// Total starred messages across every chat — the sidebar row's
+    /// suffix. Loaded chats count live; pending transcripts ride
+    /// `pending_bookmark_count`, refreshed off-thread by
+    /// `refresh_pending_bookmarks`.
     pub(crate) fn bookmark_count(&self) -> usize {
-        self.chats.iter().flat_map(|c| c.messages.iter()).filter(|m| m.bookmarked).count()
+        self.chats
+            .iter()
+            .filter(|c| c.pending_load.is_none())
+            .flat_map(|c| c.messages.iter())
+            .filter(|m| m.bookmarked)
+            .count()
+            + self.pending_bookmark_count
+    }
+
+    /// Recount stars in chats whose transcripts still live only on disk —
+    /// the badge's pending half. Debounced: `save` calls this on every
+    /// mutation, and a scan stamped with an older `bookmark_count_gen`
+    /// lands nothing.
+    pub(crate) fn refresh_pending_bookmarks(&mut self, cx: &mut Context<Self>) {
+        self.bookmark_count_gen += 1;
+        let stamp = self.bookmark_count_gen;
+        let pending: Vec<crate::persist::ChatFileProbe> = self.chats.iter().filter_map(crate::persist::ChatFileProbe::of).collect();
+        if pending.is_empty() {
+            self.pending_bookmark_count = 0;
+            return;
+        }
+        let dir = self.project.chats_dir();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(300)).await;
+            let counts = cx.background_executor().spawn(async move { pending_stars(&dir, &pending) }).await;
+            let _ = this.update(cx, |this, cx| this.land_pending_bookmarks(stamp, counts, cx));
+        })
+        .detach();
+    }
+
+    /// Land a finished pending-star scan — dropped when a newer
+    /// `refresh_pending_bookmarks` superseded it (`stamp` predates the
+    /// current generation).
+    fn land_pending_bookmarks(&mut self, stamp: u64, counts: Vec<(std::time::SystemTime, usize)>, cx: &mut Context<Self>) {
+        if self.bookmark_count_gen != stamp {
+            return;
+        }
+        // Chats hydrated mid-scan now count live — keep only the
+        // still-pending half so nothing double-counts.
+        self.pending_bookmark_count = counts
+            .iter()
+            .filter(|(at, _)| self.chats.iter().any(|c| c.pending_load.is_some() && c.created_at == *at))
+            .map(|(_, n)| n)
+            .sum();
+        cx.notify();
     }
 
     /// Toggle the Bookmarks panel; the open flag persists like the plan
-    /// panel's.
+    /// panel's. Opening hydrates every pending transcript — the panel
+    /// aggregates across all chats, which is exactly what the user asked
+    /// to see; it also makes the count's live half complete.
     pub fn toggle_bookmarks_panel(&mut self, cx: &mut Context<Self>) {
         self.bookmarks_panel.open = !self.bookmarks_panel.open;
+        if self.bookmarks_panel.open {
+            self.ensure_all_messages();
+            self.refresh_pending_bookmarks(cx);
+        }
         self.save_settings();
         cx.notify();
     }
@@ -109,6 +163,7 @@ impl Workspace {
     /// only reaches the active chat, so the panel needs the id-addressed
     /// variant. A stale index after a transcript edit is a no-op.
     pub fn unbookmark(&mut self, chat_id: u64, msg_ix: usize, cx: &mut Context<Self>) {
+        self.ensure_messages_by_id(chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         let Some(msg) = Rc::make_mut(&mut chat.messages).get_mut(msg_ix) else { return };
         if !msg.bookmarked {
@@ -122,6 +177,7 @@ impl Workspace {
     /// The header's "Clear all": unstar every message in every loaded chat.
     /// One save at the end — `unbookmark` would write per row.
     pub fn clear_all_bookmarks(&mut self, cx: &mut Context<Self>) {
+        self.ensure_all_messages();
         let mut cleared = false;
         for chat in &mut self.chats {
             for msg in Rc::make_mut(&mut chat.messages) {
@@ -134,6 +190,19 @@ impl Workspace {
         cx.notify();
         self.save();
     }
+}
+
+/// One `(created_at, stars)` pair per pending chat — runs on the
+/// background executor, so it takes probes rather than the `Rc`-holding
+/// chats. `find_stored` tolerates slot shifts the way hydration does.
+fn pending_stars(dir: &std::path::Path, pending: &[crate::persist::ChatFileProbe]) -> Vec<(std::time::SystemTime, usize)> {
+    pending
+        .iter()
+        .map(|probe| {
+            let n = crate::persist::find_stored(dir, probe).map_or(0, |s| s.messages.iter().filter(|m| m.bookmarked).count());
+            (probe.created_at, n)
+        })
+        .collect()
 }
 
 #[cfg(test)]

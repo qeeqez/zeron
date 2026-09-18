@@ -5,11 +5,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{Chat, ChatMessage, MessageKind, ToolStatus};
 
+/// The `messages` field is generic so `load_chats` can parse metadata-only
+/// (`IgnoredAny`) without paying for transcripts nobody opened yet, and
+/// `recover_interrupted` can take just the messages to mutate.
 #[derive(Serialize, Deserialize)]
-pub(crate) struct StoredChat {
+pub(crate) struct StoredChat<M = Vec<ChatMessage>> {
     pub(crate) v: u32,
     pub(crate) title: String,
-    pub(crate) messages: Vec<ChatMessage>,
+    pub(crate) messages: M,
     /// Missing in early v1 files.
     #[serde(default)]
     pub(crate) pinned: bool,
@@ -88,13 +91,15 @@ pub(crate) struct StoredChat {
     pub(crate) budget_alert_usd: Option<f64>,
 }
 
-impl StoredChat {
-    /// The live `Chat` this file becomes — shared by `load_chats` and the
-    /// global-search single-file load so neither drops fields the other
-    /// restores.
-    pub(crate) fn into_chat(self, id: u64) -> Chat {
+impl<M> StoredChat<M> {
+    /// The live `Chat` this file becomes plus its messages payload —
+    /// shared by `load_chats` and the global-search single-file load so
+    /// neither drops fields the other restores. The messages come back
+    /// separately so a lazy load can drop the `IgnoredAny` placeholder
+    /// without a dummy `Rc`.
+    pub(crate) fn into_chat(self, id: u64) -> (Chat, M) {
         let mut chat = Chat::new(id, self.title);
-        chat.messages = std::rc::Rc::new(self.messages);
+        chat.messages = std::rc::Rc::new(Vec::new());
         chat.pinned = self.pinned;
         chat.archived = self.archived;
         chat.folder = self.folder;
@@ -121,7 +126,7 @@ impl StoredChat {
         chat.color = crate::model::ChatColor::from_name(&self.color);
         chat.instructions = if self.instructions.is_empty() { None } else { Some(self.instructions) };
         chat.budget_alert_usd = self.budget_alert_usd;
-        chat
+        (chat, self.messages)
     }
 }
 
@@ -138,16 +143,41 @@ pub(crate) fn dirs_home() -> PathBuf {
 /// that no longer exist are removed so deletions survive restarts.
 pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
     let _ = fs::create_dir_all(dir);
+    // Unhydrated chats carry an empty in-memory transcript — writing it
+    // would wipe history. Re-read each pending chat's file first (keyed by
+    // chat id, before the slot rewriting below) so metadata saves keep the
+    // real messages. `find_stored` verifies the hinted slot still holds
+    // this chat — a stale hint after another window rewrote slots must not
+    // graft a neighbor's transcript onto these metadata fields.
+    let mut deferred = std::collections::HashMap::new();
+    for chat in chats {
+        if let Some(messages) = persist_load::ChatFileProbe::of(chat)
+            .and_then(|probe| persist_load::find_stored(dir, &probe))
+            .map(|stored| stored.messages)
+        {
+            deferred.insert(chat.id, messages);
+        }
+    }
     for (ix, chat) in chats.iter().enumerate() {
         // Temporary chats never reach disk — the slot stays empty and the
         // stale sweep below removes any file that ever lands there.
         if chat.ephemeral {
             continue;
         }
+        // An unhydrated chat must not persist its empty placeholder — use
+        // the transcript re-read above. A missing read means the file
+        // vanished or changed hands mid-save, so leave the disk copy as is.
+        let messages = match chat.pending_load {
+            Some(_) => match deferred.remove(&chat.id) {
+                Some(m) => m,
+                None => continue,
+            },
+            None => (*chat.messages).clone(),
+        };
         let mut stored = StoredChat {
             v: 1,
             title: chat.title.to_string(),
-            messages: (*chat.messages).clone(),
+            messages,
             pinned: chat.pinned,
             archived: chat.archived,
             folder: chat.folder.clone(),
@@ -226,8 +256,12 @@ pub fn save_chats(dir: &std::path::Path, chats: &[Chat]) {
 /// numeric-name order — the same order `save_chats` wrote — so the persisted
 /// `active_chat` index still points at the same conversation. Each chat gets
 /// a fresh id from `next_id` so reply tasks can target chats stably.
-/// `recover_interrupted` marks tools saved mid-`Running` as failed — pass it
-/// only on a cold start, when no live window can own those turns.
+///
+/// Transcripts stay on disk: messages parse as `IgnoredAny` so startup only
+/// pays for metadata. `Chat::pending_load` records the slot the transcript
+/// lives in plus whether `recover_interrupted` applies — `hydrate_chat`
+/// replays it on first open. Pass `recover_interrupted` only on a cold
+/// start, when no live window can own those turns.
 pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted: bool) -> Vec<Chat> {
     let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
     let mut files: Vec<(usize, PathBuf)> = entries
@@ -243,74 +277,38 @@ pub fn load_chats(dir: &std::path::Path, next_id: &mut u64, recover_interrupted:
     files.sort_by_key(|(ix, _)| *ix);
     files
         .into_iter()
-        .filter_map(|(_, path)| {
-            let mut stored: StoredChat = serde_json::from_str(&fs::read_to_string(&path).ok()?).ok()?;
+        .filter_map(|(ix, path)| {
+            let stored: StoredChat<serde::de::IgnoredAny> = serde_json::from_str(&fs::read_to_string(&path).ok()?).ok()?;
             if stored.v != 1 {
                 // Unknown format — keep the file as .bak so it isn't lost.
                 let _ = fs::rename(&path, path.with_extension("json.bak"));
                 return None;
             }
-            // A chat saved mid-turn leaves ToolStatus::Running behind. Only a
-            // cold start may mark it failed — when another window owns a live
-            // turn, rewriting its status here would persist a false failure.
-            for m in &mut stored.messages {
-                if recover_interrupted
-                    && let MessageKind::Tool(t) = &mut m.kind
-                    && t.status == ToolStatus::Running
-                {
-                    t.status = ToolStatus::Failed;
-                }
-            }
-            let chat = stored.into_chat(*next_id);
+            let (mut chat, _) = stored.into_chat(*next_id);
+            // `hydrate_chat` re-reads this file on first open and replays
+            // the interrupted-tool recovery then — marking a live turn in
+            // another window failed here would persist a false failure.
+            chat.pending_load = Some((ix, recover_interrupted));
             *next_id += 1;
             Some(chat)
         })
         .collect()
 }
 
-/// On-disk wrapper for the saved-prompts store so a future format bump can
-/// reject unknown versions.
-#[derive(Serialize, Deserialize)]
-struct StoredPrompts {
-    v: u32,
-    prompts: Vec<crate::prompts::SavedPrompt>,
-}
-
-/// Write the saved prompts to `dir/prompts.json` (atomic tmp+rename). An
-/// empty store removes the file so a cleared list stays cleared.
-pub fn save_prompts(dir: &std::path::Path, store: &crate::prompts::PromptStore) {
-    let path = dir.join("prompts.json");
-    if store.prompts.is_empty() {
-        let _ = fs::remove_file(path);
-        return;
-    }
-    let stored = StoredPrompts { v: 1, prompts: store.prompts.clone() };
-    let Ok(json) = serde_json::to_string_pretty(&stored) else { return };
-    // Skip the write when nothing changed — prompt mutations are rare but
-    // the file stays byte-identical across unrelated saves.
-    if fs::read_to_string(&path).is_ok_and(|old| old == json) {
-        return;
-    }
-    let _ = fs::create_dir_all(dir);
-    let tmp = dir.join("prompts.json.tmp");
-    let _ = fs::write(&tmp, json);
-    let _ = fs::rename(&tmp, &path);
-}
-
-/// Read `dir/prompts.json`; an empty store on any error or unknown version.
-pub fn load_prompts(dir: &std::path::Path) -> crate::prompts::PromptStore {
-    fs::read_to_string(dir.join("prompts.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str::<StoredPrompts>(&s).ok())
-        .filter(|s| s.v == 1)
-        .map_or_else(crate::prompts::PromptStore::default, |s| crate::prompts::PromptStore { prompts: s.prompts })
-}
-
 // Declared here, not in `main.rs` — the crate root is at the SLOC cap.
 #[path = "persist_automations.rs"]
 mod persist_automations;
+#[path = "persist_load.rs"]
+pub(crate) mod persist_load;
+#[path = "persist_prompts.rs"]
+mod persist_prompts;
 #[path = "persist_templates.rs"]
 mod persist_templates;
+
+#[cfg(test)]
+pub(crate) use persist_load::hydrate_all;
+pub(crate) use persist_load::{ChatFileProbe, chat_files, find_stored, hydrate_chat, read_stored};
+pub use persist_prompts::{load_prompts, save_prompts};
 
 pub use crate::persist_settings::{DefaultModel, Settings, load_settings, save_settings};
 

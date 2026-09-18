@@ -8,7 +8,6 @@
 //! `on_query` → `cx.notify()`, and confirming a row re-runs the same
 //! search so the `IndexPath` resolves against what the user saw.
 
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 
@@ -152,30 +151,6 @@ pub(crate) struct SearchFilters {
     pub opts: FindOpts,
 }
 
-/// `(index, path)` pairs for every `N.json` chat file in `dir`, sorted —
-/// the same naming `persist::save_chats` writes.
-pub(crate) fn chat_files(dir: &Path) -> Vec<(usize, PathBuf)> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
-    let mut files: Vec<(usize, PathBuf)> = entries
-        .filter_map(|e| {
-            let path = e.ok()?.path();
-            if path.extension()?.to_str()? != "json" {
-                return None;
-            }
-            let ix = path.file_stem()?.to_str()?.parse::<usize>().ok()?;
-            Some((ix, path))
-        })
-        .collect();
-    files.sort_by_key(|(ix, _)| *ix);
-    files
-}
-
-/// Parse one chat file; `None` on unreadable or foreign-format content.
-pub(crate) fn read_stored(path: &Path) -> Option<crate::persist::StoredChat> {
-    let stored: crate::persist::StoredChat = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
-    (stored.v == 1).then_some(stored)
-}
-
 /// Every match for `query` across `docs`, newest message first. An empty
 /// query matches nothing — the dialog shows its hint instead of flooding
 /// the list with every message ever written. `filters` narrows the text
@@ -255,15 +230,35 @@ impl Workspace {
         self.global_search.update(cx, |state, cx| state.focus(window, cx));
     }
 
-    /// The searchable set: every loaded chat plus on-disk chat files beyond
-    /// the loaded set (written by another window or a previous run).
+    /// The searchable set: every loaded chat plus on-disk chat files —
+    /// beyond the loaded set (written by another window or a previous
+    /// run), and pending chats' own files since their transcripts never
+    /// materialized. A pending chat's doc keeps the live `chat_id` so
+    /// opening the hit hydrates it through `select_chat`.
     pub(crate) fn search_docs(&self) -> Vec<SearchDoc> {
         // Temporary chats are unsearchable — they never reach disk.
-        let live = self.chats.iter().enumerate().filter(|x| !x.1.ephemeral);
+        let live = self.chats.iter().enumerate().filter(|x| !x.1.ephemeral && x.1.pending_load.is_none());
         let mut docs: Vec<SearchDoc> = live.map(|(ix, chat)| SearchDoc::live(ix, chat)).collect();
-        for (file_ix, path) in chat_files(&self.project.chats_dir()) {
+        let dir = self.project.chats_dir();
+        for (ix, chat) in self.chats.iter().enumerate() {
+            if !chat.ephemeral
+                && let Some(probe) = crate::persist::ChatFileProbe::of(chat)
+                && let Some(stored) = crate::persist::find_stored(&dir, &probe)
+            {
+                let mut doc = SearchDoc::stored(ix, stored);
+                doc.chat_id = Some(chat.id);
+                docs.push(doc);
+            }
+        }
+        // A pending transcript that drifted past the loaded set was already
+        // emitted above (find_stored rescan) with its live id — emitting it
+        // again as disk-only would load a duplicate chat on click.
+        let pending_ats: std::collections::HashSet<SystemTime> =
+            self.chats.iter().filter(|c| c.pending_load.is_some()).map(|c| c.created_at).collect();
+        for (file_ix, path) in crate::persist::chat_files(&dir) {
             if file_ix >= self.chats.len()
-                && let Some(stored) = read_stored(&path)
+                && let Some(stored) = crate::persist::read_stored(&path)
+                && !pending_ats.contains(&stored.created_at)
             {
                 docs.push(SearchDoc::stored(file_ix, stored));
             }
@@ -302,8 +297,9 @@ impl Workspace {
     /// `persist::load_chats`, minus the interrupted-turn recovery (a live
     /// turn in another window must not be marked failed here).
     fn load_chat(&mut self, file_ix: usize) -> Option<Chat> {
-        let stored = read_stored(&self.project.chats_dir().join(format!("{file_ix}.json")))?;
-        let chat = stored.into_chat(self.next_chat_id);
+        let stored = crate::persist::read_stored(&self.project.chats_dir().join(format!("{file_ix}.json")))?;
+        let (mut chat, messages) = stored.into_chat(self.next_chat_id);
+        chat.messages = Rc::new(messages);
         self.next_chat_id += 1;
         Some(chat)
     }

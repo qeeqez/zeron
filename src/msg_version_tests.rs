@@ -216,7 +216,8 @@ fn alternatives_survive_save_load() {
     });
     crate::persist::save_chats(&dir, &[chat]);
     let mut next_id = 0;
-    let loaded = crate::persist::load_chats(&dir, &mut next_id, true);
+    let mut loaded = crate::persist::load_chats(&dir, &mut next_id, true);
+    crate::persist::hydrate_all(&mut loaded, &dir);
     assert_eq!(loaded.len(), 1);
     let reply = &loaded[0].messages[1];
     assert!(matches!(&reply.kind, MessageKind::Text(t) if t.as_str() == "reply 1"));

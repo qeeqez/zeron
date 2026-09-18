@@ -76,7 +76,8 @@ fn split_persists_both_chats() {
     });
     let dir = app.read(|cx| ws.read(cx).project.chats_dir());
     let mut next_id = 100;
-    let loaded = crate::persist::load_chats(&dir, &mut next_id, false);
+    let mut loaded = crate::persist::load_chats(&dir, &mut next_id, false);
+    crate::persist::hydrate_all(&mut loaded, &dir);
     let src = loaded.iter().find(|c| c.title == "Fix bug").expect("source should persist");
     assert_eq!(src.messages.len(), 2, "the persisted source is truncated");
     let split = loaded.iter().find(|c| c.title == "Fix bug (split)").expect("split should persist");
@@ -159,7 +160,8 @@ fn ephemeral_source_splits_ephemeral() {
         ws.project.chats_dir()
     });
     let mut next_id = 100;
-    let loaded = crate::persist::load_chats(&dir, &mut next_id, false);
+    let mut loaded = crate::persist::load_chats(&dir, &mut next_id, false);
+    crate::persist::hydrate_all(&mut loaded, &dir);
     assert!(loaded.iter().all(|c| c.title != "Fix bug (split)"), "an ephemeral split never reaches disk");
 }
 

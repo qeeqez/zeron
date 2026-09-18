@@ -64,7 +64,8 @@ mod tests {
         save_chats(&dir, &[chat]);
 
         let mut next_id = 0;
-        let loaded = load_chats(&dir, &mut next_id, true);
+        let mut loaded = load_chats(&dir, &mut next_id, true);
+        crate::persist::hydrate_all(&mut loaded, &dir);
         assert_eq!(loaded.len(), 1);
         let chat = &loaded[0];
         assert_eq!(chat.title, "saved chat");
@@ -106,7 +107,8 @@ mod tests {
         save_chats(&dir, &[chat]);
 
         let mut next_id = 0;
-        let loaded = load_chats(&dir, &mut next_id, true);
+        let mut loaded = load_chats(&dir, &mut next_id, true);
+        crate::persist::hydrate_all(&mut loaded, &dir);
         assert_eq!(loaded.len(), 1);
         assert!(!loaded[0].running, "a dead turn must not restore as running");
         assert!(
@@ -136,7 +138,8 @@ mod tests {
         save_chats(&dir, &[chat]);
 
         let mut next_id = 0;
-        let loaded = load_chats(&dir, &mut next_id, false);
+        let mut loaded = load_chats(&dir, &mut next_id, false);
+        crate::persist::hydrate_all(&mut loaded, &dir);
         assert_eq!(loaded.len(), 1);
         assert!(
             matches!(&loaded[0].messages[0].kind, MessageKind::Tool(t) if t.status == ToolStatus::Running),
@@ -150,7 +153,8 @@ mod tests {
         save_chats(&dir, &[Chat::new(0, "a"), Chat::new(1, "b")]);
         save_chats(&dir, &[Chat::new(0, "a")]);
         let mut next_id = 0;
-        let loaded = load_chats(&dir, &mut next_id, true);
+        let mut loaded = load_chats(&dir, &mut next_id, true);
+        crate::persist::hydrate_all(&mut loaded, &dir);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].title, "a");
     }
@@ -215,7 +219,8 @@ mod tests {
         save_chats(&dir, &[chat]);
 
         let mut next_id = 0;
-        let loaded = load_chats(&dir, &mut next_id, true);
+        let mut loaded = load_chats(&dir, &mut next_id, true);
+        crate::persist::hydrate_all(&mut loaded, &dir);
         let chat = &loaded[0];
         assert_eq!(chat.provider, "claude-cli");
         assert_eq!(chat.model, "opus");
@@ -233,7 +238,8 @@ mod tests {
         save_chats(&dir, &[chat]);
 
         let mut next_id = 0;
-        let loaded = load_chats(&dir, &mut next_id, true);
+        let mut loaded = load_chats(&dir, &mut next_id, true);
+        crate::persist::hydrate_all(&mut loaded, &dir);
         assert_eq!(loaded[0].draft, "half-written reply");
     }
 
@@ -250,7 +256,8 @@ mod tests {
         let dir = temp_chats_dir("legacy-fields");
         std::fs::write(dir.join("0.json"), r#"{"v":1,"title":"old","messages":[]}"#).unwrap();
         let mut next_id = 0;
-        let loaded = load_chats(&dir, &mut next_id, true);
+        let mut loaded = load_chats(&dir, &mut next_id, true);
+        crate::persist::hydrate_all(&mut loaded, &dir);
         let chat = &loaded[0];
         assert!(chat.provider.is_empty() && chat.model.is_empty());
         assert!(chat.access.is_none());

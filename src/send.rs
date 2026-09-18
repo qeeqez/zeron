@@ -137,6 +137,7 @@ impl Workspace {
     /// running and start the reply turn. Composer recall belongs to the
     /// active chat — only cleared when `chat_id` is the one on screen.
     fn begin_turn_in(&mut self, chat_id: u64, prompt: &str, cx: &mut Context<Self>) {
+        self.ensure_messages_by_id(chat_id);
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
         chat.running = true;
@@ -152,6 +153,7 @@ impl Workspace {
     /// placeholder still resolves, but the window title and scroller only
     /// move when the chat is on screen; a background chat goes unread.
     pub(crate) fn push_user_message_in(&mut self, chat_id: u64, item: Queued, window: &mut Window, cx: &mut Context<Self>) {
+        self.ensure_messages_by_id(chat_id);
         let Queued { text, attachments, .. } = item;
         let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
         let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) else { return };
@@ -299,6 +301,7 @@ impl Workspace {
     /// `push_note` for a chat that may not be active — the apply/budget
     /// notes can land after the user switched threads.
     pub(crate) fn note_in(&mut self, chat_id: u64, text: String, cx: &mut Context<Self>) {
+        self.ensure_messages_by_id(chat_id);
         let ix = self.chat_index(chat_id).unwrap_or(self.active);
         let is_active = ix == self.active;
         let chat = &mut self.chats[ix];

@@ -78,6 +78,9 @@ impl Workspace {
         } else if index < self.active {
             self.active -= 1;
         }
+        // The newly-active chat may never have been opened this session.
+        self.ensure_messages(self.active);
+        self.refresh_pending_bookmarks(cx);
         self.clear_recall();
         if was_active {
             // Composer still holds the deleted chat's draft — restore the
@@ -126,6 +129,7 @@ impl Workspace {
         self.selected_chats.clear();
         self.secondary = None;
         self.new_chat(cx);
+        self.refresh_pending_bookmarks(cx);
         crate::dock_badge::update(cx);
     }
 
@@ -198,6 +202,7 @@ impl Workspace {
     /// chat, or while a reply runs.
     pub fn split_chat(&mut self, chat_id: u64, at_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(src_ix) = self.chat_index(chat_id) else { return };
+        self.ensure_messages(src_ix);
         let src = &self.chats[src_ix];
         if src.running || at_ix == 0 || at_ix >= src.messages.len() {
             return;
@@ -252,6 +257,7 @@ impl Workspace {
     /// "Split chat…" from the ⋯ menu — a small dialog asking for the
     /// 1-based message number the new chat starts at; OK splits there.
     pub fn open_split_dialog(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        self.ensure_messages_by_id(id);
         let Some(chat) = self.chats.iter().find(|c| c.id == id) else { return };
         if chat.messages.len() < 2 {
             return;
