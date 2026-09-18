@@ -153,6 +153,7 @@ impl Workspace {
                 // a rule-answered request never does.
                 if !auto_approved {
                     self.record_approval(chat_id, kind, &detail);
+                    notify_blocked(chat_id, format!("{}: {detail}", kind.label()), cx);
                 }
             },
             AgentEvent::Diff { path, added, removed, hunks } => {
@@ -235,6 +236,17 @@ fn stamp_reply_usage(chat: &mut crate::model::Chat, input: u64, output: u64) {
     if let Some(ix) = ix {
         Rc::make_mut(&mut chat.messages)[ix].usage = Some(crate::model::Usage { input, output });
     }
+}
+
+/// Fire the approval-blocked notice: a turn parked on a click gets the
+/// same notify surfaces as a finished reply, or it stalls silently in the
+/// background. `apply_events` has no `window`, so the notice hops through
+/// a spawned `update_in`.
+fn notify_blocked(chat_id: u64, summary: String, cx: &mut Context<Workspace>) {
+    cx.spawn(async move |this, cx| {
+        let _ = this.update_in(cx, |this, window, cx| this.notify_approval(chat_id, &summary, window, cx));
+    })
+    .detach();
 }
 
 /// Append an assistant message carrying `kind` to the chat.

@@ -47,6 +47,22 @@ fn retry_button(ws: WeakEntity<Workspace>, chat_id: u64, toast: Entity<Notificat
     })
 }
 
+/// Marker type for the per-chat approval-waiting notification id — a new
+/// request replaces the previous toast instead of stacking.
+struct ApprovalNeeded;
+
+/// First non-empty line of `text`, capped at 100 chars + ellipsis — the
+/// shared body-preview shape for toast and system notices.
+fn preview_line(text: &str) -> Option<String> {
+    let line = text.lines().find(|l| !l.trim().is_empty())?.trim();
+    let mut preview: String = line.chars().take(101).collect();
+    if preview.chars().count() > 100 {
+        preview.truncate(preview.char_indices().nth(100).map_or(preview.len(), |(i, _)| i));
+        preview.push('…');
+    }
+    Some(preview)
+}
+
 impl Workspace {
     /// System bell (gated by `notify_sound`), an in-app toast, plus — when
     /// the user isn't watching the chat — a system notification and dock
@@ -106,6 +122,37 @@ impl Workspace {
         cx.notify();
     }
 
+    /// An unanswered approval request is a turn blocked on a click — unlike
+    /// a finished reply it never arrives by itself, so it earns the same
+    /// surfaces: an in-app toast always, a system notification and dock
+    /// bounce while unwatched (the same `notify_on_done`/`notify_background`
+    /// gates). No action button: the command must be read in the chat
+    /// before approving, so click-to-open is the only honest affordance.
+    /// And no chime — `notify_sound` is specifically the *finish* bell.
+    /// `summary` is the `"<kind>: <what will run>"` line from the caller.
+    pub(crate) fn notify_approval(&mut self, chat_id: u64, summary: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.notify_on_done {
+            return;
+        }
+        let is_active = self.chats.get(self.active).is_some_and(|c| c.id == chat_id);
+        let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
+        let system = self.notify_background && !(is_active && window.is_window_active());
+        let title = chat.title.clone();
+        let body = format!("Needs approval — {}", preview_line(summary).unwrap_or_else(|| summary.trim().to_string()));
+        let ws = cx.entity().downgrade();
+        let note = Notification::warning(body)
+            .title(title)
+            .id1::<ApprovalNeeded>(("approval-needed", chat_id))
+            .delivery(if system { NotificationDelivery::InAppAndSystem } else { NotificationDelivery::InApp })
+            .on_click(move |_, window, cx| {
+                let _ = ws.update(cx, |ws, cx| ws.open_notified_chat(chat_id, window, cx));
+            });
+        window.push_notification(note, cx);
+        if system {
+            window.request_attention();
+        }
+    }
+
     /// The toast's Retry button: surface the failed chat, then re-send its
     /// last prompt. `retry_last` is active-scoped, so only retry when the
     /// requested chat actually became active — a chat deleted since the
@@ -139,13 +186,7 @@ impl Workspace {
     /// chars — the notification body doubles as a reply preview so the
     /// user can tell what finished without opening the chat.
     pub(crate) fn reply_preview(chat: &Chat) -> Option<String> {
-        let line = Self::last_assistant_text(chat)?.lines().find(|l| !l.trim().is_empty())?.trim();
-        let mut preview: String = line.chars().take(101).collect();
-        if preview.chars().count() > 100 {
-            preview.truncate(preview.char_indices().nth(100).map_or(preview.len(), |(i, _)| i));
-            preview.push('…');
-        }
-        Some(preview)
+        preview_line(Self::last_assistant_text(chat)?)
     }
 
     /// The last assistant Text message's content, if any.

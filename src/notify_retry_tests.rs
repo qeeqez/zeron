@@ -9,7 +9,7 @@
 
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext, px, size};
+use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext, point, px, size};
 
 use crate::backend::{AgentBackend, AgentEvent, ReplyStream};
 use crate::model::{ChatMessage, MessageKind, Role};
@@ -145,4 +145,60 @@ fn retry_button_dismisses_toast_and_resends(cx: &mut TestAppContext) {
         window.draw(cx).clear(cx);
     });
     assert_eq!(toast_count(cx), 0, "the Retry click should close its own toast");
+}
+
+/// A turn parked on an approval request posts a toast; clicking it opens
+/// the waiting chat.
+#[gpui_kit::test]
+fn approval_request_toast_opens_the_chat(cx: &mut TestAppContext) {
+    let (ws, cx) = open_workspace(cx);
+    let chat_id = ws.update(cx, |this, _| {
+        this.notify_on_done = true;
+        this.notify_background = false;
+        this.notify_sound = false;
+        this.chats[0].id
+    });
+    let (respond, _decisions) = std::sync::mpsc::channel();
+    ws.update(cx, |this, cx| {
+        this.apply_events(
+            chat_id,
+            vec![AgentEvent::ApprovalRequest {
+                ix: 0,
+                kind: crate::backend::ApprovalKind::Command,
+                detail: "rm -rf ./build".into(),
+                respond,
+            }],
+            cx,
+        );
+    });
+    // The notify path defers through `spawn` → `update_in`.
+    cx.run_until_parked();
+    assert_eq!(toast_count(cx), 1, "a pending approval should post a toast");
+    ws.update(cx, |this, cx| this.new_chat(cx));
+    assert_eq!(ws.read_with(cx, |w, _| w.active), 1);
+    // Same shape as the done-toast click: the toast slides in from the top
+    // edge, so click near its bottom where it's already on-screen.
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        let b = window.find("notification").bounds();
+        let y_inside = (b.size.height - px(5.)).max(px(0.));
+        window.click_at("notification", point(px(20.), y_inside), cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(ws.read_with(cx, |w, _| w.active), 0, "clicking the approval toast should open its chat");
+}
+
+/// `notify_on_done` gates approval notices too — the toggle is the
+/// user-visible "toast/system surfaces" switch, not strictly "reply done".
+#[gpui_kit::test]
+fn approval_notice_respects_notify_toggle(cx: &mut TestAppContext) {
+    let (ws, cx) = open_workspace(cx);
+    let chat_id = ws.update(cx, |this, _| {
+        this.notify_on_done = false;
+        this.chats[0].id
+    });
+    cx.update(|window, cx| {
+        ws.update(cx, |ws, cx| ws.notify_approval(chat_id, "Apply patch: apply diff", window, cx));
+    });
+    assert_eq!(toast_count(cx), 0, "notify_on_done off must silence approval notices");
 }
