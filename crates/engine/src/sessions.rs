@@ -1656,6 +1656,17 @@ async fn drive_run(
     // into Streaming. Only a steer (UserMessage) legitimately REOPENS a
     // settled subagent: it announces more work is coming.
     let mut settled_subagents: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // LIVE subagents (sidebar status): a spawn counts as live from the
+    // moment its chip is minted (the `Agent[: …]` ToolCall — the genus gate
+    // every adapter decodes its spawn into) or any tagged event lands for
+    // it, until its tagged Done settles it. The eager-done policy resolves
+    // the spawn chip while the child still runs, so `resolved` can never
+    // stand in for liveness — and a background subagent OUTLIVES its parent
+    // turn by design, so a parked session must hold Working while any of
+    // these is still unsettled. Counts chip-only subagents too (a doc sink
+    // that failed to open still gets its tagged Done), which `subagents`
+    // alone — live sinks only — would miss.
+    let mut live_subagents: std::collections::HashSet<String> = std::collections::HashSet::new();
     // Live subagent sinks, parent tool-use id → transcript doc state.
     let mut subagents: std::collections::HashMap<String, SubagentSink> =
         std::collections::HashMap::new();
@@ -1814,8 +1825,17 @@ async fn drive_run(
                     segment_started = now_ms();
                     idle_since = Some(tokio::time::Instant::now());
                     self_continued_turn = false;
+                    // The PARENT turn parks, but live subagents still count:
+                    // the sidebar reads Working until the last one settles.
                     inner.set_status_with_completion(
-                        &chat_id, SessionStatus::Idle, false, completed_turn,
+                        &chat_id,
+                        if live_subagents.is_empty() {
+                            SessionStatus::Idle
+                        } else {
+                            SessionStatus::Working
+                        },
+                        false,
+                        completed_turn,
                     );
                     continue;
                 }
@@ -1859,6 +1879,37 @@ async fn drive_run(
                 // Straggler after the freeze: chip-only silence (the old
                 // pre-viz behavior), never a reopened doc.
                 continue;
+            }
+            // Liveness for the sidebar: tagged WORK traffic means the child
+            // is running (a steer REOPENS a settled id — more work is
+            // coming); a tagged Done settles it. Bookkeeping that also rides
+            // the tagged channel — usage/context ticks, command lists — is
+            // never proof of work on its own: it neither inserts nor
+            // reopens. The straggler gate above already dropped post-freeze
+            // traffic so it can't resurrect the set — and a Done for an id
+            // the set never held (a chip-only `done_only` settle) leaves it
+            // untouched.
+            let was_live = !live_subagents.is_empty();
+            if matches!(sub_event.as_ref(), AgentEvent::Done { .. }) {
+                live_subagents.remove(parent_tool_use_id);
+            } else if !matches!(
+                sub_event.as_ref(),
+                AgentEvent::ContextUsage { .. }
+                    | AgentEvent::Usage { .. }
+                    | AgentEvent::AvailableCommands { .. }
+            ) {
+                live_subagents.insert(parent_tool_use_id.clone());
+            }
+            // A PARKED session's status follows the live set: the first
+            // subagent byte flips it back to Working, the last settle drops
+            // it to Idle. (Not gated on the current status — a parked
+            // session is Idle iff the set was empty, Working iff not.)
+            if idle_since.is_some() {
+                if !was_live && !live_subagents.is_empty() {
+                    inner.set_status(&chat_id, SessionStatus::Working, false);
+                } else if was_live && live_subagents.is_empty() {
+                    inner.set_status(&chat_id, SessionStatus::Idle, false);
+                }
             }
             let sub_id = subagent_doc_id(&chat_id, parent_tool_use_id);
             let chip_streaming = folded
@@ -2131,11 +2182,20 @@ async fn drive_run(
             // first boundary on, plans never rendered again.
             AgentEvent::ToolCall { id, .. } if id == zeron_proto::LIVE_PLAN_TOOL_ID => {}
             AgentEvent::ToolResult { id, .. } if id == zeron_proto::LIVE_PLAN_TOOL_ID => {}
-            AgentEvent::ToolCall { id, .. } => {
+            AgentEvent::ToolCall { id, call } => {
                 if !in_segment(&folded, id) && seen_tools.contains(id) {
                     continue;
                 }
                 seen_tools.insert(id.clone());
+                // A minted spawn chip is the EARLIEST liveness signal — it
+                // lands with the parent's own frames, long before the
+                // child's first tagged event (or its settle signal, for a
+                // subagent that never streams a byte). A settled id is not
+                // revived by a post-settle chip refresh — only tagged
+                // traffic reopens it.
+                if call.is_subagent_spawn() && !settled_subagents.contains(id) {
+                    live_subagents.insert(id.clone());
+                }
             }
             AgentEvent::ToolResult { id, .. }
                 if !in_segment(&folded, id) && seen_tools.contains(id) =>
@@ -2143,6 +2203,16 @@ async fn drive_run(
                 continue;
             }
             _ => {}
+        }
+        // An ERRORED spawn call never launched its child — it can't hold a
+        // park at Working. Successful results are launch acks under the
+        // eager-done policy (the child may still be running), so only an
+        // error settles the id here; a genuine settle is the tagged Done.
+        if let AgentEvent::ToolResult {
+            id, is_error: true, ..
+        } = &event
+        {
+            live_subagents.remove(id);
         }
 
         // Startup-crash retry: a run that dies before ever starting (errored
@@ -2360,9 +2430,16 @@ async fn drive_run(
                 saw_session_started = true;
                 idle_since = Some(tokio::time::Instant::now());
                 self_continued_turn = false;
+                // The PARENT turn parks, but live subagents still count:
+                // the sidebar reads Working until the last one's tagged
+                // Done lands (they bypass the parked gate above).
                 inner.set_status_with_completion(
                     &chat_id,
-                    SessionStatus::Idle,
+                    if live_subagents.is_empty() {
+                        SessionStatus::Idle
+                    } else {
+                        SessionStatus::Working
+                    },
                     false,
                     completed_turn,
                 );
