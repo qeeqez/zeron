@@ -18,7 +18,7 @@ use gpui_kit::component::{Sizable, h_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::model::Chat;
+use crate::model::{Chat, MessageKind};
 use crate::views::nav_row::NavRow;
 use crate::workspace::Workspace;
 
@@ -104,7 +104,7 @@ pub(super) fn chat_row(chat: &Chat, ix: usize, ws: &Workspace, cx: &mut Context<
             },
         )
         .drop_line(ws.chat_drop.and_then(|d| (d.row == chat_id).then_some(d.above)))
-        .suffix(row_suffix(cx.entity(), chat_id, flags, (chat.running, chat.unread), ws.send_queue.len(chat_id)))
+        .suffix(row_suffix(cx.entity(), chat_id, flags, RowStatus::of(chat), ws.send_queue.len(chat_id)))
     }
 }
 
@@ -179,14 +179,34 @@ fn rename_editor(ws: Entity<Workspace>, input: Entity<InputState>, chat_id: u64)
     }
 }
 
-/// Trailing row content: queued-count chip, spinner while a reply streams,
-/// unread dot, then the "…" button that opens the same menu as right-click.
-/// The button stays visible while its menu is up, even after the pointer
-/// leaves the row.
+/// What the row's status slot should announce, most actionable first.
+struct RowStatus {
+    running: bool,
+    unread: bool,
+    needs_approval: bool,
+}
+
+impl RowStatus {
+    /// A live `respond` channel means the turn is parked on the user —
+    /// impossible on a pending_load chat: approvals only reach hydrated
+    /// transcripts and the channel never survives a reload.
+    fn of(chat: &Chat) -> Self {
+        let pending = |m: &crate::model::ChatMessage| matches!(&m.kind, MessageKind::Approval(a) if a.respond.is_some());
+        Self {
+            running: chat.running,
+            unread: chat.unread,
+            needs_approval: chat.messages.iter().any(pending),
+        }
+    }
+}
+
+/// Trailing row content: queued-count chip, an approval-waiting shield /
+/// spinner while a reply streams / unread dot, then the "…" button that
+/// opens the same menu as right-click. The button stays visible while its
+/// menu is up, even after the pointer leaves the row.
 fn row_suffix(
-    ws: Entity<Workspace>, chat_id: u64, flags: RowFlags, status: (bool, bool), queued: usize,
+    ws: Entity<Workspace>, chat_id: u64, flags: RowFlags, status: RowStatus, queued: usize,
 ) -> impl Fn(&mut Window, &mut App) -> AnyElement {
-    let (running, unread) = status;
     move |window, cx| {
         let menu_open = window.use_keyed_state(("chat-menu-open", chat_id), cx, |_, _| false);
         h_flex()
@@ -218,9 +238,19 @@ fn row_suffix(
             // affordances; clicking it opens the chat (the queue lives in
             // its composer, which select_chat focuses).
             .when(queued > 0, |d| d.child(queue_badge(chat_id, queued, &ws, cx)))
-            .child(if running {
+            // Approval outranks the spinner: the turn isn't streaming, it's
+            // parked on a click — the persistent "needs you" marker after
+            // the toast is gone.
+            .child(if status.needs_approval {
+                div()
+                    .id(("approval-needed", chat_id))
+                    .test_support()
+                    .text_color(cx.theme().warning)
+                    .child(IconName::ShieldAlert)
+                    .into_any_element()
+            } else if status.running {
                 IconName::LoaderCircle.into_any_element()
-            } else if unread {
+            } else if status.unread {
                 div().w_2().h_2().rounded_full().bg(hsla(0.0, 0.0, 0.55, 1.0)).into_any_element()
             } else {
                 div().into_any_element()

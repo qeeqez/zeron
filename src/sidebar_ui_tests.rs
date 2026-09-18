@@ -174,3 +174,60 @@ fn queue_badge_click_opens_chat() {
         assert!(ws.renaming.is_none(), "badge click must not start a rename");
     });
 }
+
+/// A turn parked on an approval request marks its row with a warning
+/// shield — the persistent "needs you" signal after the toast is gone.
+/// The shield outranks the running spinner and clears once answered.
+#[test]
+fn approval_shield_marks_blocked_chats() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    let chat_id = cx.update(|_, cx| ws.read(cx).chats[0].id);
+    let (respond, _decisions) = std::sync::mpsc::channel();
+    cx.update(|_, cx| {
+        ws.update(cx, |this, cx| {
+            let chat = &mut this.chats[0];
+            chat.running = true;
+            std::rc::Rc::make_mut(&mut chat.messages).push(crate::model::ChatMessage {
+                alternatives: vec![],
+                role: crate::model::Role::Assistant,
+                kind: crate::model::MessageKind::Approval(crate::backend::ApprovalCard {
+                    request_ix: 0,
+                    kind: crate::backend::ApprovalKind::Command,
+                    detail: "rm -rf ./build".into(),
+                    decision: None,
+                    auto_approved: false,
+                    respond: Some(respond),
+                }),
+                rating: None,
+                bookmarked: false,
+                pinned: false,
+                usage: None,
+                attachments: vec![],
+                at: std::time::SystemTime::now(),
+            });
+            cx.notify();
+        })
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.find(("approval-needed", chat_id)).visible(), "blocked turn marks the row");
+    });
+
+    // Answering the request clears the marker — the plain spinner returns.
+    cx.update(|_, cx| {
+        ws.update(cx, |this, cx| {
+            let msgs = std::rc::Rc::make_mut(&mut this.chats[0].messages);
+            let Some(crate::model::MessageKind::Approval(a)) = msgs.last_mut().map(|m| &mut m.kind) else {
+                panic!("approval card should be last")
+            };
+            a.respond = None;
+            a.decision = Some(crate::backend::ApprovalDecision::Approve);
+            cx.notify();
+        })
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        assert!(window.try_find(("approval-needed", chat_id)).is_none(), "answered approval clears the marker");
+    });
+}
