@@ -10,9 +10,9 @@ use gpui_kit::TestAppContext;
 use gpui_kit::base::test_support::snapshots;
 use gpui_kit::component::dialog::Confirm;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{Role as A11yRole, VisualTestContext, Window};
+use gpui_kit::{Role as A11yRole, Window};
 
-use crate::composer_testutil::{composer_value, open_workspace, type_and_send, user_msgs};
+use crate::composer_testutil::{composer_value, open_workspace, settle_dialog, type_and_send, user_msgs};
 use crate::prompts::TemplateStore;
 
 #[test]
@@ -61,13 +61,6 @@ fn click_menu_item(window: &mut Window, cx: &mut gpui_kit::App, label: &str) {
         .clone();
     window.within("popup-menu").click(item.path().last().unwrap().clone(), cx);
     window.draw(cx).clear(cx);
-}
-
-/// Let a freshly opened dialog's slide-in animation finish so clicks land
-/// on the rows' final positions, not their animated ones.
-fn settle_dialog(cx: &mut VisualTestContext) {
-    cx.executor().advance_clock(std::time::Duration::from_secs(1));
-    cx.run_until_parked();
 }
 
 #[gpui_kit::test]

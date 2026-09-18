@@ -74,6 +74,30 @@ pub(crate) fn until(workspace: &Entity<Workspace>, cx: &mut VisualTestContext, c
     panic!("condition never held");
 }
 
+/// Wait until a freshly opened dialog's slide-in animation is done. The
+/// animation is wall-clock driven (`Instant::elapsed` per frame), so
+/// `advance_clock` can't settle it — only real time does. Poll every
+/// element's painted bounds across real-time-separated frames; once two
+/// consecutive frames agree, nothing is still sliding and clicks hit the
+/// rows' final positions instead of the backdrop behind them.
+pub(crate) fn settle_dialog(cx: &mut VisualTestContext) {
+    cx.run_until_parked();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut prev = None;
+    loop {
+        let bounds: Vec<_> = cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            gpui_kit::base::test_support::snapshots(window).iter().map(|s| s.bounds()).collect()
+        });
+        if prev.as_ref() == Some(&bounds) {
+            return;
+        }
+        prev = Some(bounds);
+        assert!(std::time::Instant::now() < deadline, "dialog animation never settled");
+        std::thread::sleep(std::time::Duration::from_millis(40));
+    }
+}
+
 /// Count user messages whose text contains `needle`.
 pub(crate) fn user_msgs(ws: &Workspace, needle: &str) -> usize {
     ws.chats[ws.active]

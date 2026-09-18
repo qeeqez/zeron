@@ -216,11 +216,10 @@ fn switcher_open_folder_runs_the_picker() {
         window.draw(cx).clear(cx);
         window.click("project-switcher-btn", cx);
     });
-    // The dialog's 250ms entrance animation leaves the row's observed bounds
-    // stale — a click mid-animation lands on the overlay_closable backdrop and
-    // dismisses the switcher instead of hitting the row. Settle past it.
-    cx.executor().advance_clock(std::time::Duration::from_millis(300));
-    cx.run_until_parked();
+    // The dialog's entrance animation is wall-clock driven — a click
+    // mid-animation lands on the overlay_closable backdrop and dismisses
+    // the switcher instead of hitting the row. Wait for it to settle.
+    crate::composer_testutil::settle_dialog(cx);
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         window.click("project-open-folder", cx);
