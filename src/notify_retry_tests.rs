@@ -170,6 +170,13 @@ fn approval_request_toast_opens_the_chat(cx: &mut TestAppContext) {
             }],
             cx,
         );
+        // Pad past the viewport so the card sits above the fold — a list
+        // scrolled to its end re-engages tail-follow, which would make the
+        // scroll observable moot.
+        let msgs = std::rc::Rc::make_mut(&mut this.chats[0].messages);
+        for i in 0..40 {
+            msgs.push(text(Role::User, &format!("filler {i}")));
+        }
     });
     // The notify path defers through `spawn` → `update_in`.
     cx.run_until_parked();
@@ -186,6 +193,13 @@ fn approval_request_toast_opens_the_chat(cx: &mut TestAppContext) {
     });
     cx.run_until_parked();
     assert_eq!(ws.read_with(cx, |w, _| w.active), 0, "clicking the approval toast should open its chat");
+    // The click also scrolls the pending card into view: the card sits at
+    // the top of a tall transcript, so landing there leaves the scroller
+    // detached — `is_scrolled_up` can't be true while tail-follow holds.
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+    });
+    assert!(ws.read_with(cx, |w, app| w.scroller.read(app).is_scrolled_up()), "approval toast should scroll to the pending card");
 }
 
 /// `notify_on_done` gates approval notices too — the toggle is the

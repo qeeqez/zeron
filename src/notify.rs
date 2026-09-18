@@ -145,7 +145,10 @@ impl Workspace {
             .id1::<ApprovalNeeded>(("approval-needed", chat_id))
             .delivery(if system { NotificationDelivery::InAppAndSystem } else { NotificationDelivery::InApp })
             .on_click(move |_, window, cx| {
-                let _ = ws.update(cx, |ws, cx| ws.open_notified_chat(chat_id, window, cx));
+                let _ = ws.update(cx, |ws, cx| {
+                    ws.open_notified_chat(chat_id, window, cx);
+                    ws.scroll_to_pending_approval(cx);
+                });
             });
         window.push_notification(note, cx);
         if system {

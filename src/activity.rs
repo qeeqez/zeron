@@ -318,7 +318,7 @@ impl Workspace {
     /// Scroll the active chat to its pending approval card — the last
     /// unanswered one, or the last card when all are answered (the entry
     /// outlived the prompt).
-    fn scroll_to_pending_approval(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn scroll_to_pending_approval(&mut self, cx: &mut Context<Self>) {
         let chat = &self.chats[self.active];
         let is_card = |m: &crate::model::ChatMessage| matches!(m.kind, MessageKind::Approval(_));
         let ix = chat
