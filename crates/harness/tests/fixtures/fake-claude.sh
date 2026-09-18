@@ -160,6 +160,54 @@ case "$first" in
   emit '{"type":"system","subtype":"task_notification","task_id":"bg-gc","tool_use_id":"toolu_gc","status":"completed","summary":"gc done"}'
   ;;
 
+*scenario:bgmint*)
+  # The pure spawn-mint hold: a spawned subagent that produces ZERO tagged
+  # frames still holds the park at Working — the Agent tool_use mint alone
+  # is the liveness signal (the eager-done chip resolves while the child
+  # runs). The wire's only terminal signal is the untagged
+  # task_notification, which must settle it back to Idle.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash","Agent"],"cwd":"/tmp","session_id":"sess-bgm"}'
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_m","name":"Agent","input":{"description":"silent probe","run_in_background":true}}]}}'
+  emit '{"type":"system","subtype":"task_started","task_id":"bg-m","tool_use_id":"toolu_m","subagent_type":"general-purpose","prompt":"p","description":"silent probe"}'
+  emit '{"type":"result","subtype":"success","result":"LAUNCHED","errors":[],"usage":{"input_tokens":5,"output_tokens":5},"session_id":"sess-bgm"}'
+  # Parent parked; the child never emits a tagged frame.
+  sleep 1
+  emit '{"type":"system","subtype":"task_notification","task_id":"bg-m","tool_use_id":"toolu_m","status":"completed","summary":"done"}'
+  ;;
+
+*scenario:bgfail*)
+  # An errored spawn never launched its child: the untagged tool_result
+  # with is_error:true settles the mint BEFORE the park, so the completed
+  # turn parks Idle — a stale mint must never pin Working on a child that
+  # never ran. The trailing sleep keeps the stream open past the park so
+  # a leaked mint's Working is observable, not a millisecond transient.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash","Agent"],"cwd":"/tmp","session_id":"sess-bgf"}'
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_f","name":"Agent","input":{"description":"doomed probe","run_in_background":true}}]}}'
+  emit '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_f","is_error":true}]}}'
+  emit '{"type":"result","subtype":"success","result":"could not launch","errors":[],"usage":{"input_tokens":5,"output_tokens":5},"session_id":"sess-bgf"}'
+  sleep 1
+  ;;
+
+*scenario:bgsteer*)
+  # Steer REOPEN: the subagent settles (task_notification → tagged Done,
+  # session parks Idle), then a tagged user frame TEXT block — the wire's
+  # parent→subagent steer shape — re-arms Working by reopening the settled
+  # id. The second notification settles it for good.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash","Agent"],"cwd":"/tmp","session_id":"sess-bgs"}'
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_s","name":"Agent","input":{"description":"steerable probe","run_in_background":true}}]}}'
+  emit '{"type":"system","subtype":"task_started","task_id":"bg-s","tool_use_id":"toolu_s","subagent_type":"general-purpose","prompt":"p","description":"steerable probe"}'
+  emit '{"type":"result","subtype":"success","result":"LAUNCHED","errors":[],"usage":{"input_tokens":5,"output_tokens":5},"session_id":"sess-bgs"}'
+  sleep 1
+  emit '{"type":"stream_event","parent_tool_use_id":"toolu_s","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"sub working"}}}'
+  emit '{"type":"system","subtype":"task_notification","task_id":"bg-s","tool_use_id":"toolu_s","status":"completed","summary":"first pass done"}'
+  # Settled → Idle. The steer lands on the settled id: reopen → Working.
+  sleep 1
+  emit '{"type":"user","parent_tool_use_id":"toolu_s","message":{"content":[{"type":"text","text":"One more: check the second path too."}]}}'
+  sleep 1
+  emit '{"type":"stream_event","parent_tool_use_id":"toolu_s","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"follow-up work"}}}'
+  emit '{"type":"system","subtype":"task_notification","task_id":"bg-s","tool_use_id":"toolu_s","status":"completed","summary":"follow-up done"}'
+  ;;
+
 *scenario:askuser*)
   emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash"],"cwd":"/tmp","session_id":"sess-ask"}'
   # A plain tool permission request: must be auto-allowed.

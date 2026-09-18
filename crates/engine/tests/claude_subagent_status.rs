@@ -286,3 +286,205 @@ async fn working_holds_through_out_of_order_deep_settles() {
 
     core.shutdown().await;
 }
+
+/// The spawn mint is the whole hold for a SILENT child: a subagent that
+/// produces ZERO tagged frames still keeps the park at Working — nothing
+/// but the Agent tool_use ever proved it live. Settle still arrives the
+/// usual way (task_notification → tagged Done) → Idle.
+#[tokio::test(flavor = "multi_thread")]
+async fn spawn_mint_alone_holds_the_park_at_working() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = assemble(dir.path());
+    core.sessions
+        .dispatch(
+            CHAT,
+            HarnessId::ClaudeCode,
+            run_request(dir.path(), "bgmint"),
+            Some("user-prompt".into()),
+        )
+        .await
+        .expect("dispatch");
+
+    // Turn completed AND the session reads Working — the gap the mint
+    // covers: no tagged frame ever arrived to prove the child live.
+    wait_for(
+        || {
+            let Some(session) = core.sessions.session_status(CHAT) else {
+                return false;
+            };
+            session.status == SessionStatus::Working && session.last_completed_turn.is_some()
+        },
+        "parked session with a minted-but-silent subagent to read Working",
+    )
+    .await;
+
+    wait_for(
+        || status(&core) == Some(SessionStatus::Idle),
+        "session to settle Idle once the silent subagent's notification lands",
+    )
+    .await;
+
+    core.shutdown().await;
+}
+
+/// A spawn whose launch FAILED never launched its child: the untagged
+/// tool_result{is_error} settles the mint BEFORE `result` lands, so the
+/// park must write Idle outright — a leaked mint would pin Working on a
+/// child that never ran. The fixture's post-result silence window is what
+/// makes the buggy hold observable rather than a millisecond transient.
+#[tokio::test(flavor = "multi_thread")]
+async fn errored_spawn_never_holds_the_park() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = assemble(dir.path());
+    core.sessions
+        .dispatch(
+            CHAT,
+            HarnessId::ClaudeCode,
+            run_request(dir.path(), "bgfail"),
+            Some("user-prompt".into()),
+        )
+        .await
+        .expect("dispatch");
+
+    // last_completed_turn lands in the SAME status write the park makes —
+    // asserting Idle at that instant proves the park's own write was Idle
+    // (the errored mint was already cleared), not a Working that only
+    // later drained at stream end.
+    wait_for(
+        || {
+            core.sessions
+                .session_status(CHAT)
+                .is_some_and(|s| s.last_completed_turn.is_some())
+        },
+        "the completed turn to park",
+    )
+    .await;
+    assert_eq!(
+        status(&core),
+        Some(SessionStatus::Idle),
+        "an errored spawn must not hold the park at Working"
+    );
+    assert_eq!(chip_status(&core, "toolu_f"), None);
+    // The fold's own record of the failed launch: the chip reads errored.
+    assert!(
+        entries(&core, CHAT)
+            .iter()
+            .flat_map(|e| &e.parts)
+            .any(|p| matches!(p, MessagePart::Tool { id, is_error: true, .. } if id == "toolu_f")),
+        "the failed launch should read as an errored chip"
+    );
+
+    // Nothing late resurfaces Working — the stream's end settles clean.
+    wait_for(
+        || status(&core) == Some(SessionStatus::Idle),
+        "session to settle Idle",
+    )
+    .await;
+
+    core.shutdown().await;
+}
+
+/// A settled subagent steered again REOPENS: the tagged user frame's TEXT
+/// block is the wire's parent→subagent steer — the one post-settle event
+/// that announces more work. The parked session must re-arm Working on it
+/// and settle Idle again on the follow-up notification.
+#[tokio::test(flavor = "multi_thread")]
+async fn steer_reopen_rearms_working_on_the_parked_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = assemble(dir.path());
+    core.sessions
+        .dispatch(
+            CHAT,
+            HarnessId::ClaudeCode,
+            run_request(dir.path(), "bgsteer"),
+            Some("user-prompt".into()),
+        )
+        .await
+        .expect("dispatch");
+
+    wait_for(
+        || {
+            let Some(session) = core.sessions.session_status(CHAT) else {
+                return false;
+            };
+            session.status == SessionStatus::Working && session.last_completed_turn.is_some()
+        },
+        "parked session with a live subagent to read Working",
+    )
+    .await;
+
+    // First notification settles it: Idle, chip stamped Done.
+    wait_for(
+        || status(&core) == Some(SessionStatus::Idle),
+        "session to settle Idle on the subagent's first Done",
+    )
+    .await;
+    assert_eq!(chip_status(&core, "toolu_s"), Some(SubagentStatus::Done));
+
+    // The steer reopens the settled id: back to Working, chip running.
+    wait_for(
+        || status(&core) == Some(SessionStatus::Working),
+        "the steer to re-arm Working on the parked session",
+    )
+    .await;
+    assert_eq!(
+        chip_status(&core, "toolu_s"),
+        Some(SubagentStatus::Running),
+        "the reopened chip should read Running again"
+    );
+
+    // The follow-up notification settles it for good.
+    wait_for(
+        || status(&core) == Some(SessionStatus::Idle),
+        "session to settle Idle on the follow-up Done",
+    )
+    .await;
+    assert_eq!(chip_status(&core, "toolu_s"), Some(SubagentStatus::Done));
+
+    core.shutdown().await;
+}
+
+/// Interrupt with live subagents: the run-end drain must not strand the
+/// Working a live subagent was holding — the session settles Idle.
+#[tokio::test(flavor = "multi_thread")]
+async fn interrupt_settles_a_session_with_live_subagents() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = assemble(dir.path());
+    core.sessions
+        .dispatch(
+            CHAT,
+            HarnessId::ClaudeCode,
+            run_request(dir.path(), "bgwait"),
+            Some("user-prompt".into()),
+        )
+        .await
+        .expect("dispatch");
+
+    // Parked Working, subagent still live — interrupt inside that window.
+    wait_for(
+        || {
+            let Some(session) = core.sessions.session_status(CHAT) else {
+                return false;
+            };
+            session.status == SessionStatus::Working && session.last_completed_turn.is_some()
+        },
+        "parked session with a live subagent to read Working",
+    )
+    .await;
+
+    assert!(
+        core.sessions
+            .interrupt(CHAT)
+            .await
+            .expect("interrupt resolves"),
+        "a parked run is still a live run to interrupt"
+    );
+
+    wait_for(
+        || status(&core) == Some(SessionStatus::Idle),
+        "interrupted session to settle Idle, not strand Working",
+    )
+    .await;
+
+    core.shutdown().await;
+}
