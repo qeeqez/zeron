@@ -23,10 +23,10 @@ Completed areas live in `docs/done/`: `agents.md`, `sidebar.md`, `chat-ui.md`, `
 ## Gaps vs Codex desktop (lane candidates)
 
 - macOS system notifications still have no action buttons — gpui-component's `push_system` posts `actions: Vec::new()` and its single global response handler ignores `action_id`; needs an upstream patch or vendored fork.
-- No drag-to-tear-off for chats — "Open in New Window" exists, drag-detach into an existing window does not.
 
 ## Done recently (from this list)
 
+- ~~Drag-to-tear-off for chats~~ — the chat pane is a `ChatDrag` drop target with a "Release to open in a new window" hint pill; the drop reuses `open_chat_in_new_window`.
 - ~~In-app toast action buttons~~ — failed-reply toasts carry a Retry button via `Notification::action` (re-sends the last prompt after surfacing the chat); only the system-notification half remains blocked.
 - ~~Parallel-load test flakes~~ — per-test env isolation + polling on observable effects instead of mid-animation clicks.
 - ~~Global search + terminal find bar: no match-case / whole-word toggles~~ — both surfaces now carry the chips (`FindOpts` on `SearchFilters` + the terminal's `FindBar`); `match_snippet`/`find_in_lines` span-match through `FindOpts::match_ranges` so highlights land on real hits.
