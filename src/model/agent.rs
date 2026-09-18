@@ -37,6 +37,13 @@ pub struct Agent {
     /// `None` for simulated agents and chat-turn rows (those are owned by
     /// the chat's reply_task/child).
     pub stream: Option<crate::backend::ReplyStream>,
+    /// Chat this agent is attributed to, stamped at spawn: the chat's own
+    /// turn (`RunAgentSpec.chat_id`), `simulate_reply`'s subagents, or the
+    /// active chat for panel-spawned task agents. Feeds the sidebar's
+    /// "working" aggregate — unlike `Chat.run_agent` it isn't cleared when
+    /// a turn ends, so a chat stays busy while its subagents run. `None`
+    /// counts on no chat.
+    pub chat_id: Option<u64>,
     /// Tool calls this turn ran — populated for task agents from the event
     /// stream; chat-turn rows read the chat's Tool messages instead.
     pub tools: Vec<ToolCall>,
@@ -64,6 +71,7 @@ impl Agent {
             step: "starting".into(),
             task: None,
             stream: None,
+            chat_id: None,
             tools: Vec::new(),
             expanded_tools: std::collections::HashSet::new(),
             steps_done: 0,

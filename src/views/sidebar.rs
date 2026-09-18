@@ -51,7 +51,7 @@ impl Workspace {
             .filter(|ix| {
                 self.chats[*ix].archived
                     && (query.is_empty() || self.chats[*ix].title.to_lowercase().contains(&query))
-                    && self.sidebar_filters.matches(&self.chats[*ix])
+                    && self.sidebar_filters.matches(&self.chats[*ix], &self.agents)
             })
             .collect();
         let header = div()

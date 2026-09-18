@@ -87,6 +87,7 @@ impl Workspace {
         let id = self.next_agent_id;
         self.next_agent_id += 1;
         let mut agent = Agent::new(id, spec.name, spec.lane, 0);
+        agent.chat_id = Some(spec.chat_id);
         agent.step = "running".into();
         self.agents.push(agent);
         if let Some(chat) = self.chats.iter_mut().find(|c| c.id == spec.chat_id) {

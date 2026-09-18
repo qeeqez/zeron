@@ -56,7 +56,7 @@ impl Workspace {
             .filter(|(_, c)| {
                 self.selected_chats.contains(&c.id)
                     && (query.is_empty() || c.title.to_lowercase().contains(&query))
-                    && self.sidebar_filters.matches(c)
+                    && self.sidebar_filters.matches(c, &self.agents)
             })
             .map(|(ix, _)| ix)
             .collect::<Vec<_>>()

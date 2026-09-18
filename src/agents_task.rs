@@ -26,6 +26,11 @@ impl Workspace {
             prompt.clone()
         };
         let mut agent = Agent::new(id, name, self.backend.name(), 0);
+        // Task agents run untracked by any turn, but they were launched
+        // from a session: attribute to the chat that was active at spawn
+        // so its sidebar row keeps spinning even after the user switches
+        // away — the session stays "working" until the task settles.
+        agent.chat_id = self.chats.get(self.active).map(|c| c.id);
         agent.step = "running".into();
         agent.log.push("[0s] task started".into());
         if self.model.is_empty() {

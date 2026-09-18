@@ -45,17 +45,17 @@ fn each_filter_matches_its_flag() {
     let unread = chat(false, true, false);
     let planned = chat(false, false, true);
 
-    assert!(SidebarFilter::Running.matches(&running));
-    assert!(!SidebarFilter::Running.matches(&unread));
-    assert!(!SidebarFilter::Running.matches(&plain));
+    assert!(SidebarFilter::Running.matches(&running, &[]));
+    assert!(!SidebarFilter::Running.matches(&unread, &[]));
+    assert!(!SidebarFilter::Running.matches(&plain, &[]));
 
-    assert!(SidebarFilter::Unread.matches(&unread));
-    assert!(!SidebarFilter::Unread.matches(&running));
-    assert!(!SidebarFilter::Unread.matches(&plain));
+    assert!(SidebarFilter::Unread.matches(&unread, &[]));
+    assert!(!SidebarFilter::Unread.matches(&running, &[]));
+    assert!(!SidebarFilter::Unread.matches(&plain, &[]));
 
-    assert!(SidebarFilter::HasPlan.matches(&planned));
-    assert!(!SidebarFilter::HasPlan.matches(&running));
-    assert!(!SidebarFilter::HasPlan.matches(&plain));
+    assert!(SidebarFilter::HasPlan.matches(&planned, &[]));
+    assert!(!SidebarFilter::HasPlan.matches(&running, &[]));
+    assert!(!SidebarFilter::HasPlan.matches(&plain, &[]));
 }
 
 /// An unopened chat whose on-disk transcript holds a plan still matches
@@ -65,13 +65,13 @@ fn has_plan_sees_scanned_pending_chats() {
     let mut pending = chat(false, false, false);
     pending.pending_load = Some((0, false));
     pending.pending_has_plan = true;
-    assert!(SidebarFilter::HasPlan.matches(&pending));
+    assert!(SidebarFilter::HasPlan.matches(&pending, &[]));
     // The flag alone doesn't qualify a hydrated chat — hydration clears
     // it and `latest_plan` takes over.
     pending.pending_load = None;
-    assert!(!SidebarFilter::HasPlan.matches(&pending));
+    assert!(!SidebarFilter::HasPlan.matches(&pending, &[]));
     pending.pending_has_plan = false;
-    assert!(!SidebarFilter::HasPlan.matches(&pending));
+    assert!(!SidebarFilter::HasPlan.matches(&pending, &[]));
 }
 
 /// Chips AND together: Running+Unread passes only a chat that is both.
@@ -82,15 +82,15 @@ fn active_filters_and_together() {
     filters.toggle(SidebarFilter::Unread);
 
     let both = chat(true, true, false);
-    assert!(filters.matches(&both));
-    assert!(!filters.matches(&chat(true, false, false)), "running alone fails the Unread chip");
-    assert!(!filters.matches(&chat(false, true, false)), "unread alone fails the Running chip");
-    assert!(!filters.matches(&chat(false, false, false)));
+    assert!(filters.matches(&both, &[]));
+    assert!(!filters.matches(&chat(true, false, false), &[]), "running alone fails the Unread chip");
+    assert!(!filters.matches(&chat(false, true, false), &[]), "unread alone fails the Running chip");
+    assert!(!filters.matches(&chat(false, false, false), &[]));
 
     // An empty set filters nothing.
     let mut filters = SidebarFilters::default();
     assert!(!filters.any());
-    assert!(filters.matches(&chat(false, false, false)));
+    assert!(filters.matches(&chat(false, false, false), &[]));
 
     // Toggling the same chip twice turns it back off.
     filters.toggle(SidebarFilter::Running);

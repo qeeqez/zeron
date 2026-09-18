@@ -15,6 +15,10 @@ pub(crate) struct AgentSpec {
     pub name: &'static str,
     pub lane: &'static str,
     pub steps_total: usize,
+    /// Chat the agent is attributed to — `simulate_reply`'s subagents
+    /// stamp the chat they serve so its sidebar row stays "working" while
+    /// they run. `None` = unattributed (counts on no chat).
+    pub chat_id: Option<u64>,
 }
 
 /// Simulated agent reply: a tool call that runs, a diff card, then a
@@ -22,8 +26,24 @@ pub(crate) struct AgentSpec {
 /// (docs/todo/backend.md). `chat_id` needn't be the active chat —
 /// scheduled prompts simulate into background chats too.
 pub fn simulate_reply(this: &mut Workspace, chat_id: u64, cx: &mut Context<Workspace>) {
-    this.spawn_agent(AgentSpec { name: "explorer", lane: "rixl/explore", steps_total: 4 }, cx);
-    this.spawn_agent(AgentSpec { name: "reviewer", lane: "rixl/review", steps_total: 3 }, cx);
+    this.spawn_agent(
+        AgentSpec {
+            name: "explorer",
+            lane: "rixl/explore",
+            steps_total: 4,
+            chat_id: Some(chat_id),
+        },
+        cx,
+    );
+    this.spawn_agent(
+        AgentSpec {
+            name: "reviewer",
+            lane: "rixl/review",
+            steps_total: 3,
+            chat_id: Some(chat_id),
+        },
+        cx,
+    );
     this.ensure_messages_by_id(chat_id);
     if let Some(chat) = this.chats.iter_mut().find(|c| c.id == chat_id) {
         Rc::make_mut(&mut chat.messages).push(ChatMessage {
@@ -70,10 +90,12 @@ pub fn simulate_reply(this: &mut Workspace, chat_id: u64, cx: &mut Context<Works
 impl Workspace {
     /// Spawn a simulated subagent that walks its steps on a timer.
     pub(crate) fn spawn_agent(&mut self, spec: AgentSpec, cx: &mut Context<Self>) {
-        let AgentSpec { name, lane, steps_total } = spec;
+        let AgentSpec { name, lane, steps_total, chat_id } = spec;
         let id = self.next_agent_id;
         self.next_agent_id += 1;
-        self.agents.push(Agent::new(id, name, lane, steps_total));
+        let mut agent = Agent::new(id, name, lane, steps_total);
+        agent.chat_id = chat_id;
+        self.agents.push(agent);
         cx.notify();
         let task = cx.spawn(async move |this, cx| {
             for step in 1..=steps_total {

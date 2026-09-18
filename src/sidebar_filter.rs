@@ -6,7 +6,7 @@
 
 use gpui_kit::assets::IconName;
 
-use crate::model::Chat;
+use crate::model::{Agent, AgentStatus, Chat};
 use crate::workspace::Workspace;
 
 /// One sidebar filter chip — the predicate a chat must satisfy while the
@@ -52,12 +52,14 @@ impl SidebarFilter {
         }
     }
 
-    /// Whether `chat` satisfies this chip alone. `HasPlan` also consults
-    /// `pending_has_plan` — the pending-bookmark scan sets it so unopened
-    /// chats aren't invisible to the chip.
-    pub fn matches(self, chat: &Chat) -> bool {
+    /// Whether `chat` satisfies this chip alone. `Running` reads the
+    /// `chat_working` aggregate (reply streaming OR an attributed agent
+    /// still running) so the chip agrees with the row's spinner. `HasPlan`
+    /// also consults `pending_has_plan` — the pending-bookmark scan sets
+    /// it so unopened chats aren't invisible to the chip.
+    pub fn matches(self, chat: &Chat, agents: &[Agent]) -> bool {
         match self {
-            Self::Running => chat.running,
+            Self::Running => chat_working(chat, agents),
             Self::Unread => chat.unread,
             Self::HasPlan => chat.latest_plan().is_some() || (chat.pending_load.is_some() && chat.pending_has_plan),
         }
@@ -90,8 +92,8 @@ impl SidebarFilters {
     }
 
     /// Whether `chat` passes every active chip — the chips AND together.
-    pub fn matches(&self, chat: &Chat) -> bool {
-        self.active.iter().all(|f| f.matches(chat))
+    pub fn matches(&self, chat: &Chat, agents: &[Agent]) -> bool {
+        self.active.iter().all(|f| f.matches(chat, agents))
     }
 
     /// The "N of M" label shown while chips are on — `shown` is the listed
@@ -101,22 +103,38 @@ impl SidebarFilters {
     }
 }
 
+/// The sidebar's "working" aggregate: a chat counts as busy while its own
+/// reply streams (`chat.running`) OR an agent attributed to it
+/// (`Agent.chat_id`) is still Running — a turn can end while its subagents
+/// keep going. Deliberately separate from `Chat.running`: that flag also
+/// drives the reply footer, scroller remeasure and the save path's
+/// foreign-turn semantics, none of which subagents should trip.
+pub(crate) fn chat_working(chat: &Chat, agents: &[Agent]) -> bool {
+    chat.running || agents.iter().any(|a| a.chat_id == Some(chat.id) && a.status == AgentStatus::Running)
+}
+
 impl Workspace {
+    /// `chat_working` over this workspace's agents — the row's spinner and
+    /// the Running chip read the same aggregate so they can't disagree.
+    pub(crate) fn chat_working(&self, chat: &Chat) -> bool {
+        chat_working(chat, &self.agents)
+    }
+
     /// `sidebar_order` narrowed by the active filter chips — the chat list
     /// the sidebar renders and Cmd+1..9 resolves against. The Archived
     /// section applies `SidebarFilters::matches` directly in render.
     pub(crate) fn sidebar_visible(&self, query: &str) -> Vec<usize> {
         self.sidebar_order(query)
             .into_iter()
-            .filter(|ix| self.sidebar_filters.matches(&self.chats[*ix]))
+            .filter(|ix| self.sidebar_filters.matches(&self.chats[*ix], &self.agents))
             .collect()
     }
 
-    /// Chats with a reply in flight — the Running chip's count, and the
-    /// gate for the palette command and sidebar stop-all bar (both appear
-    /// only at 2+). `running_agents` is the agent-row analog.
+    /// Working chats — the Running chip's count, and the gate for the
+    /// palette command and sidebar stop-all bar (both appear only at 2+).
+    /// `running_agents` is the agent-row analog.
     pub(crate) fn running_chats(&self) -> usize {
-        self.chats.iter().filter(|c| c.running).count()
+        self.chats.iter().filter(|c| self.chat_working(c)).count()
     }
 
     /// The vec index `chat_cycle` selects next: `active`'s position in the
