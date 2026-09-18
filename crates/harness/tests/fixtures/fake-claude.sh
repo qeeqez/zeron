@@ -75,6 +75,44 @@ case "$first" in
   emit '{"type":"result","subtype":"success","result":"wrapped up","errors":[],"usage":{"input_tokens":3,"output_tokens":3},"session_id":"sess-wake"}'
   ;;
 
+# NOTE: bgwait2 before bgwait — `case` takes the first matching glob.
+*scenario:bgwait2*)
+  # Two concurrent background subagents: the session must hold Working
+  # until the LAST one's task_notification lands — an early settle on the
+  # first Done is the bug under test.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash","Agent"],"cwd":"/tmp","session_id":"sess-bg2"}'
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_ba","name":"Agent","input":{"description":"probe a","run_in_background":true}},{"type":"tool_use","id":"toolu_bb","name":"Agent","input":{"description":"probe b","run_in_background":true}}]}}'
+  emit '{"type":"system","subtype":"task_started","task_id":"bg-a","tool_use_id":"toolu_ba","subagent_type":"general-purpose","prompt":"a","description":"probe a"}'
+  emit '{"type":"system","subtype":"task_started","task_id":"bg-b","tool_use_id":"toolu_bb","subagent_type":"general-purpose","prompt":"b","description":"probe b"}'
+  emit '{"type":"result","subtype":"success","result":"LAUNCHED","errors":[],"usage":{"input_tokens":5,"output_tokens":5},"session_id":"sess-bg2"}'
+  sleep 1
+  emit '{"type":"stream_event","parent_tool_use_id":"toolu_ba","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"a working"}}}'
+  emit '{"type":"system","subtype":"task_notification","task_id":"bg-a","tool_use_id":"toolu_ba","status":"completed","summary":"a done"}'
+  # First child settled; the second must keep the session Working.
+  sleep 1
+  emit '{"type":"stream_event","parent_tool_use_id":"toolu_bb","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"b working"}}}'
+  emit '{"type":"system","subtype":"task_notification","task_id":"bg-b","tool_use_id":"toolu_bb","status":"completed","summary":"b done"}'
+  ;;
+
+*scenario:bgwait*)
+  # Eager-done with a still-RUNNING background subagent: the parent turn
+  # settles while the child works; the session must read Working (not the
+  # parked Idle) until the wire's only terminal signal — an untagged
+  # task_notification the normalizer turns into a tagged Done — lands.
+  # The sleeps leave each phase observable to the polling test.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash","Agent"],"cwd":"/tmp","session_id":"sess-bg"}'
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_bg","name":"Agent","input":{"description":"bg probe","run_in_background":true}}]}}'
+  emit '{"type":"system","subtype":"task_started","task_id":"bg1","tool_use_id":"toolu_bg","subagent_type":"general-purpose","prompt":"p","description":"bg probe"}'
+  emit '{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"LAUNCHED"}}}'
+  emit '{"type":"result","subtype":"success","result":"LAUNCHED","errors":[],"usage":{"input_tokens":5,"output_tokens":5},"session_id":"sess-bg"}'
+  # Parent is parked; the subagent is still running.
+  sleep 1
+  emit '{"type":"stream_event","parent_tool_use_id":"toolu_bg","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"sub working"}}}'
+  emit '{"type":"assistant","parent_tool_use_id":"toolu_bg","message":{"content":[{"type":"tool_use","id":"sub-t1","name":"Bash","input":{"command":"sleep 1"}}]}}'
+  sleep 1
+  emit '{"type":"system","subtype":"task_notification","task_id":"bg1","tool_use_id":"toolu_bg","status":"completed","summary":"done"}'
+  ;;
+
 *scenario:askuser*)
   emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash"],"cwd":"/tmp","session_id":"sess-ask"}'
   # A plain tool permission request: must be auto-allowed.
