@@ -1,4 +1,5 @@
 use gpui_kit::component::WindowExt;
+use gpui_kit::component::button::Button;
 use gpui_kit::component::notification::{Notification, NotificationDelivery};
 use gpui_kit::*;
 
@@ -37,6 +38,15 @@ fn play_done_sound(window: &Window) {
 /// of stacking.
 struct ReplyDone;
 
+/// The failed toast's Retry button: dismisses its own toast, then surfaces
+/// the chat and re-sends the last prompt.
+fn retry_button(ws: WeakEntity<Workspace>, chat_id: u64, toast: Entity<Notification>) -> Button {
+    Button::new(("reply-retry", chat_id)).label("Retry").on_click(move |_, window, cx| {
+        toast.update(cx, |n, cx| n.dismiss(window, cx));
+        let _ = ws.update(cx, |ws, cx| ws.retry_notified_chat(chat_id, window, cx));
+    })
+}
+
 impl Workspace {
     /// System bell (gated by `notify_sound`), an in-app toast, plus — when
     /// the user isn't watching the chat — a system notification and dock
@@ -45,7 +55,8 @@ impl Workspace {
     /// `notify_background`, and the toast/system surfaces need
     /// `notify_on_done`. The sound is its own toggle so a reply can chime
     /// without a popup. Clicking either surface activates the window and
-    /// opens the chat. The platform layer is a safe no-op where
+    /// opens the chat; a failed turn's toast also carries a Retry button
+    /// that re-sends the last prompt. The platform layer is a safe no-op where
     /// notifications are unsupported or the app isn't bundled, so this
     /// never panics.
     pub(crate) fn notify_done(&mut self, chat_id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -59,6 +70,7 @@ impl Workspace {
         let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) else { return };
         let notice = Self::done_notice(chat, is_active && window.is_window_active(), self.notify_background);
         let ws = cx.entity().downgrade();
+        let ws_retry = cx.entity().downgrade();
         let note = if notice.failed { Notification::error(notice.body) } else { Notification::success(notice.body) }
             .title(notice.title)
             .id1::<ReplyDone>(("reply-done", chat_id))
@@ -66,6 +78,15 @@ impl Workspace {
             .on_click(move |_, window, cx| {
                 let _ = ws.update(cx, |ws, cx| ws.open_notified_chat(chat_id, window, cx));
             });
+        // A dead turn shouldn't need the chat opened before it can be
+        // re-sent: failed toasts carry a Retry button. An action also pins
+        // the toast (no autohide), which is right for a failure that wants
+        // eyes — the click dismisses it either way.
+        let note = if notice.failed {
+            note.action(move |_, _, cx| retry_button(ws_retry.clone(), chat_id, cx.entity()))
+        } else {
+            note
+        };
         window.push_notification(note, cx);
         if notice.system {
             window.request_attention();
@@ -83,6 +104,17 @@ impl Workspace {
             self.select_chat(ix, window, cx);
         }
         cx.notify();
+    }
+
+    /// The toast's Retry button: surface the failed chat, then re-send its
+    /// last prompt. `retry_last` is active-scoped, so only retry when the
+    /// requested chat actually became active — a chat deleted since the
+    /// toast posted must not resend whatever happens to be selected.
+    fn retry_notified_chat(&mut self, chat_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_notified_chat(chat_id, window, cx);
+        if self.chats.get(self.active).is_some_and(|c| c.id == chat_id) {
+            self.retry_last(cx);
+        }
     }
 
     /// The notice for a finished reply. `watched` is "the user can see the

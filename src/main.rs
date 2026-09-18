@@ -117,6 +117,8 @@ mod msg_nav;
 mod msg_nav_tests;
 mod notify;
 #[cfg(test)]
+mod notify_retry_tests;
+#[cfg(test)]
 mod notify_tests;
 mod open_in;
 #[cfg(test)]
