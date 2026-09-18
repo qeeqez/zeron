@@ -202,6 +202,46 @@ fn approval_request_toast_opens_the_chat(cx: &mut TestAppContext) {
     assert!(ws.read_with(cx, |w, app| w.scroller.read(app).is_scrolled_up()), "approval toast should scroll to the pending card");
 }
 
+/// A done-toast click means "show me the new reply" — the chat's saved
+/// scroll spot must not win: the scroller re-engages tail follow.
+#[gpui_kit::test]
+fn done_toast_click_returns_to_tail(cx: &mut TestAppContext) {
+    let (ws, cx) = open_workspace(cx);
+    let chat_id = ws.update(cx, |this, _| {
+        this.notify_on_done = true;
+        this.notify_background = false;
+        this.notify_sound = false;
+        this.chats[0].id
+    });
+    // Tall transcript parked at the top — tail follow already dropped.
+    ws.update(cx, |this, cx| {
+        let msgs = std::rc::Rc::make_mut(&mut this.chats[0].messages);
+        for i in 0..40 {
+            msgs.push(text(Role::User, &format!("filler {i}")));
+        }
+        this.scroller.update(cx, |s, cx| s.reset(40, cx));
+    });
+    ws.update(cx, |this, cx| {
+        this.scroller.update(cx, |s, cx| {
+            s.scroll_to_item(0, cx);
+        });
+    });
+    assert!(ws.read_with(cx, |w, app| w.scroller.read(app).is_scrolled_up()), "setup should be scrolled up");
+
+    cx.update(|window, cx| ws.update(cx, |ws, cx| ws.notify_done(chat_id, window, cx)));
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        let b = window.find("notification").bounds();
+        let y_inside = (b.size.height - px(5.)).max(px(0.));
+        window.click_at("notification", point(px(20.), y_inside), cx);
+    });
+    cx.run_until_parked();
+    assert!(
+        ws.read_with(cx, |w, app| w.scroller.read(app).is_following_tail()),
+        "the toast click should land on the new reply, not the stale spot"
+    );
+}
+
 /// `notify_on_done` gates approval notices too — the toggle is the
 /// user-visible "toast/system surfaces" switch, not strictly "reply done".
 #[gpui_kit::test]
