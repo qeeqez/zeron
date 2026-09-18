@@ -191,10 +191,11 @@ pub(crate) struct Normalizer {
     /// re-keys them onto the spawn chip's feed (the wire never echoes the
     /// steer on the child feed — live-verified 2.1.228).
     agent_tasks: std::collections::HashMap<String, String>,
-    /// tool_use ids of Agent/Task spawn calls, recorded from their own
-    /// assistant frames (plus `task_started`'s agent-task pairing). Gates
-    /// `task_notification`: background SHELL tasks settle through the same
-    /// subtype carrying their Bash call's id, and tagging that Done as
+    /// tool_use ids of Agent/Task spawn calls, recorded from assistant
+    /// frames UNTAGGED and TAGGED alike (a grandchild's spawn rides its
+    /// parent's tagged feed) plus `task_started`'s agent-task pairing.
+    /// Gates `task_notification`: background SHELL tasks settle through the
+    /// same subtype carrying their Bash call's id, and tagging that Done as
     /// subagent traffic stamped a spawn ref onto an ordinary Run chip —
     /// which then opened as an empty, never-created subagent doc (user
     /// report 2026-08-20).
@@ -251,9 +252,7 @@ impl Normalizer {
                         return Vec::new();
                     }
                     let status = match f.status.as_deref().unwrap_or("") {
-                        "completed" | "complete" | "succeeded" | "success" => {
-                            DoneStatus::Completed
-                        }
+                        "completed" | "complete" | "succeeded" | "success" => DoneStatus::Completed,
                         "failed" | "errored" | "error" => DoneStatus::Errored,
                         "killed" | "cancelled" | "canceled" | "stopped" | "interrupted" => {
                             DoneStatus::Interrupted
@@ -352,6 +351,15 @@ impl Normalizer {
 
             Frame::Assistant(f) => {
                 if let Some(parent) = &f.parent_tool_use_id {
+                    // A spawn inside a subagent's transcript is a GRANDCHILD:
+                    // record its tool_use id from the tagged feed too, or its
+                    // untagged task_notification drops and the engine never
+                    // sees its Done — the session would hold Working forever.
+                    for b in f.message.blocks() {
+                        if b.kind == "tool_use" && matches!(b.name.as_str(), "Agent" | "Task") {
+                            self.agent_spawn_tools.insert(b.id.clone());
+                        }
+                    }
                     // Subagent content, attributed. The 2.1.x wire streams NO
                     // tagged partial deltas (live-verified): a subagent's text
                     // arrives only as full text blocks on its tagged
@@ -413,12 +421,14 @@ impl Normalizer {
                             .flatten()
                             .and_then(Value::as_str)
                             .filter(|p| !p.trim().is_empty())
-                            .map(|prompt| tag(
-                                &b.id,
-                                AgentEvent::UserMessage {
-                                    text: prompt.to_owned(),
-                                },
-                            ));
+                            .map(|prompt| {
+                                tag(
+                                    &b.id,
+                                    AgentEvent::UserMessage {
+                                        text: prompt.to_owned(),
+                                    },
+                                )
+                            });
                         // A SendMessage steer never echoes on the child feed
                         // (live-verified) — surface it from the parent's own
                         // call, re-keyed onto the spawn it addresses.
@@ -841,8 +851,7 @@ mod tests {
         ] {
             let ev = normalize_one(frame);
             assert!(
-                !ev.iter()
-                    .any(|e| matches!(e, AgentEvent::Subagent { .. })),
+                !ev.iter().any(|e| matches!(e, AgentEvent::Subagent { .. })),
                 "{frame}: {ev:?}"
             );
         }
@@ -1018,10 +1027,52 @@ mod tests {
             r#"{"type":"system","subtype":"task_notification","tool_use_id":"toolu_agent","status":"running"}"#,
         )
         .is_empty());
-        assert!(normalize_one(
-            r#"{"type":"system","subtype":"task_notification","status":"completed"}"#,
+        assert!(
+            normalize_one(
+                r#"{"type":"system","subtype":"task_notification","status":"completed"}"#,
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn tagged_spawn_registers_for_its_task_notification() {
+        // A grandchild's Agent tool_use arrives on the CHILD's tagged feed,
+        // not the parent's — register it there too, or its (untagged)
+        // task_notification drops and the engine holds Working forever.
+        let mut norm = Normalizer::new();
+        let parent_spawn = crate::claude::wire::parse_frame(
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_pa","name":"Agent","input":{"description":"child"}}]}}"#,
         )
-        .is_empty());
+        .expect("parses");
+        norm.normalize(parent_spawn, false);
+        let child_spawn = crate::claude::wire::parse_frame(
+            r#"{"type":"assistant","parent_tool_use_id":"toolu_pa","message":{"content":[{"type":"tool_use","id":"toolu_gc","name":"Agent","input":{"description":"grandchild"}}]}}"#,
+        )
+        .expect("parses");
+        // The tagged frame still emits the spawn chip into the child's feed.
+        let ev = norm.normalize(child_spawn, false);
+        assert!(ev.iter().any(|e| matches!(
+            e,
+            AgentEvent::Subagent { parent_tool_use_id, event }
+                if parent_tool_use_id == "toolu_pa"
+                    && matches!(event.as_ref(), AgentEvent::ToolCall { id, .. } if id == "toolu_gc")
+        )), "{ev:?}");
+        // …and its notification settles it like a top-level spawn.
+        let notify = crate::claude::wire::parse_frame(
+            r#"{"type":"system","subtype":"task_notification","task_id":"gc1","tool_use_id":"toolu_gc","status":"completed","summary":"done"}"#,
+        )
+        .expect("parses");
+        let ev = norm.normalize(notify, false);
+        assert!(
+            matches!(
+                &ev[..],
+                [AgentEvent::Subagent { parent_tool_use_id, event }]
+                    if parent_tool_use_id == "toolu_gc"
+                        && matches!(event.as_ref(), AgentEvent::Done { status: DoneStatus::Completed, .. })
+            ),
+            "{ev:?}"
+        );
     }
 
     #[test]
