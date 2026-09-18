@@ -7,6 +7,8 @@
 #[cfg(test)]
 mod tests;
 
+use gpui_kit::assets::IconName;
+use gpui_kit::component::theme::ActiveTheme;
 use gpui_kit::*;
 
 use crate::workspace::Workspace;
@@ -42,6 +44,17 @@ impl Workspace {
         .detach();
     }
 
+    /// Track pointer-over-the-chat-pane while a `ChatDrag` is live —
+    /// notifies only on enter/leave so a drag across the pane doesn't
+    /// repaint per move. Render also gates on `cx.has_active_drag()`, so
+    /// the hint can't linger if the drag ends with the flag set.
+    pub(crate) fn set_tear_off_hover(&mut self, over: bool, cx: &mut Context<Self>) {
+        if self.tear_off_hover != over {
+            self.tear_off_hover = over;
+            cx.notify();
+        }
+    }
+
     /// Select the chat a fresh window was opened for. `key` resolves the
     /// chat across the reload (see `LoadedChatKey`); a miss leaves the
     /// persisted active chat selected.
@@ -69,4 +82,25 @@ impl Workspace {
         self.composer.update(cx, |s, cx| s.set_value(draft, window, cx));
         self.select_chat(ix, window, cx);
     }
+}
+
+/// The "release to open in a new window" affordance, pinned above the
+/// composer while a `ChatDrag` hovers the pane — same icon+wording family
+/// as the menu item so the gesture maps to a known action.
+pub(crate) fn tear_off_hint(cx: &App) -> impl IntoElement {
+    div().absolute().inset_0().flex().items_end().justify_center().pb_6().child(
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_3()
+            .py_2()
+            .rounded_lg()
+            .bg(cx.theme().popover)
+            .border_1()
+            .border_color(cx.theme().accent)
+            .text_sm()
+            .child(IconName::WindowRestore)
+            .child("Release to open in a new window"),
+    )
 }

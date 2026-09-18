@@ -129,6 +129,7 @@ impl Workspace {
             }),
             collapsed_folders: std::collections::HashSet::new(),
             chat_drop: None,
+            tear_off_hover: false,
             folder_colors: project_state
                 .folder_colors
                 .iter()

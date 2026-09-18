@@ -206,6 +206,10 @@ pub struct Workspace {
     /// drives the drop indicator line (see `crate::workspace::reorder`).
     /// Runtime-only; cleared on drop and when no drag is active.
     pub chat_drop: Option<ChatDrop>,
+    /// Pointer-over-the-chat-pane during a `ChatDrag` — drives the
+    /// tear-off hint (see `crate::chat_window`). Render also gates on
+    /// `has_active_drag`, so a stale flag can't outlive the gesture.
+    pub tear_off_hover: bool,
     /// Folder color tags — folder name → `ChatColor`, persisted as
     /// `ProjectState.folder_colors` in state.json. May name a folder that
     /// no longer exists; the sidebar only reads it for live folders.

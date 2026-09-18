@@ -31,18 +31,35 @@ const SPLIT_KEY: u64 = 1 << 62;
 
 impl Workspace {
     /// The chat column plus — while `secondary` is set — a divider and the
-    /// read-only split pane, each taking half the row.
+    /// read-only split pane, each taking half the row. The whole pane is a
+    /// `ChatDrag` drop target: releasing a dragged sidebar chat here tears
+    /// it off into its own window (`tear_off_hint` marks the affordance).
     pub fn render_chat_row(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ws = cx.entity();
+        let ws_drop = cx.entity();
         div()
+            .id("chat-pane")
+            .test_support()
+            .relative()
             .flex()
             .flex_1()
             .min_w_0()
             .h_full()
+            .on_drag_move::<super::sidebar_row::ChatDrag>(move |ev: &DragMoveEvent<super::sidebar_row::ChatDrag>, _, cx| {
+                ws.update(cx, |this, cx| this.set_tear_off_hover(ev.bounds.contains(&ev.event.position), cx));
+            })
+            .on_drop::<super::sidebar_row::ChatDrag>(move |drag, _, cx| {
+                ws_drop.update(cx, |this, cx| {
+                    this.set_tear_off_hover(false, cx);
+                    this.open_chat_in_new_window(drag.id, cx);
+                });
+            })
             .child(self.render_chat(window, cx))
             .when_some(self.secondary, |d, six| {
                 d.child(div().w(px(1.)).h_full().flex_shrink_0().bg(cx.theme().border))
                     .child(self.render_split_pane(six, window, cx))
             })
+            .when(self.tear_off_hover && cx.has_active_drag(), |d| d.child(crate::chat_window::tear_off_hint(cx)))
     }
 
     /// The read-only pane for `chats[six]`: a slim titlebar (click swaps

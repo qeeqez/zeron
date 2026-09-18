@@ -186,3 +186,54 @@ fn row_menu_opens_chat_in_new_window() {
         assert_eq!(other.chats[other.active].created_at, created_at, "the row's chat is selected, not the previously active one");
     });
 }
+
+/// Dragging a sidebar row onto the chat pane tears the chat off into its
+/// own window — the `chat-pane` drop target feeds the same
+/// `open_chat_in_new_window` path as the menu item, so the spawned window
+/// binds the project and selects the dragged chat.
+#[test]
+fn drag_chat_row_onto_pane_tears_off() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    let (id, created_at) = cx.update(|_, cx| {
+        ws.update(cx, |this, cx| {
+            this.new_chat(cx);
+            (this.chats[1].id, this.chats[1].created_at)
+        })
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.drag_to(("chat-row", id), "chat-pane", cx);
+        assert!(!ws.read(cx).tear_off_hover, "the drop clears the hover flag");
+    });
+    app.run_until_parked();
+
+    let others = other_workspaces(&mut app, &ws);
+    assert_eq!(others.len(), 1, "dropping a chat on the pane opens a window");
+    app.read(|cx| {
+        let other = others[0].read(cx);
+        assert_eq!(other.project.root(), ws.read(cx).project.root(), "new window binds the same project");
+        assert_eq!(other.chats.len(), 2, "the chat is shared, not duplicated");
+        assert_eq!(other.chats[other.active].created_at, created_at, "the dragged chat is selected");
+    });
+}
+
+/// A temporary chat never reaches disk, so another window couldn't load
+/// it — dropping its row on the pane must be a no-op.
+#[test]
+fn drag_temp_chat_onto_pane_spawns_nothing() {
+    let mut app = TestAppContext::single();
+    let (ws, cx) = mount(&mut app);
+    let temp_id = cx.update(|_, cx| {
+        ws.update(cx, |this, cx| {
+            this.new_temp_chat(cx);
+            this.chats.iter().find(|c| c.ephemeral).unwrap().id
+        })
+    });
+    cx.update(|window, cx| {
+        window.draw(cx).clear(cx);
+        window.drag_to(("chat-row", temp_id), "chat-pane", cx);
+    });
+    app.run_until_parked();
+    assert!(other_workspaces(&mut app, &ws).is_empty(), "ephemeral chats can't tear off");
+}
