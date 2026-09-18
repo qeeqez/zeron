@@ -17,26 +17,26 @@ use crate::global_search::{DateRange, SearchDoc, SearchFilters, search};
 use crate::model::{ChatMessage, MessageKind, Role};
 use crate::workspace::Workspace;
 
+/// A user text message stamped `age_secs` seconds ago.
+fn msg_at(s: &str, age_secs: u64) -> ChatMessage {
+    ChatMessage {
+        role: Role::User,
+        kind: MessageKind::Text(s.into()),
+        rating: None,
+        bookmarked: false,
+        pinned: false,
+        usage: None,
+        attachments: vec![],
+        alternatives: vec![],
+        at: SystemTime::now() - Duration::from_secs(age_secs),
+    }
+}
+
 /// One searchable doc: `texts` become user messages stamped `ages[ix]`
 /// seconds ago so the date filters have something to bite on.
 fn doc(provider: &str, model: &str, texts: &[&str], ages: &[u64]) -> SearchDoc {
     assert_eq!(texts.len(), ages.len());
-    let now = SystemTime::now();
-    let messages = texts
-        .iter()
-        .zip(ages)
-        .map(|(t, age)| ChatMessage {
-            role: Role::User,
-            kind: MessageKind::Text((*t).into()),
-            rating: None,
-            bookmarked: false,
-            pinned: false,
-            usage: None,
-            attachments: vec![],
-            alternatives: vec![],
-            at: now - Duration::from_secs(*age),
-        })
-        .collect();
+    let messages = texts.iter().zip(ages).map(|(t, age)| msg_at(t, *age)).collect();
     SearchDoc {
         chat_id: None,
         file_ix: 0,
@@ -66,20 +66,15 @@ fn mount(cx: &mut TestAppContext) -> (Entity<Workspace>, &mut VisualTestContext)
     (ws.unwrap(), cx)
 }
 
+/// Repaint so element snapshots reflect the latest state.
+fn redraw(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) {
+    window.draw(cx).clear(cx);
+}
+
 /// Append a text message to the active chat — works inside `cx.update`
 /// where only `&mut App` is available.
 fn push_to(this: &mut Workspace, s: &str) {
-    std::rc::Rc::make_mut(&mut this.chats[this.active].messages).push(ChatMessage {
-        role: Role::User,
-        kind: MessageKind::Text(s.into()),
-        rating: None,
-        bookmarked: false,
-        pinned: false,
-        usage: None,
-        attachments: vec![],
-        alternatives: vec![],
-        at: SystemTime::now(),
-    });
+    std::rc::Rc::make_mut(&mut this.chats[this.active].messages).push(msg_at(s, 0));
 }
 
 /// Click the item `label` inside the popup-menu that `chip` opened — the
@@ -106,7 +101,7 @@ fn click_menu_item(vcx: &mut VisualTestContext, chip: &str, label: &str) {
     loop {
         vcx.run_until_parked();
         let (present, clicked) = vcx.update(|window, cx| {
-            window.draw(cx).clear(cx);
+            redraw(window, cx);
             let leaf = snapshots(window)
                 .iter()
                 .find(|s| {
@@ -252,46 +247,52 @@ fn filter_chips_narrow_live_results() {
             this.composer.update(cx, |s, cx| s.focus(window, cx));
         });
         cx.bind_keys(crate::workspace_keys());
-        window.draw(cx).clear(cx);
+        redraw(window, cx);
         window.press("cmd-shift-f", cx);
-        window.draw(cx).clear(cx);
+    });
+    // The dialog's enter animation runs off the wall clock — a chip click
+    // dispatched mid-slide lands on the dismissable backdrop and pops the
+    // dialog. Wait for painted bounds to stop moving first.
+    crate::composer_testutil::settle_dialog(cx);
+    cx.update(|window, cx| {
+        redraw(window, cx);
         assert!(window.find("search-filters").visible(), "the dialog shows the filter row");
         ws.update(cx, |this, cx| {
             this.global_search.update(cx, |state, cx| state.set_query("needle", window, cx));
         });
-        window.draw(cx).clear(cx);
+        redraw(window, cx);
         assert_eq!(ws.read(cx).global_search.read(cx).matched_count(), 2, "unfiltered: both chats match");
         // The Provider chip narrows to prov-b's chat — unconfigured ids
         // render their raw id as the menu label.
         window.click("search-filter-provider", cx);
-        window.draw(cx).clear(cx);
+        redraw(window, cx);
     });
     click_menu_item(cx, "search-filter-provider", "prov-b");
     cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
+        redraw(window, cx);
         assert_eq!(ws.read(cx).global_search.read(cx).matched_count(), 1, "provider filter narrows to one chat");
         // The Model chip ANDs on top of the provider pick.
         window.click("search-filter-model", cx);
-        window.draw(cx).clear(cx);
+        redraw(window, cx);
     });
     click_menu_item(cx, "search-filter-model", "model-b");
     cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
+        redraw(window, cx);
         assert_eq!(ws.read(cx).global_search.read(cx).matched_count(), 1);
         // Clearing each chip restores the wider result set.
         window.click("search-filter-provider", cx);
-        window.draw(cx).clear(cx);
+        redraw(window, cx);
     });
     click_menu_item(cx, "search-filter-provider", "Any provider");
     cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
+        redraw(window, cx);
         assert_eq!(ws.read(cx).global_search.read(cx).matched_count(), 1, "the model filter still applies");
         window.click("search-filter-model", cx);
-        window.draw(cx).clear(cx);
+        redraw(window, cx);
     });
     click_menu_item(cx, "search-filter-model", "Any model");
     cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
+        redraw(window, cx);
         assert_eq!(ws.read(cx).global_search.read(cx).matched_count(), 2, "clearing both restores every hit");
     });
 }

@@ -9,9 +9,10 @@
 
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext, point, px, size};
+use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext, px, size};
 
 use crate::backend::{AgentBackend, AgentEvent, ReplyStream};
+use crate::composer_testutil::click_toast_until;
 use crate::model::{ChatMessage, MessageKind, Role};
 use crate::workspace::Workspace;
 
@@ -183,15 +184,7 @@ fn approval_request_toast_opens_the_chat(cx: &mut TestAppContext) {
     assert_eq!(toast_count(cx), 1, "a pending approval should post a toast");
     ws.update(cx, |this, cx| this.new_chat(cx));
     assert_eq!(ws.read_with(cx, |w, _| w.active), 1);
-    // Same shape as the done-toast click: the toast slides in from the top
-    // edge, so click near its bottom where it's already on-screen.
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        let b = window.find("notification").bounds();
-        let y_inside = (b.size.height - px(5.)).max(px(0.));
-        window.click_at("notification", point(px(20.), y_inside), cx);
-    });
-    cx.run_until_parked();
+    click_toast_until(cx, |cx| ws.read_with(cx, |w, _| w.active) == 0);
     assert_eq!(ws.read_with(cx, |w, _| w.active), 0, "clicking the approval toast should open its chat");
     // The click also scrolls the pending card into view: the card sits at
     // the top of a tall transcript, so landing there leaves the scroller
@@ -229,13 +222,7 @@ fn done_toast_click_returns_to_tail(cx: &mut TestAppContext) {
     assert!(ws.read_with(cx, |w, app| w.scroller.read(app).is_scrolled_up()), "setup should be scrolled up");
 
     cx.update(|window, cx| ws.update(cx, |ws, cx| ws.notify_done(chat_id, window, cx)));
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        let b = window.find("notification").bounds();
-        let y_inside = (b.size.height - px(5.)).max(px(0.));
-        window.click_at("notification", point(px(20.), y_inside), cx);
-    });
-    cx.run_until_parked();
+    click_toast_until(cx, |cx| ws.read_with(cx, |w, app| w.scroller.read(app).is_following_tail()));
     assert!(
         ws.read_with(cx, |w, app| w.scroller.read(app).is_following_tail()),
         "the toast click should land on the new reply, not the stale spot"

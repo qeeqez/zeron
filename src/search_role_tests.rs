@@ -173,6 +173,11 @@ fn role_chip_narrows_live_results() {
         cx.bind_keys(crate::workspace_keys());
         window.draw(cx).clear(cx);
         window.press("cmd-shift-f", cx);
+    });
+    // Same wall-clock enter animation as the filter test — settle painted
+    // bounds so the chip click can't land on the dismissable backdrop.
+    crate::composer_testutil::settle_dialog(cx);
+    cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert!(window.find("search-filter-role").visible(), "the dialog shows the Role chip");
         ws.update(cx, |this, cx| {

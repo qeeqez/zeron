@@ -11,6 +11,7 @@ use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, Entity, SystemNotificationResponse, TestAppContext, VisualTestContext, px, size};
 
 use crate::backend::{AgentBackend, AgentEvent, ReplyStream};
+use crate::composer_testutil::click_toast_until;
 use crate::workspace::Workspace;
 
 /// Redirect persistence into a throwaway dir so tests never read or write
@@ -240,16 +241,9 @@ fn clicking_toast_opens_the_chat(cx: &mut TestAppContext) {
     cx.update(|_window, cx| workspace.update(cx, |ws, cx| ws.new_chat(cx)));
     assert_eq!(workspace.read_with(cx, |ws, _| ws.active), 1);
 
-    // The enter animation slides the toast in from above the window; its
-    // center can still be off-screen, so click near the bottom edge —
-    // inside the window even mid-animation.
-    cx.update(|window, cx| {
-        window.draw(cx).clear(cx);
-        let b = window.find("notification").bounds();
-        let y_inside = (b.size.height - px(5.)).max(px(0.));
-        window.click_at("notification", gpui_kit::point(px(20.), y_inside), cx);
-    });
-    cx.run_until_parked();
+    // The enter animation slides the toast in from above the window; poll-
+    // click until the selection lands since a lone click can land mid-slide.
+    click_toast_until(cx, |cx| workspace.read_with(cx, |ws, _| ws.active) == 0);
     assert_eq!(workspace.read_with(cx, |ws, _| ws.active), 0, "clicking the toast should select its chat");
 }
 

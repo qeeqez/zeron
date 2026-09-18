@@ -8,7 +8,7 @@
 
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext, px, size};
+use gpui_kit::{AppContext, Entity, TestAppContext, VisualTestContext, point, px, size};
 
 use crate::model::{MessageKind, Role};
 use crate::workspace::Workspace;
@@ -95,6 +95,28 @@ pub(crate) fn settle_dialog(cx: &mut VisualTestContext) {
         prev = Some(bounds);
         assert!(std::time::Instant::now() < deadline, "dialog animation never settled");
         std::thread::sleep(std::time::Duration::from_millis(40));
+    }
+}
+
+/// Click the in-app toast near its bottom edge until `cond` observes the
+/// effect. The slide-in is wall-clock driven like dialog animations, so a
+/// lone click can land on a stale position mid-animation — poll instead.
+pub(crate) fn click_toast_until(cx: &mut VisualTestContext, cond: impl Fn(&mut VisualTestContext) -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            if let Some(toast) = window.try_find("notification") {
+                let y_inside = (toast.bounds().size.height - px(5.)).max(px(0.));
+                window.click_at("notification", point(px(20.), y_inside), cx);
+            }
+        });
+        cx.run_until_parked();
+        if cond(cx) {
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "the toast click never landed");
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 }
 

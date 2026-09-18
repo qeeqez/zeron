@@ -153,11 +153,9 @@ fn toggle_chips_narrow_results_and_stick() {
         assert_eq!(window.find("search-whole-word").checked(), Some(false), "Whole Word starts off");
     });
     // The click dispatches a real mouse event at the chip's bounds — the
-    // dialog's enter animation runs off the wall clock, so wait it out
-    // like `click_menu_item` does for popovers or the point lands on the
-    // still-animating scrim instead of the chip.
-    cx.run_until_parked();
-    std::thread::sleep(std::time::Duration::from_millis(700));
+    // dialog's enter animation runs off the wall clock, so wait for painted
+    // bounds to stop moving or the point lands on the dismissable backdrop.
+    crate::composer_testutil::settle_dialog(cx);
     cx.update(|window, cx| {
         window.draw(cx).clear(cx);
         assert!(window.find("command").visible(), "dialog still up before the click");
