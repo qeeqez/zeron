@@ -1297,6 +1297,66 @@ fn subagent_chip_update(event: &AgentEvent) -> Option<&'static str> {
     }
 }
 
+/// Peel nested [`AgentEvent::Subagent`] wrappers to the leaf: returns the
+/// LEAF owner (the innermost `parent_tool_use_id` — the subagent the leaf
+/// event actually belongs to) and the leaf event itself. Flat `Subagent{A,
+/// ev}` → `("A", ev)`; `Subagent{A, Subagent{B, ev}}` → `("B", ev)`. The
+/// outer ids only relay — descendants outlive their parents on the wire.
+fn subagent_leaf(event: &AgentEvent) -> (&str, &AgentEvent) {
+    let mut owner = "";
+    let mut leaf = event;
+    while let AgentEvent::Subagent {
+        parent_tool_use_id,
+        event: inner,
+    } = leaf
+    {
+        owner = parent_tool_use_id.as_str();
+        leaf = inner.as_ref();
+    }
+    (owner, leaf)
+}
+
+/// Sidebar-liveness bookkeeping for one tagged event, keyed on the LEAF
+/// owner ([`subagent_leaf`]). A leaf Done settles its owner; a steer
+/// (UserMessage/Steered) is the one post-settle reopen — it announces more
+/// work. Bookkeeping frames that share the tagged channel (usage/context
+/// ticks, command lists) never prove work on their own; any other leaf
+/// marks the owner live unless it already settled — a straggler must not
+/// resurrect the set. A leaf SPAWN chip additionally mints the next
+/// generation: a grandchild is live from its `Agent` call inside the
+/// child's tagged transcript, before any frame of its own arrives.
+fn note_subagent_event(
+    live: &mut std::collections::HashSet<String>,
+    settled: &mut std::collections::HashSet<String>,
+    owner: &str,
+    leaf: &AgentEvent,
+) {
+    match leaf {
+        AgentEvent::Done { .. } => {
+            live.remove(owner);
+            settled.insert(owner.to_owned());
+        }
+        AgentEvent::UserMessage { .. } | AgentEvent::Steered { .. } => {
+            settled.remove(owner);
+            live.insert(owner.to_owned());
+        }
+        AgentEvent::ContextUsage { .. }
+        | AgentEvent::Usage { .. }
+        | AgentEvent::AvailableCommands { .. } => {}
+        _ => {
+            if !settled.contains(owner) {
+                live.insert(owner.to_owned());
+            }
+            if let AgentEvent::ToolCall { id, call } = leaf
+                && call.is_subagent_spawn()
+                && !settled.contains(id)
+            {
+                live.insert(id.clone());
+            }
+        }
+    }
+}
+
 /// Apply the render-parts privacy policy: strip heavy/sensitive tool inputs before doc
 /// entry. Full inputs live only in the local run journal.
 fn render_parts(parts: &[MessagePart]) -> Vec<MessagePart> {
@@ -1861,34 +1921,22 @@ async fn drive_run(
         } = &event
         {
             inner.publish(&chat_id, &event);
-            let is_steer = matches!(
-                sub_event.as_ref(),
-                AgentEvent::UserMessage { .. } | AgentEvent::Steered { .. }
-            );
-            if is_steer {
-                settled_subagents.remove(parent_tool_use_id);
-            } else if settled_subagents.contains(parent_tool_use_id)
-                && !subagents.contains_key(parent_tool_use_id)
-            {
-                // Straggler after the freeze: chip-only silence (the old
-                // pre-viz behavior), never a reopened doc.
-                continue;
-            }
-            // Liveness for the sidebar: tagged work traffic means the child
-            // is running (a steer reopens a settled id); a tagged Done
-            // settles it. Bookkeeping frames on the tagged channel — usage
-            // ticks, command lists — never prove work on their own.
+            // Sidebar liveness keys on the LEAF owner (the inner wrappers
+            // only relay) and runs BEFORE the straggler gate: a nested
+            // `Subagent{A, Subagent{B, …}}` landing after A froze still
+            // proves B live — real work that must hold the park at Working.
+            let (leaf_owner, leaf) = subagent_leaf(&event);
+            // Snapshot BEFORE the bookkeeping: the straggler gate below is
+            // about ids settled by EARLIER events — a Done that settles its
+            // owner right now must still reach the chip/freeze path.
+            let outer_settled = settled_subagents.contains(parent_tool_use_id);
             let was_live = !live_subagents.is_empty();
-            if matches!(sub_event.as_ref(), AgentEvent::Done { .. }) {
-                live_subagents.remove(parent_tool_use_id);
-            } else if !matches!(
-                sub_event.as_ref(),
-                AgentEvent::ContextUsage { .. }
-                    | AgentEvent::Usage { .. }
-                    | AgentEvent::AvailableCommands { .. }
-            ) {
-                live_subagents.insert(parent_tool_use_id.clone());
-            }
+            note_subagent_event(
+                &mut live_subagents,
+                &mut settled_subagents,
+                leaf_owner,
+                leaf,
+            );
             // A parked session flips on the live set's empty/non-empty
             // edge: first byte back to Working, last settle to Idle.
             if idle_since.is_some() {
@@ -1897,6 +1945,19 @@ async fn drive_run(
                 } else if was_live && live_subagents.is_empty() {
                     inner.set_status(&chat_id, SessionStatus::Idle, false);
                 }
+            }
+            // Doc routing stays keyed on the OUTER id. A leaf steer aimed
+            // at that id is the one legit reopen; anything else for an
+            // already-settled id is a post-freeze straggler.
+            let outer_reopened = leaf_owner == parent_tool_use_id.as_str()
+                && matches!(
+                    leaf,
+                    AgentEvent::UserMessage { .. } | AgentEvent::Steered { .. }
+                );
+            if outer_settled && !outer_reopened && !subagents.contains_key(parent_tool_use_id) {
+                // Straggler after the freeze: chip-only silence (the old
+                // pre-viz behavior), never a reopened doc.
+                continue;
             }
             let sub_id = subagent_doc_id(&chat_id, parent_tool_use_id);
             let chip_streaming = folded
@@ -1970,9 +2031,6 @@ async fn drive_run(
                 }
             }
             let done = matches!(sub_event.as_ref(), AgentEvent::Done { .. });
-            if done {
-                settled_subagents.insert(parent_tool_use_id.clone());
-            }
             if let Some(sink) = subagents.get_mut(parent_tool_use_id) {
                 if let AgentEvent::UserMessage { text } = sub_event.as_ref() {
                     // A steer splits ENTRIES, not parts — handled at the
@@ -2569,8 +2627,8 @@ mod tests {
         assert_eq!(doc.read_entries().unwrap().len(), 4);
     }
 
-    use super::{RuntimeConfig, subagent_doc_id};
-    use zeron_proto::{HarnessId, RunRequest, SandboxLevel};
+    use super::{RuntimeConfig, note_subagent_event, subagent_doc_id, subagent_leaf};
+    use zeron_proto::{AgentEvent, DoneStatus, HarnessId, RunRequest, SandboxLevel};
 
     #[tokio::test]
     async fn generated_image_failure_is_sanitized_even_inside_subagents() {
@@ -2681,6 +2739,159 @@ mod tests {
             id.chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         );
+    }
+
+    fn tagged(owner: &str, event: AgentEvent) -> AgentEvent {
+        AgentEvent::Subagent {
+            parent_tool_use_id: owner.into(),
+            event: Box::new(event),
+        }
+    }
+
+    fn spawn_call() -> zeron_proto::ToolCall {
+        zeron_proto::ToolCall::Unknown {
+            name: "Agent: probe".into(),
+            input: None,
+        }
+    }
+
+    #[test]
+    fn subagent_leaf_unwraps_to_the_innermost_owner() {
+        let flat = tagged("a", AgentEvent::TextDelta { text: "x".into() });
+        let (owner, leaf) = subagent_leaf(&flat);
+        assert_eq!(owner, "a");
+        assert!(matches!(leaf, AgentEvent::TextDelta { .. }));
+
+        // Any depth: the INNERMOST wrapper id owns the leaf.
+        let nested = tagged(
+            "a",
+            tagged(
+                "b",
+                tagged(
+                    "c",
+                    AgentEvent::Done {
+                        status: DoneStatus::Completed,
+                        result: None,
+                        error: None,
+                        session_id: None,
+                    },
+                ),
+            ),
+        );
+        let (owner, leaf) = subagent_leaf(&nested);
+        assert_eq!(owner, "c");
+        assert!(matches!(leaf, AgentEvent::Done { .. }));
+    }
+
+    #[test]
+    fn note_subagent_event_leaf_done_settles_the_leaf_only() {
+        let mut live = std::collections::HashSet::from(["a".to_owned(), "b".to_owned()]);
+        let mut settled = std::collections::HashSet::new();
+        let event = tagged(
+            "a",
+            tagged(
+                "b",
+                AgentEvent::Done {
+                    status: DoneStatus::Completed,
+                    result: None,
+                    error: None,
+                    session_id: None,
+                },
+            ),
+        );
+        let (owner, leaf) = subagent_leaf(&event);
+        note_subagent_event(&mut live, &mut settled, owner, leaf);
+        // B settled; A is untouched — a descendant's Done is not its parent's.
+        assert!(settled.contains("b") && !settled.contains("a"));
+        assert!(!live.contains("b") && live.contains("a"));
+    }
+
+    #[test]
+    fn note_subagent_event_spawn_chip_mints_the_next_generation() {
+        let mut live = std::collections::HashSet::new();
+        let mut settled = std::collections::HashSet::new();
+        // A spawn call inside the child's transcript mints the grandchild —
+        // before any frame of its own arrives.
+        let event = tagged(
+            "a",
+            tagged(
+                "b",
+                AgentEvent::ToolCall {
+                    id: "gc".into(),
+                    call: spawn_call(),
+                },
+            ),
+        );
+        let (owner, leaf) = subagent_leaf(&event);
+        note_subagent_event(&mut live, &mut settled, owner, leaf);
+        assert!(live.contains("b"), "the leaf owner is working");
+        assert!(live.contains("gc"), "the spawned id is minted");
+        // An already-settled id is not revived by a late chip refresh.
+        settled.insert("gc".to_owned());
+        let mut live = std::collections::HashSet::new();
+        let event = tagged(
+            "b",
+            AgentEvent::ToolCall {
+                id: "gc".into(),
+                call: spawn_call(),
+            },
+        );
+        let (owner, leaf) = subagent_leaf(&event);
+        note_subagent_event(&mut live, &mut settled, owner, leaf);
+        assert!(live.contains("b"));
+        assert!(!live.contains("gc"));
+    }
+
+    #[test]
+    fn note_subagent_event_settled_stragglers_and_reopens() {
+        let mut live = std::collections::HashSet::new();
+        let mut settled = std::collections::HashSet::from(["b".to_owned()]);
+        // A settled leaf's straggler does not re-insert…
+        let event = tagged(
+            "a",
+            tagged(
+                "b",
+                AgentEvent::TextDelta {
+                    text: "late".into(),
+                },
+            ),
+        );
+        let (owner, leaf) = subagent_leaf(&event);
+        note_subagent_event(&mut live, &mut settled, owner, leaf);
+        assert!(live.is_empty() && settled.contains("b"));
+        // …but a steer legitimately reopens it.
+        let event = tagged(
+            "a",
+            tagged(
+                "b",
+                AgentEvent::UserMessage {
+                    text: "more".into(),
+                },
+            ),
+        );
+        let (owner, leaf) = subagent_leaf(&event);
+        note_subagent_event(&mut live, &mut settled, owner, leaf);
+        assert!(live.contains("b") && !settled.contains("b"));
+    }
+
+    #[test]
+    fn note_subagent_event_bookkeeping_never_proves_work() {
+        for leaf in [
+            AgentEvent::Usage {
+                input_tokens: 1,
+                output_tokens: 1,
+            },
+            AgentEvent::ContextUsage {
+                tokens: Some(1),
+                window: None,
+            },
+            AgentEvent::AvailableCommands { commands: vec![] },
+        ] {
+            let mut live = std::collections::HashSet::new();
+            let mut settled = std::collections::HashSet::new();
+            note_subagent_event(&mut live, &mut settled, "b", &leaf);
+            assert!(live.is_empty() && settled.is_empty(), "{leaf:?}");
+        }
     }
 
     #[test]
