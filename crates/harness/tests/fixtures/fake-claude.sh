@@ -113,6 +113,53 @@ case "$first" in
   emit '{"type":"system","subtype":"task_notification","task_id":"bg1","tool_use_id":"toolu_bg","status":"completed","summary":"done"}'
   ;;
 
+# NOTE: bgnested2 before bgnested — `case` takes the first matching glob.
+*scenario:bgnested2*)
+  # FOUR levels: child (toolu_pa) → grandchild (toolu_gc) → great-
+  # grandchild (toolu_gg), each spawn riding its parent's tagged
+  # transcript (deeper generations get no task_started on the top stream).
+  # Settles land shallowest-first: after pa and gc are done, gg alone must
+  # hold the session Working until ITS notification.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash","Agent"],"cwd":"/tmp","session_id":"sess-bgn2"}'
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_pa","name":"Agent","input":{"description":"child probe","run_in_background":true}}]}}'
+  emit '{"type":"system","subtype":"task_started","task_id":"bg-pa","tool_use_id":"toolu_pa","subagent_type":"general-purpose","prompt":"p","description":"child probe"}'
+  emit '{"type":"assistant","parent_tool_use_id":"toolu_pa","message":{"content":[{"type":"tool_use","id":"toolu_gc","name":"Agent","input":{"description":"grandchild probe","run_in_background":true}}]}}'
+  emit '{"type":"assistant","parent_tool_use_id":"toolu_gc","message":{"content":[{"type":"tool_use","id":"toolu_gg","name":"Agent","input":{"description":"great-grandchild probe","run_in_background":true}}]}}'
+  emit '{"type":"result","subtype":"success","result":"LAUNCHED","errors":[],"usage":{"input_tokens":5,"output_tokens":5},"session_id":"sess-bgn2"}'
+  sleep 1
+  emit '{"type":"stream_event","parent_tool_use_id":"toolu_gg","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"gg working"}}}'
+  emit '{"type":"system","subtype":"task_notification","task_id":"bg-pa","tool_use_id":"toolu_pa","status":"completed","summary":"child done"}'
+  sleep 1
+  emit '{"type":"stream_event","parent_tool_use_id":"toolu_gc","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"gc outlives pa"}}}'
+  emit '{"type":"system","subtype":"task_notification","task_id":"bg-gc","tool_use_id":"toolu_gc","status":"completed","summary":"gc done"}'
+  # Deepest still running — Working must hold on gg alone.
+  sleep 1
+  emit '{"type":"stream_event","parent_tool_use_id":"toolu_gg","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"gg still working"}}}'
+  emit '{"type":"system","subtype":"task_notification","task_id":"bg-gg","tool_use_id":"toolu_gg","status":"completed","summary":"gg done"}'
+  ;;
+
+*scenario:bgnested*)
+  # THREE levels: the child (toolu_pa) spawns a grandchild (toolu_gc)
+  # inside its OWN tagged transcript — the grandchild gets no task_started
+  # on the top stream, so only the tagged assistant frame registers it
+  # (the real 2.1.x gap). The child settles FIRST while the grandchild
+  # still runs; the session must hold Working on the grandchild alone.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash","Agent"],"cwd":"/tmp","session_id":"sess-bgn"}'
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_pa","name":"Agent","input":{"description":"child probe","run_in_background":true}}]}}'
+  emit '{"type":"system","subtype":"task_started","task_id":"bg-pa","tool_use_id":"toolu_pa","subagent_type":"general-purpose","prompt":"p","description":"child probe"}'
+  emit '{"type":"assistant","parent_tool_use_id":"toolu_pa","message":{"content":[{"type":"tool_use","id":"toolu_gc","name":"Agent","input":{"description":"grandchild probe","run_in_background":true}}]}}'
+  emit '{"type":"result","subtype":"success","result":"LAUNCHED","errors":[],"usage":{"input_tokens":5,"output_tokens":5},"session_id":"sess-bgn"}'
+  # Parent parked; the grandchild is still running.
+  sleep 1
+  emit '{"type":"stream_event","parent_tool_use_id":"toolu_gc","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"gc working"}}}'
+  sleep 1
+  emit '{"type":"system","subtype":"task_notification","task_id":"bg-pa","tool_use_id":"toolu_pa","status":"completed","summary":"child done"}'
+  # The DIRECT child is settled; the grandchild must keep Working.
+  sleep 1
+  emit '{"type":"stream_event","parent_tool_use_id":"toolu_gc","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"gc still working"}}}'
+  emit '{"type":"system","subtype":"task_notification","task_id":"bg-gc","tool_use_id":"toolu_gc","status":"completed","summary":"gc done"}'
+  ;;
+
 *scenario:askuser*)
   emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash"],"cwd":"/tmp","session_id":"sess-ask"}'
   # A plain tool permission request: must be auto-allowed.

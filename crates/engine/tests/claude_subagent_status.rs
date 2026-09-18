@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use zeron_doc::{MessagePart, SessionMessageEntry, SubagentStatus};
+use zeron_doc::{MessagePart, MessageStatus, SessionMessageEntry, SubagentStatus};
 use zeron_engine::{EngineCore, EngineProfile, HarnessRegistry};
 use zeron_harness::ClaudeHarness;
 use zeron_proto::{HarnessId, RunRequest, SandboxLevel, SessionStatus};
@@ -177,6 +177,112 @@ async fn working_holds_until_the_last_subagent_settles() {
     )
     .await;
     assert_eq!(chip_status(&core, "toolu_bb"), Some(SubagentStatus::Done));
+
+    core.shutdown().await;
+}
+
+/// THREE levels: the child spawned a grandchild inside its OWN tagged
+/// transcript (a grandchild gets no task_started on the top stream — the
+/// tagged assistant frame alone registers it). The DIRECT child settles
+/// first; the session must hold Working on the grandchild alone until its
+/// task_notification lands — dropped, that notification wedges Working.
+#[tokio::test(flavor = "multi_thread")]
+async fn working_holds_while_a_grandchild_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = assemble(dir.path());
+    core.sessions
+        .dispatch(
+            CHAT,
+            HarnessId::ClaudeCode,
+            run_request(dir.path(), "bgnested"),
+            Some("user-prompt".into()),
+        )
+        .await
+        .expect("dispatch");
+
+    wait_for(
+        || {
+            let Some(session) = core.sessions.session_status(CHAT) else {
+                return false;
+            };
+            session.status == SessionStatus::Working && session.last_completed_turn.is_some()
+        },
+        "parked session with a live grandchild to read Working",
+    )
+    .await;
+
+    // The direct child settles first — but the grandchild still runs.
+    wait_for(
+        || chip_status(&core, "toolu_pa") == Some(SubagentStatus::Done),
+        "child chip to settle",
+    )
+    .await;
+    assert_eq!(
+        status(&core),
+        Some(SessionStatus::Working),
+        "a live grandchild must keep the parked session Working"
+    );
+
+    wait_for(
+        || status(&core) == Some(SessionStatus::Idle),
+        "session to settle Idle once the grandchild finishes",
+    )
+    .await;
+
+    core.shutdown().await;
+}
+
+/// FOUR levels, settling shallowest-first: after the child AND the
+/// grandchild are both done, the great-grandchild alone must hold the
+/// parked session Working until its own notification lands.
+#[tokio::test(flavor = "multi_thread")]
+async fn working_holds_through_out_of_order_deep_settles() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = assemble(dir.path());
+    core.sessions
+        .dispatch(
+            CHAT,
+            HarnessId::ClaudeCode,
+            run_request(dir.path(), "bgnested2"),
+            Some("user-prompt".into()),
+        )
+        .await
+        .expect("dispatch");
+
+    wait_for(
+        || {
+            let Some(session) = core.sessions.session_status(CHAT) else {
+                return false;
+            };
+            session.status == SessionStatus::Working && session.last_completed_turn.is_some()
+        },
+        "parked session with live descendants to read Working",
+    )
+    .await;
+
+    // Child then grandchild settle while the great-grandchild still runs.
+    // (gc's doc freezes with a Complete final entry on its tagged Done.)
+    wait_for(
+        || {
+            entries(&core, &format!("{CHAT}--sub--toolu_gc"))
+                .last()
+                .is_some_and(|e| e.status == Some(MessageStatus::Complete))
+        },
+        "grandchild doc to freeze",
+    )
+    .await;
+    assert_eq!(chip_status(&core, "toolu_pa"), Some(SubagentStatus::Done));
+    assert_eq!(
+        status(&core),
+        Some(SessionStatus::Working),
+        "a live great-grandchild must keep the parked session Working"
+    );
+
+    wait_for(
+        || status(&core) == Some(SessionStatus::Idle),
+        "session to settle Idle once the great-grandchild finishes",
+    )
+    .await;
 
     core.shutdown().await;
 }
